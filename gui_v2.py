@@ -40,7 +40,7 @@ except ImportError:
 # matplotlib 제거 (차트 미사용)
 HAS_MATPLOTLIB = False
 # --- Styling ---
-MODERN_THEME = """
+DARK_THEME = """
 /* ===== Base Application ===== */
 QMainWindow, QWidget {
     background-color: #1a1a2e;
@@ -174,7 +174,8 @@ QRadioButton::indicator:checked::after {
 
 /* ===== Buttons ===== */
 QPushButton {
-    background-color: #4361ee;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #4361ee, stop:1 #7c3aed);
     color: white;
     border: none;
     border-radius: 8px;
@@ -183,10 +184,14 @@ QPushButton {
     min-height: 20px;
 }
 QPushButton:hover {
-    background-color: #5b7cfa;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #5b7cfa, stop:1 #8b5cf6);
+    /* 글로우 효과 - border로 구현 */
+    border: 2px solid #a78bfa;
 }
 QPushButton:pressed {
-    background-color: #3b54d4;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #3b54d4, stop:1 #6d28d9);
     padding-top: 12px;
     padding-bottom: 8px;
 }
@@ -391,6 +396,333 @@ QStatusBar {
     padding: 5px;
 }
 """
+
+# 라이트 테마
+LIGHT_THEME = """
+/* ===== Base Application ===== */
+QMainWindow, QWidget {
+    background-color: #f8fafc;
+    color: #1e293b;
+    font-family: 'Pretendard', 'Malgun Gothic', 'Segoe UI', sans-serif;
+    font-size: 14px;
+}
+
+/* ===== Typography ===== */
+QLabel#title {
+    font-size: 26px;
+    font-weight: bold;
+    color: #3b82f6;
+    margin-bottom: 5px;
+}
+QLabel#subtitle {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 15px;
+}
+QLabel#section_title {
+    font-size: 15px;
+    font-weight: bold;
+    color: #1e293b;
+    margin-top: 10px;
+    margin-bottom: 8px;
+    padding-left: 5px;
+    border-left: 3px solid #3b82f6;
+}
+QLabel#field_label {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 3px;
+}
+
+/* ===== Cards (Container Panels) ===== */
+QFrame#card {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+}
+QFrame#card:hover {
+    border: 1px solid #3b82f680;
+}
+
+/* ===== Input Fields ===== */
+QComboBox, QDateEdit, QSpinBox, QLineEdit {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #1e293b;
+    selection-background-color: #3b82f6;
+    min-height: 22px;
+}
+QComboBox:hover, QDateEdit:hover, QSpinBox:hover, QLineEdit:hover {
+    border: 1px solid #3b82f6;
+}
+QComboBox:focus, QDateEdit:focus, QSpinBox:focus, QLineEdit:focus {
+    border: 2px solid #3b82f6;
+    background-color: #ffffff;
+}
+QComboBox::drop-down {
+    border: none;
+    width: 30px;
+    background: transparent;
+}
+QComboBox::down-arrow {
+    image: none;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid #3b82f6;
+    margin-right: 8px;
+}
+QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    selection-background-color: #3b82f6;
+    color: #1e293b;
+    padding: 5px;
+}
+
+/* ===== Checkboxes ===== */
+QCheckBox {
+    spacing: 8px;
+    color: #1e293b;
+}
+QCheckBox::indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 2px solid #cbd5e1;
+    background-color: #ffffff;
+}
+QCheckBox::indicator:hover {
+    border: 2px solid #3b82f6;
+}
+QCheckBox::indicator:checked {
+    background-color: #3b82f6;
+    border: 2px solid #3b82f6;
+}
+
+/* ===== Radio Buttons ===== */
+QRadioButton {
+    spacing: 8px;
+    color: #1e293b;
+}
+QRadioButton::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    border: 2px solid #cbd5e1;
+    background-color: #ffffff;
+}
+QRadioButton::indicator:hover {
+    border: 2px solid #3b82f6;
+}
+QRadioButton::indicator:checked {
+    background-color: #3b82f6;
+    border: 2px solid #3b82f6;
+}
+
+/* ===== Buttons ===== */
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #3b82f6, stop:1 #8b5cf6);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-weight: bold;
+    min-height: 20px;
+}
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #2563eb, stop:1 #7c3aed);
+    border: 2px solid #a78bfa;
+}
+QPushButton:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #1d4ed8, stop:1 #6d28d9);
+}
+QPushButton:disabled {
+    background-color: #e2e8f0;
+    color: #94a3b8;
+}
+
+/* Tool Buttons (Secondary) */
+QPushButton#tool_btn {
+    background-color: #e2e8f0;
+    color: #1e293b;
+    padding: 8px 14px;
+    border-radius: 6px;
+}
+QPushButton#tool_btn:hover {
+    background-color: #3b82f6;
+    color: white;
+}
+
+/* ===== Table ===== */
+QTableWidget {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    gridline-color: #f1f5f9;
+    selection-background-color: #3b82f640;
+    selection-color: #1e293b;
+    alternate-background-color: #f8fafc;
+}
+QTableWidget::item {
+    padding: 8px 6px;
+    border-bottom: 1px solid #f1f5f9;
+}
+QTableWidget::item:selected {
+    background-color: #3b82f640;
+}
+QTableWidget::item:hover {
+    background-color: #e0f2fe;
+}
+QHeaderView::section {
+    background-color: #f1f5f9;
+    color: #64748b;
+    padding: 10px 8px;
+    border: none;
+    border-bottom: 2px solid #3b82f6;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+/* ===== Scrollbars ===== */
+QScrollBar:vertical {
+    border: none;
+    background: #f1f5f9;
+    width: 12px;
+    border-radius: 6px;
+    margin: 2px;
+}
+QScrollBar::handle:vertical {
+    background: #3b82f6;
+    border-radius: 6px;
+    min-height: 30px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #2563eb;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+QScrollBar:horizontal {
+    border: none;
+    background: #f1f5f9;
+    height: 12px;
+    border-radius: 6px;
+    margin: 2px;
+}
+QScrollBar::handle:horizontal {
+    background: #3b82f6;
+    border-radius: 6px;
+    min-width: 30px;
+}
+
+/* ===== Tab Widget ===== */
+QTabWidget::pane {
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    border-radius: 0 8px 8px 8px;
+    padding: 5px;
+}
+QTabBar::tab {
+    background: #f1f5f9;
+    color: #64748b;
+    padding: 10px 24px;
+    margin-right: 2px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    font-weight: 500;
+}
+QTabBar::tab:selected {
+    background: #ffffff;
+    color: #3b82f6;
+    border-bottom: 3px solid #3b82f6;
+}
+QTabBar::tab:hover:!selected {
+    background: #e0f2fe;
+    color: #1e293b;
+}
+
+/* ===== Log View ===== */
+QTextEdit#log_view {
+    background-color: #f8fafc;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-family: 'Consolas', 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 12px;
+    padding: 10px;
+    selection-background-color: #3b82f6;
+}
+
+/* ===== Progress Bar ===== */
+QProgressBar {
+    background: #f1f5f9;
+    border-radius: 8px;
+    text-align: center;
+    color: #1e293b;
+    border: 1px solid #e2e8f0;
+    height: 28px;
+    font-weight: bold;
+}
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3b82f6, stop:1 #06b6d4);
+    border-radius: 7px;
+}
+
+/* ===== Tooltips ===== */
+QToolTip {
+    background-color: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+}
+
+/* ===== List Widget ===== */
+QListWidget {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 5px;
+}
+QListWidget::item {
+    padding: 10px;
+    border-radius: 6px;
+    margin: 2px 0;
+}
+QListWidget::item:selected {
+    background-color: #3b82f640;
+    color: #3b82f6;
+}
+QListWidget::item:hover {
+    background-color: #e0f2fe;
+}
+
+/* ===== Message Boxes ===== */
+QMessageBox {
+    background-color: #ffffff;
+}
+QMessageBox QLabel {
+    color: #1e293b;
+}
+
+/* ===== Status Bar ===== */
+QStatusBar {
+    background-color: #f1f5f9;
+    color: #64748b;
+    border-top: 1px solid #e2e8f0;
+    padding: 5px;
+}
+"""
+
+# 기본 테마 (호환성)
+MODERN_THEME = DARK_THEME
 
 # --- Custom Widgets (Scroll Wheel Disabled) ---
 # 마우스 휠로 값이 변경되는 것을 방지하는 커스텀 위젯들
@@ -983,6 +1315,61 @@ class DateRangeResultDialog(QDialog):
         return canvas
 
 
+class ShortcutsDialog(QDialog):
+    """키보드 단축키 도움말 다이얼로그"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("⌨️ 키보드 단축키")
+        self.setMinimumSize(400, 300)
+        self.setStyleSheet(MODERN_THEME)
+        self._init_ui()
+    
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        
+        title = QLabel("키보드 단축키 목록")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #4cc9f0;")
+        layout.addWidget(title)
+        
+        shortcuts = [
+            ("Ctrl + Enter", "검색 시작"),
+            ("F5", "결과 새로고침 (필터 재적용)"),
+            ("Escape", "검색 취소 / 다이얼로그 닫기"),
+            ("Ctrl + F", "필터 항공사 선택으로 이동"),
+            ("더블클릭", "결과 행에서 예약 페이지 열기"),
+            ("우클릭", "결과 행에서 컨텍스트 메뉴"),
+        ]
+        
+        for key, desc in shortcuts:
+            row = QHBoxLayout()
+            key_label = QLabel(key)
+            key_label.setStyleSheet("""
+                background-color: #0f3460;
+                color: #4cc9f0;
+                padding: 5px 10px;
+                border-radius: 4px;
+                font-family: 'Consolas', monospace;
+                font-weight: bold;
+            """)
+            key_label.setFixedWidth(120)
+            row.addWidget(key_label)
+            
+            desc_label = QLabel(desc)
+            desc_label.setStyleSheet("color: #e6e6e6;")
+            row.addWidget(desc_label)
+            row.addStretch()
+            
+            layout.addLayout(row)
+        
+        layout.addStretch()
+        
+        btn_close = QPushButton("닫기")
+        btn_close.clicked.connect(self.accept)
+        layout.addWidget(btn_close)
+
+
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, prefs=None):
         super().__init__(parent)
@@ -1143,7 +1530,7 @@ class SettingsDialog(QDialog):
             ws.title = "검색결과"
             
             # Header
-            headers = ["항공사", "가격", "출발", "도착", "경유", "복귀 출발", "복귀 도착", "복귀 경유", "링크"]
+            headers = ["항공사", "가격", "출발", "도착", "경유", "복귀 출발", "복귀 도착", "복귀 경유", "출처"]
             ws.append(headers)
             
             for f in main_win.all_results:
@@ -1153,7 +1540,7 @@ class SettingsDialog(QDialog):
                     getattr(f, 'return_departure_time', '-'), 
                     getattr(f, 'return_arrival_time', '-'), 
                     getattr(f, 'return_stops', '-'),
-                    f.link
+                    f.source
                 ]
                 ws.append(row)
                 
@@ -1312,6 +1699,7 @@ class SearchPanel(QFrame):
         # --- Row 4: Search Button ---
         self.btn_search = QPushButton("🔍 최저가 항공권 검색하기")
         self.btn_search.setFixedHeight(50)
+        self.btn_search.setToolTip("Ctrl+Enter로도 검색할 수 있습니다")
         self.btn_search.setStyleSheet("""
             QPushButton { 
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4361ee, stop:1 #4cc9f0);
@@ -1658,11 +2046,13 @@ class FilterPanel(QFrame):
         
         # Direct flights only
         self.chk_direct = QCheckBox("직항만")
+        self.chk_direct.setToolTip("경유 없이 직항 노선만 표시합니다")
         self.chk_direct.stateChanged.connect(self._emit_filter)
         layout.addWidget(self.chk_direct)
         
         # Include layovers
         self.chk_layover = QCheckBox("경유 포함")
+        self.chk_layover.setToolTip("경유 노선도 함께 표시합니다")
         self.chk_layover.setChecked(True)
         self.chk_layover.stateChanged.connect(self._emit_filter)
         layout.addWidget(self.chk_layover)
@@ -1672,6 +2062,7 @@ class FilterPanel(QFrame):
         # Airline Category Filter
         layout.addWidget(QLabel("항공사:"))
         self.cb_airline_category = NoWheelComboBox()
+        self.cb_airline_category.setToolTip("LCC: 저비용항공사 (제주항공, 진에어 등)\nFSC: 일반항공사 (대한항공, 아시아나)")
         self.cb_airline_category.addItem("전체", "ALL")
         self.cb_airline_category.addItem("🏷️ LCC (저비용)", "LCC")
         self.cb_airline_category.addItem("✈️ FSC (일반)", "FSC")
@@ -1699,7 +2090,7 @@ class FilterPanel(QFrame):
         lbl_out.setStyleSheet(label_style)
         layout.addWidget(lbl_out)
         
-        self.spin_start_time = QSpinBox()
+        self.spin_start_time = NoWheelSpinBox()
         self.spin_start_time.setRange(0, 23)
         self.spin_start_time.setSuffix("시")
         self.spin_start_time.valueChanged.connect(self._on_time_changed)
@@ -1707,7 +2098,7 @@ class FilterPanel(QFrame):
         layout.addWidget(self.spin_start_time)
         layout.addWidget(QLabel("~"))
         
-        self.spin_end_time = QSpinBox()
+        self.spin_end_time = NoWheelSpinBox()
         self.spin_end_time.setRange(1, 24)
         self.spin_end_time.setValue(24)
         self.spin_end_time.setSuffix("시")
@@ -1721,7 +2112,7 @@ class FilterPanel(QFrame):
         lbl_in.setStyleSheet(label_style)
         layout.addWidget(lbl_in)
         
-        self.spin_ret_start = QSpinBox()
+        self.spin_ret_start = NoWheelSpinBox()
         self.spin_ret_start.setRange(0, 23)
         self.spin_ret_start.setSuffix("시")
         self.spin_ret_start.valueChanged.connect(self._on_time_changed)
@@ -1729,7 +2120,7 @@ class FilterPanel(QFrame):
         
         layout.addWidget(QLabel("~"))
         
-        self.spin_ret_end = QSpinBox()
+        self.spin_ret_end = NoWheelSpinBox()
         self.spin_ret_end.setRange(1, 24)
         self.spin_ret_end.setValue(24)
         self.spin_ret_end.setSuffix("시")
@@ -1921,6 +2312,14 @@ class ResultTable(QTableWidget):
             # Set row height
             self.setRowHeight(i, 45)
             
+            # 최저가 행 배경색 강조
+            if flight.price == min_price:
+                highlight_color = QColor("#22c55e20")  # 녹색 반투명
+                for col in range(self.columnCount()):
+                    item = self.item(i, col)
+                    if item:
+                        item.setBackground(highlight_color)
+            
         self.setSortingEnabled(True)
         self.setUpdatesEnabled(True)  # 렌더링 다시 활성화
 
@@ -2087,9 +2486,13 @@ class LogViewer(QTextEdit):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("✈️ Flight Bot v2.3 - Pro")
+        self.setWindowTitle("✈️ Flight Bot v2.4 - Pro")
         self.setMinimumSize(1280, 900)
-        self.setStyleSheet(MODERN_THEME)
+        
+        # 테마 초기화
+        self.is_dark_theme = True
+        # 설정에서 테마 로드 (나중에 구현 가능, 현재는 기본 다크)
+        self.setStyleSheet(DARK_THEME)
         
         self.worker = None
         self.multi_worker = None
@@ -2147,6 +2550,17 @@ class MainWindow(QMainWindow):
         btn_date.setToolTip("날짜 범위에서 최저가 찾기")
         btn_date.clicked.connect(self._open_date_range_search)
         h_layout.addWidget(btn_date)
+        
+        btn_shortcuts = QPushButton("⌨️ 단축키")
+        btn_shortcuts.setToolTip("키보드 단축키 보기")
+        btn_shortcuts.clicked.connect(self._show_shortcuts)
+        h_layout.addWidget(btn_shortcuts)
+        
+        # 테마 전환 버튼
+        self.btn_theme = QPushButton("🌙 다크")
+        self.btn_theme.setToolTip("라이트/다크 테마 전환")
+        self.btn_theme.clicked.connect(self._toggle_theme)
+        h_layout.addWidget(self.btn_theme)
         
         btn_main_settings = QPushButton("⚙️ 설정")
         btn_main_settings.setFixedSize(80, 40)
@@ -2698,6 +3112,24 @@ class MainWindow(QMainWindow):
         self.search_panel._refresh_dest_combo()
         self.search_panel._refresh_profiles()
 
+    def _show_shortcuts(self):
+        """키보드 단축키 다이얼로그 표시"""
+        dlg = ShortcutsDialog(self)
+        dlg.exec()
+
+    def _toggle_theme(self):
+        """라이트/다크 테마 전환"""
+        if self.is_dark_theme:
+            # 다크 -> 라이트
+            self.setStyleSheet(LIGHT_THEME)
+            self.btn_theme.setText("☀️ 라이트")
+            self.is_dark_theme = False
+        else:
+            # 라이트 -> 다크
+            self.setStyleSheet(DARK_THEME)
+            self.btn_theme.setText("🌙 다크")
+            self.is_dark_theme = True
+
     def _apply_filter(self, filters=None):
         if filters is None:
             filters = self.filter_panel.get_current_filters()
@@ -2745,7 +3177,7 @@ class MainWindow(QMainWindow):
             try:
                 if ':' in f.departure_time:
                     dep_h = int(f.departure_time.split(':')[0])
-                    if not (start_h <= dep_h < end_h):
+                    if not (start_h <= dep_h <= end_h):  # <= 로 변경하여 종료시간 포함
                         continue
             except Exception:
                 pass
@@ -2755,7 +3187,7 @@ class MainWindow(QMainWindow):
                 try:
                     if ':' in f.return_departure_time:
                         ret_dep_h = int(f.return_departure_time.split(':')[0])
-                        if not (ret_start_h <= ret_dep_h < ret_end_h):
+                        if not (ret_start_h <= ret_dep_h <= ret_end_h):  # <= 로 변경
                             continue
                 except Exception:
                     pass

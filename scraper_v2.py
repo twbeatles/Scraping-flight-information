@@ -225,31 +225,42 @@ class PlaywrightScraper:
                     # Step 5: 가는편 + 오는편 결합하여 왕복 결과 생성
                     log("🔗 5단계: 가는편/오는편 결합 중...")
                     
-                    # 가장 저렴한 가는편/오는편 선택 또는 전체 조합
+                    # 다양한 오는편 옵션 제공 (가격순 상위 5개)
                     if outbound_flights and return_flights:
-                        # 모든 조합 대신 가장 저렴한 쌍 기준으로 가격순 정렬
-                        min_out = min(outbound_flights, key=lambda x: x['price'])
-                        min_ret = min(return_flights, key=lambda x: x['price'])
+                        # 오는편을 가격순으로 정렬하여 상위 5개 선택
+                        sorted_returns = sorted(return_flights, key=lambda x: x['price'])
+                        top_returns = sorted_returns[:5]  # 최저가 5개 오는편
                         
-                        # 전체 결과: 각 가는편 + 가장 저렴한 오는편 조합
+                        # 각 가는편에 대해 상위 오는편 조합 생성
                         for ob in outbound_flights:
-                            flight = FlightResult(
-                                airline=ob['airline'],
-                                price=ob['price'] + min_ret['price'],  # 왕복 합산
-                                departure_time=ob['depTime'],
-                                arrival_time=ob['arrTime'],
-                                stops=ob['stops'],
-                                source="Interpark (국내선)",
-                                return_departure_time=min_ret['depTime'],
-                                return_arrival_time=min_ret['arrTime'],
-                                return_stops=min_ret['stops'],
-                                is_round_trip=True,
-                                outbound_price=ob['price'],  # 가는편 가격
-                                return_price=min_ret['price']  # 오는편 가격
-                            )
-                            results.append(flight)
+                            for ret in top_returns:
+                                flight = FlightResult(
+                                    airline=ob['airline'],
+                                    price=ob['price'] + ret['price'],  # 왕복 합산
+                                    departure_time=ob['depTime'],
+                                    arrival_time=ob['arrTime'],
+                                    stops=ob['stops'],
+                                    source="Interpark (국내선)",
+                                    return_departure_time=ret['depTime'],
+                                    return_arrival_time=ret['arrTime'],
+                                    return_stops=ret['stops'],
+                                    is_round_trip=True,
+                                    outbound_price=ob['price'],  # 가는편 가격
+                                    return_price=ret['price']  # 오는편 가격
+                                )
+                                results.append(flight)
                         
-                        log(f"✅ 왕복 {len(results)}개 조합 생성 완료")
+                        # 중복 제거 (같은 가격, 같은 시간대 제거)
+                        seen = set()
+                        unique_results = []
+                        for r in results:
+                            key = (r.airline, r.price, r.departure_time, r.return_departure_time)
+                            if key not in seen:
+                                seen.add(key)
+                                unique_results.append(r)
+                        results = unique_results
+                        
+                        log(f"✅ 왕복 {len(results)}개 조합 생성 완료 (가는편 {len(outbound_flights)} x 오는편 {len(top_returns)})")
                     else:
                         # 가는편만/오는편만 있는 경우
                         for ob in outbound_flights:
@@ -312,8 +323,8 @@ class PlaywrightScraper:
         all_flights = {}  # 중복 제거용 dict (key: airline+time+price)
         
         try:
-            # 스크롤하며 수집 (최대 20회)
-            for scroll_i in range(20):
+            # 스크롤하며 수집 (최대 300회 - 스크롤 끝 도달 시 자동 중단)
+            for scroll_i in range(300):
                 js_script = r"""
                 () => {
                     const results = [];
@@ -388,15 +399,18 @@ class PlaywrightScraper:
                     # else:
                         # logger.debug(f"중복 항목 무시: {key}")
                 
-                # 스크롤 다운 (점진적으로 부드럽게)
-                self.page.evaluate("""
+                # 스크롤 다운 및 스크롤 가능 여부 확인
+                can_scroll = self.page.evaluate("""
                     () => {
+                        const beforeScroll = window.scrollY;
+                        const beforeHeight = document.body.scrollHeight;
+                        
                         // 1. 우선 window 스크롤 시도 (가장 일반적)
                         const totalHeight = document.body.scrollHeight;
                         const currentScroll = window.scrollY + window.innerHeight;
                         
                         if (currentScroll < totalHeight) {
-                            window.scrollBy(0, 800);
+                            window.scrollBy(0, 500);  // 500px씩 더 세밀하게 스크롤
                         } else {
                             // 2. 만약 window 스크롤이 끝이라면 특정 컨테이너 스크롤 시도
                              const containers = [
@@ -409,19 +423,36 @@ class PlaywrightScraper:
                             
                             for (const container of containers) {
                                 if (container && container.scrollHeight > container.clientHeight) {
-                                    container.scrollTop += 800;
+                                    container.scrollTop += 500;  // 500px씩 더 세밀하게
                                 }
                             }
                         }
+                        
+                        // 스크롤 후 위치 변화 확인
+                        const afterScroll = window.scrollY;
+                        const afterHeight = document.body.scrollHeight;
+                        
+                        // 스크롤 위치나 페이지 높이가 변했으면 아직 스크롤 가능
+                        return (afterScroll !== beforeScroll) || (afterHeight !== beforeHeight);
                     }
                 """)
-                time.sleep(1.5)  # 데이터 로딩 시간
+                time.sleep(1.0)  # 데이터 로딩 시간
                 
-                # 3회 연속 새 항목 없으면 종료 (2→3으로 완화)
+                # 스크롤이 더 이상 불가능하면 종료
+                if not can_scroll:
+                    no_scroll_count = getattr(self, '_no_scroll_count', 0) + 1
+                    self._no_scroll_count = no_scroll_count
+                    if no_scroll_count >= 3:  # 3회 연속 스크롤 불가 시 종료
+                        logger.info(f"스크롤 끝 도달: 더 이상 스크롤할 수 없음")
+                        break
+                else:
+                    self._no_scroll_count = 0
+                
+                # 새 항목 없으면 카운트 (lazy loading 대기)
                 if new_count == 0:
                     no_new_count = getattr(self, '_no_new_count', 0) + 1
                     self._no_new_count = no_new_count
-                    if no_new_count >= 3:  # 2→3으로 완화
+                    if no_new_count >= 10:  # 10회 연속 새 항목 없으면 종료
                         logger.info(f"스크롤 조기 종료: {no_new_count}회 연속 새 항목 없음")
                         break
                 else:
