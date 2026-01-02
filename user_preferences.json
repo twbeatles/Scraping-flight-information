@@ -1,0 +1,178 @@
+{
+    "custom_presets": {},
+    "search_history": [
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 17:54"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 17:48"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 17:43"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 17:31"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 17:19"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 17:14"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 17:09"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 17:04"
+        },
+        {
+            "origin": "ICN",
+            "dest": "NRT",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 17:02"
+        },
+        {
+            "origin": "ICN",
+            "dest": "NRT",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 16:58"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 16:52"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 16:48"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 16:47"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 16:35"
+        },
+        {
+            "origin": "ICN",
+            "dest": "NRT",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 16:34"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 16:32"
+        },
+        {
+            "origin": "GMP",
+            "dest": "GMP",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 16:32"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 16:27"
+        },
+        {
+            "origin": "ICN",
+            "dest": "NRT",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 15:53"
+        },
+        {
+            "origin": "ICN",
+            "dest": "NRT",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
+            "timestamp": "2026-01-02 15:38"
+        }
+    ],
+    "last_search": {
+        "origin": "GMP",
+        "dest": "CJU",
+        "dep": "20260109",
+        "ret": "20260112",
+        "adults": 1,
+        "timestamp": "2026-01-02 17:54"
+    },
+    "preferred_times": {
+        "departure_start": 12,
+        "departure_end": 24
+    },
+    "saved_profiles": {}
+}

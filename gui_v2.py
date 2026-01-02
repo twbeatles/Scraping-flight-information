@@ -1681,12 +1681,27 @@ class FilterPanel(QFrame):
         
         layout.addWidget(self._create_separator())
         
+        # Styles for better visibility
+        label_style = "font-weight: bold; color: #e0e0e0; font-size: 13px;"
+        spin_style = """
+            QSpinBox {
+                min-width: 70px;
+                min-height: 28px;
+                font-size: 13px;
+                padding: 2px;
+                font-weight: bold;
+            }
+        """
+        self.setStyleSheet(spin_style)
+
         # Time Filter (Outbound)
-        layout.addWidget(QLabel("가는편:"))
+        lbl_out = QLabel("가는편:")
+        lbl_out.setStyleSheet(label_style)
+        layout.addWidget(lbl_out)
+        
         self.spin_start_time = QSpinBox()
         self.spin_start_time.setRange(0, 23)
         self.spin_start_time.setSuffix("시")
-        self.spin_start_time.setFixedWidth(55)
         self.spin_start_time.valueChanged.connect(self._on_time_changed)
         
         layout.addWidget(self.spin_start_time)
@@ -1696,18 +1711,19 @@ class FilterPanel(QFrame):
         self.spin_end_time.setRange(1, 24)
         self.spin_end_time.setValue(24)
         self.spin_end_time.setSuffix("시")
-        self.spin_end_time.setFixedWidth(55)
         self.spin_end_time.valueChanged.connect(self._on_time_changed)
         layout.addWidget(self.spin_end_time)
         
         layout.addWidget(self._create_separator())
         
         # Time Filter (Inbound)
-        layout.addWidget(QLabel("오는편:"))
+        lbl_in = QLabel("오는편:")
+        lbl_in.setStyleSheet(label_style)
+        layout.addWidget(lbl_in)
+        
         self.spin_ret_start = QSpinBox()
         self.spin_ret_start.setRange(0, 23)
         self.spin_ret_start.setSuffix("시")
-        self.spin_ret_start.setFixedWidth(55)
         self.spin_ret_start.valueChanged.connect(self._on_time_changed)
         layout.addWidget(self.spin_ret_start)
         
@@ -1717,7 +1733,6 @@ class FilterPanel(QFrame):
         self.spin_ret_end.setRange(1, 24)
         self.spin_ret_end.setValue(24)
         self.spin_ret_end.setSuffix("시")
-        self.spin_ret_end.setFixedWidth(55)
         self.spin_ret_end.valueChanged.connect(self._on_time_changed)
         layout.addWidget(self.spin_ret_end)
         
