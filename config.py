@@ -3,6 +3,13 @@ Flight Bot Configuration
 Shared constants and settings for scraping and GUI.
 """
 
+import json
+import os
+import logging
+from typing import Dict, List, Any
+
+logger = logging.getLogger(__name__)
+
 # 공항/도시 코드 매핑 (GUI 표시용)
 AIRPORTS = {
     "ICN": "인천", "GMP": "김포", "CJU": "제주", "PUS": "부산 김해",
@@ -53,9 +60,6 @@ def get_airline_category(airline_name: str) -> str:
             return category
     return "OTHER"
 
-import json
-import os
-from typing import Dict, List, Any
 
 class PreferenceManager:
     """사용자 환경설정, 프리셋, 히스토리 관리자"""
@@ -84,7 +88,7 @@ class PreferenceManager:
             with open(self.filepath, 'r', encoding='utf-8') as f:
                 return {**default_prefs, **json.load(f)} # 병합하여 새 키 추가 대응
         except Exception as e:
-            print(f"Error loading preferences: {e}")
+            logger.warning(f"Error loading preferences: {e}")
             return default_prefs
 
     def save(self):
@@ -93,7 +97,7 @@ class PreferenceManager:
             with open(self.filepath, 'w', encoding='utf-8') as f:
                 json.dump(self.preferences, f, ensure_ascii=False, indent=4)
         except Exception as e:
-            print(f"Error saving preferences: {e}")
+            logger.warning(f"Error saving preferences: {e}")
 
     # --- Presets ---
     def add_preset(self, code: str, name: str):

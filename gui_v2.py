@@ -1,5 +1,5 @@
 """
-Flight Comparison Bot V2.3 - Modern GUI
+Flight Comparison Bot V2.5 - Modern GUI
 Modular, card-based interface with dark theme and Playwright integration.
 Enhanced with multi-destination search, date range search, airline filters,
 favorites, price history, and improved UI/UX.
@@ -7,11 +7,12 @@ favorites, price history, and improved UI/UX.
 
 import sys
 import os
+import webbrowser
 
 # Qt CSS 경고 억제 (Unknown property content 등)
 os.environ["QT_LOGGING_RULES"] = "qt.qpa.css.warning=false"
 
-import webbrowser
+
 from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -742,6 +743,11 @@ class NoWheelDateEdit(QDateEdit):
     def wheelEvent(self, event):
         event.ignore()
 
+class NoWheelTabWidget(QTabWidget):
+    """스크롤 휠에 반응하지 않는 TabWidget"""
+    def wheelEvent(self, event):
+        event.ignore()
+
 # --- Workers ---
 class SearchWorker(QThread):
     progress = pyqtSignal(str)
@@ -1255,10 +1261,6 @@ class DateRangeResultDialog(QDialog):
         
         layout.addWidget(self.table)
         
-        # Chart (if matplotlib available)
-        if HAS_MATPLOTLIB and any(p > 0 for p, a in self.results.values()):
-            layout.addWidget(self._create_chart())
-        
         # Best date
         valid_results = [(d, p, a) for d, (p, a) in self.results.items() if p > 0]
         if valid_results:
@@ -1266,7 +1268,7 @@ class DateRangeResultDialog(QDialog):
             try:
                 best_dt = datetime.strptime(best[0], "%Y%m%d")
                 best_str = best_dt.strftime("%Y-%m-%d (%a)")
-            except:
+            except Exception:
                 best_str = best[0]
             rec_label = QLabel(f"💡 최저가 날짜: {best_str} - {best[1]:,}원 ({best[2]})")
             rec_label.setStyleSheet("font-size: 16px; color: #00ff00; font-weight: bold; padding: 10px;")
@@ -1275,44 +1277,6 @@ class DateRangeResultDialog(QDialog):
         btn_close = QPushButton("닫기")
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close)
-    
-    def _create_chart(self):
-        """가격 추이 차트 생성"""
-        fig = Figure(figsize=(8, 3), facecolor='#1a1a2e')
-        canvas = FigureCanvas(fig)
-        ax = fig.add_subplot(111)
-        
-        ax.set_facecolor('#16213e')
-        
-        sorted_data = sorted(self.results.items())
-        dates = [d for d, (p, a) in sorted_data if p > 0]
-        prices = [p for d, (p, a) in sorted_data if p > 0]
-        
-        if dates and prices:
-            # Format x labels
-            x_labels = []
-            for d in dates:
-                try:
-                    dt = datetime.strptime(d, "%Y%m%d")
-                    x_labels.append(dt.strftime("%m/%d"))
-                except:
-                    x_labels.append(d[-4:])
-            
-            ax.plot(range(len(prices)), prices, color='#4cc9f0', linewidth=2, marker='o')
-            ax.fill_between(range(len(prices)), prices, alpha=0.3, color='#4cc9f0')
-            
-            ax.set_xticks(range(len(x_labels)))
-            ax.set_xticklabels(x_labels, rotation=45, fontsize=8, color='white')
-            ax.tick_params(colors='white')
-            
-            ax.set_ylabel('가격 (원)', color='white')
-            ax.yaxis.label.set_color('white')
-            
-            for spine in ax.spines.values():
-                spine.set_color('#30475e')
-        
-        fig.tight_layout()
-        return canvas
 
 
 class ShortcutsDialog(QDialog):
@@ -1736,7 +1700,7 @@ class SearchPanel(QFrame):
                 cb.clear()
                 for code, name in presets.items():
                      cb.addItem(f"{code} ({name})", code)
-            except:
+            except Exception:
                 pass
 
         index = cb.findData(default_code)
@@ -1757,7 +1721,6 @@ class SearchPanel(QFrame):
 
     def _manage_preset(self):
         current_text = self.cb_dest.currentText()
-        from PyQt6.QtWidgets import QInputDialog, QMenu
         
         menu = QMenu(self)
         add_action = menu.addAction("현재 입력값을 프리셋에 추가")
@@ -1889,7 +1852,7 @@ class SearchPanel(QFrame):
                 for code, name in presets.items():
                     if code not in config.AIRPORTS:
                         self.cb_dest.addItem(f"{code} ({name})", code)
-            except:
+            except Exception:
                 pass
             
             # 기본값 설정 (인천-도쿄 나리타)
@@ -1917,7 +1880,6 @@ class SearchPanel(QFrame):
         self.cb_profiles.blockSignals(False)
 
     def _save_current_profile(self):
-        from PyQt6.QtWidgets import QInputDialog
         name, ok = QInputDialog.getText(self, "프로필 저장", "프로필 이름 (예: 제주 가족여행):")
         if ok and name:
             params = {
@@ -2251,8 +2213,15 @@ class ResultTable(QTableWidget):
         
         for i, flight in enumerate(results):
             # Store flight object in first column's data
-            airline_item = QTableWidgetItem(flight.airline)
+            airline_str = flight.airline
+            if hasattr(flight, 'return_airline') and flight.return_airline and flight.airline != flight.return_airline:
+                airline_str = f"{flight.airline} + {flight.return_airline}"
+            
+            airline_item = QTableWidgetItem(airline_str)
             airline_item.setData(Qt.ItemDataRole.UserRole + 1, i)
+            # 툴팁에 상세 정보 표시
+            if hasattr(flight, 'return_airline') and flight.return_airline:
+                 airline_item.setToolTip(f"가는편: {flight.airline}\n오는편: {flight.return_airline}")
             self.setItem(i, 0, airline_item)
             
             # Price (Color-coded: green=cheap, red=expensive)
@@ -2389,7 +2358,7 @@ class ResultTable(QTableWidget):
             ws.title = "검색 결과"
             
             # 헤더
-            headers = ["항공사", "가격", "가는편 출발", "가는편 도착", "경유",
+            headers = ["항공사", "오는편 항공사", "가격", "가는편 출발", "가는편 도착", "경유",
                        "오는편 출발", "오는편 도착", "경유", "출처", "가는편 가격", "오는편 가격"]
             ws.append(headers)
             
@@ -2397,6 +2366,7 @@ class ResultTable(QTableWidget):
             for flight in self.results_data:
                 row = [
                     flight.airline,
+                    getattr(flight, 'return_airline', ''),
                     flight.price,
                     flight.departure_time,
                     flight.arrival_time,
@@ -2439,16 +2409,22 @@ class ResultTable(QTableWidget):
             import csv
             with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.writer(f)
-                writer.writerow(["항공사", "가격", "가는편출발", "가는편도착", "경유",
-                                "오는편출발", "오는편도착", "경유", "출처"])
+                writer.writerow(["항공사", "오는편 항공사", "가격", "가는편 출발", "가는편 도착", "경유",
+                               "오는편 출발", "오는편 도착", "경유", "출처", "가는편 가격", "오는편 가격"])
                 for flight in self.results_data:
                     writer.writerow([
-                        flight.airline, flight.price,
-                        flight.departure_time, flight.arrival_time, flight.stops,
+                        flight.airline,
+                        getattr(flight, 'return_airline', ''),
+                        flight.price,
+                        flight.departure_time,
+                        flight.arrival_time,
+                        flight.stops,
                         getattr(flight, 'return_departure_time', ''),
                         getattr(flight, 'return_arrival_time', ''),
                         getattr(flight, 'return_stops', 0),
-                        flight.source
+                        flight.source,
+                        getattr(flight, 'outbound_price', 0),
+                        getattr(flight, 'return_price', 0)
                     ])
             QMessageBox.information(self, "완료", f"CSV 파일이 저장되었습니다:\n{filename}")
         except Exception as e:
@@ -2504,6 +2480,7 @@ class MainWindow(QMainWindow):
         
         self.prefs = config.PreferenceManager()
         self.db = FlightDatabase()
+        self.db.cleanup_old_data(days=60)
         
         self._init_ui()
         if hasattr(self, 'search_panel'):
@@ -2639,7 +2616,7 @@ class MainWindow(QMainWindow):
         
         main_layout.addWidget(result_header)
 
-        self.tabs = QTabWidget()
+        self.tabs = NoWheelTabWidget()
         self.tabs.setMinimumHeight(400)
         
         # Tab 1: Results
@@ -2865,7 +2842,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "내보내기 오류", "내보낼 검색 결과가 없습니다.")
             return
         
-        from PyQt6.QtWidgets import QFileDialog
         import csv
         
         fname, _ = QFileDialog.getSaveFileName(

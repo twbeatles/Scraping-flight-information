@@ -43,6 +43,7 @@ class FlightResult:
     # 국내선용: 가는편/오는편 가격 분리
     outbound_price: int = 0
     return_price: int = 0
+    return_airline: str = ""  # 오는편 항공사 (국내선 등 교차 항공사 시)
 
     
     def to_dict(self) -> Dict[str, Any]:
@@ -59,18 +60,28 @@ class FlightResult:
             "return_departure_time": self.return_departure_time,
             "return_arrival_time": self.return_arrival_time,
             "return_stops": self.return_stops,
-            "is_round_trip": self.is_round_trip
+            "is_round_trip": self.is_round_trip,
+            "return_airline": self.return_airline
         }
 
 
 class PlaywrightScraper:
     """Playwright 기반 스크래퍼 - 수동 모드 지원"""
     
+    # 국내선 항공사 목록 (중앙 관리)
+    DOMESTIC_AIRLINES = [
+        '대한항공', '아시아나', '제주항공', '진에어', '티웨이',
+        '에어부산', '에어서울', '이스타항공', '하이에어', '에어프레미아', '플라이강원'
+    ]
+    
     def __init__(self):
         self.playwright = None
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
         self.manual_mode = False
+        # 스크롤 추적용 인스턴스 변수 초기화
+        self._no_scroll_count = 0
+        self._no_new_count = 0
     
     def search(self, origin: str, destination: str, 
                departure_date: str, return_date: Optional[str] = None,
@@ -97,14 +108,30 @@ class PlaywrightScraper:
             
             self.playwright = sync_playwright().start()
             
-            # 브라우저 시작 (visible 모드 - 수동 모드 대비)
-            self.browser = self.playwright.chromium.launch(
-                headless=False,
-                args=[
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-dev-shm-usage',
-                ]
-            )
+            # 브라우저 시작 (시스템 브라우저 우선 사용)
+            try:
+                # 1순위: Chrome
+                self.browser = self.playwright.chromium.launch(
+                    headless=False,
+                    channel="chrome",
+                    args=['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
+                )
+            except Exception as e:
+                logger.debug(f"Chrome 시작 실패, Edge 시도: {e}")
+                try:
+                    # 2순위: Edge (Windows 기본)
+                    self.browser = self.playwright.chromium.launch(
+                        headless=False,
+                        channel="msedge",
+                        args=['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
+                    )
+                except Exception as e:
+                    logger.debug(f"Edge 시작 실패, 기본 Chromium 사용: {e}")
+                    # 3순위: Playwright 내장 (설치 필요)
+                    self.browser = self.playwright.chromium.launch(
+                        headless=False,
+                        args=['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
+                    )
             
             # 컨텍스트 생성 (쿠키/스토리지 저장)
             profile_dir = os.path.join(os.getcwd(), "playwright_profile")
@@ -171,22 +198,22 @@ class PlaywrightScraper:
                     
                     # Step 2: 첫 번째 가는편 선택 (오는편 화면으로 전환)
                     log("🔄 2단계: 가는편 선택 → 오는편 화면 전환...")
-                    js_click = """
-                    () => {
-                        const airlines = ['대한항공', '아시아나', '제주항공', '진에어', '티웨이', 
-                                          '에어부산', '에어서울', '이스타항공', '하이에어'];
+                    airlines_js = str(self.DOMESTIC_AIRLINES)  # Python 리스트를 JS 배열로 변환
+                    js_click = f"""
+                    () => {{
+                        const airlines = {airlines_js};
                         const buttons = document.querySelectorAll('button');
-                        for (const btn of buttons) {
+                        for (const btn of buttons) {{
                             const text = btn.textContent || '';
-                            if (/\\d{2}:\\d{2}\\s*-\\s*\\d{2}:\\d{2}/.test(text) && 
+                            if (/\\d{{2}}:\\d{{2}}\\s*-\\s*\\d{{2}}:\\d{{2}}/.test(text) && 
                                 /[0-9,]+\\s*원/.test(text) &&
-                                airlines.some(a => text.includes(a))) {
+                                airlines.some(a => text.includes(a))) {{
                                 btn.click();
                                 return true;
-                            }
-                        }
+                            }}
+                        }}
                         return false;
-                    }
+                    }}
                     """
                     clicked = self.page.evaluate(js_click)
                     
@@ -206,34 +233,51 @@ class PlaywrightScraper:
                     
                     # Step 3: 오는편 로딩 대기
                     log("🕐 3단계: 오는편 로딩 대기...")
-                    time.sleep(4)
                     
-                    # 오는편 화면 확인
-                    for j in range(5):
+                    # 동적 대기: 오는편 화면 확인 (최대 15초)
+                    return_ready = False
+                    for j in range(15):
                         page_text = self.page.content()
-                        if "오는편" in page_text:
+                        # 오는편 텍스트와 가격 정보가 모두 있는지 확인
+                        if "오는편" in page_text and self.page.locator("text=원").count() >= 5:
                             log("✅ 오는편 화면 확인됨")
+                            return_ready = True
                             break
-                        time.sleep(2)
+                        time.sleep(1)
+                    
+                    if not return_ready:
+                        log("⚠️ 오는편 화면 로딩 실패 - 가는편만 반환")
+                        for ob in outbound_flights:
+                            results.append(FlightResult(
+                                airline=ob['airline'],
+                                price=ob['price'],
+                                departure_time=ob['depTime'],
+                                arrival_time=ob['arrTime'],
+                                stops=ob['stops'],
+                                source="Interpark (국내선 가는편)"
+                            ))
+                        return results
                     
                     # Step 4: 오는편 데이터 추출
                     log("📋 4단계: 오는편 목록 추출 중...")
-                    time.sleep(2)
+                    time.sleep(1)  # 데이터 안정화
                     return_flights = self._extract_domestic_flights_data()
                     log(f"✅ 오는편 {len(return_flights)}개 발견")
                     
                     # Step 5: 가는편 + 오는편 결합하여 왕복 결과 생성
                     log("🔗 5단계: 가는편/오는편 결합 중...")
                     
-                    # 다양한 오는편 옵션 제공 (가격순 상위 5개)
+                    # 다양한 오는편 옵션 제공 (전체 조합 후 최저가 필터링)
                     if outbound_flights and return_flights:
-                        # 오는편을 가격순으로 정렬하여 상위 5개 선택
-                        sorted_returns = sorted(return_flights, key=lambda x: x['price'])
-                        top_returns = sorted_returns[:5]  # 최저가 5개 오는편
+                        # 1. 모든 가능한 조합 생성 (가는편 x 오는편)
+                        # 주의: 조합 수가 많아질 수 있으므로 내부 연산 후 상위 결과만 남김
+                        temp_results = []
                         
-                        # 각 가는편에 대해 상위 오는편 조합 생성
+                        # 오는편 시간순 정렬 (데이터 일관성용)
+                        return_flights.sort(key=lambda x: x['depTime'])
+                        
                         for ob in outbound_flights:
-                            for ret in top_returns:
+                            for ret in return_flights:
                                 flight = FlightResult(
                                     airline=ob['airline'],
                                     price=ob['price'] + ret['price'],  # 왕복 합산
@@ -246,21 +290,27 @@ class PlaywrightScraper:
                                     return_stops=ret['stops'],
                                     is_round_trip=True,
                                     outbound_price=ob['price'],  # 가는편 가격
-                                    return_price=ret['price']  # 오는편 가격
+                                    return_price=ret['price'],   # 오는편 가격
+                                    return_airline=ret['airline'] # 오는편 항공사
                                 )
-                                results.append(flight)
+                                temp_results.append(flight)
                         
-                        # 중복 제거 (같은 가격, 같은 시간대 제거)
+                        log(f"⚡ 전체 {len(temp_results)}개 조합 계산 완료")
+                        
+                        # 2. 중복 제거
                         seen = set()
                         unique_results = []
-                        for r in results:
-                            key = (r.airline, r.price, r.departure_time, r.return_departure_time)
+                        for r in temp_results:
+                            key = (r.airline, r.return_airline, r.price, r.departure_time, r.return_departure_time)
                             if key not in seen:
                                 seen.add(key)
                                 unique_results.append(r)
-                        results = unique_results
+                                
+                        # 3. 가격순 정렬 후 상위 300개만 유지 (GUI 성능 보호)
+                        unique_results.sort(key=lambda x: x.price)
+                        results = unique_results[:300]
                         
-                        log(f"✅ 왕복 {len(results)}개 조합 생성 완료 (가는편 {len(outbound_flights)} x 오는편 {len(top_returns)})")
+                        log(f"✅ 최저가 기준 상위 {len(results)}개 조합 반환 (전체 조합 중)")
                     else:
                         # 가는편만/오는편만 있는 경우
                         for ob in outbound_flights:
@@ -322,68 +372,73 @@ class PlaywrightScraper:
         
         all_flights = {}  # 중복 제거용 dict (key: airline+time+price)
         
+        # 스크롤 추적 변수 초기화
+        self._no_scroll_count = 0
+        self._no_new_count = 0
+        
+        # Python 항공사 리스트를 JS 배열 문자열로 변환
+        airlines_js = str(self.DOMESTIC_AIRLINES)
+        
         try:
             # 스크롤하며 수집 (최대 300회 - 스크롤 끝 도달 시 자동 중단)
             for scroll_i in range(300):
-                js_script = r"""
-                () => {
+                js_script = f"""
+                () => {{
                     const results = [];
-                    const airlines = ['대한항공', '아시아나', '제주항공', '진에어', '티웨이', 
-                                      '에어부산', '에어서울', '이스타항공', '하이에어'];
+                    const airlines = {airlines_js};
                     
                     const buttons = document.querySelectorAll('button');
                     
-                    for (const btn of buttons) {
-                        try {
+                    for (const btn of buttons) {{
+                        try {{
                             const text = btn.textContent || '';
                             
                             // 시간 패턴 확인 (16:50 - 18:05)
-                            const timeMatch = text.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
+                            const timeMatch = text.match(/(\\d{{2}}:\\d{{2}})\\s*-\\s*(\\d{{2}}:\\d{{2}})/);
                             if (!timeMatch) continue;
                             
-                            // 가격 확인 - 더 엄격하게 (앞에 공백이나 줄바꿈이 있는 숫자,숫자 원)
-                            // 10,000원 ~ 999,999원 범위만
-                            const priceMatches = text.match(/(\d{2,3},\d{3})\s*원/g);
+                            // 가격 확인 - 개선된 정규식 (10,000원 ~ 9,999,999원)
+                            const priceMatches = text.match(/(\\d{{1,3}},\\d{{3}},?\\d{{0,3}})\\s*원/g);
                             if (!priceMatches || priceMatches.length === 0) continue;
                             
                             // 첫 번째 가격만 사용 (가장 저렴한 가격이 먼저 표시됨)
-                            const firstPrice = priceMatches[0].replace(/[^\d]/g, '');
+                            const firstPrice = priceMatches[0].replace(/[^\\d]/g, '');
                             const price = parseInt(firstPrice);
                             
-                            // 가격 범위 검증 (국내선: 2만원 ~ 50만원)
-                            if (price < 20000 || price > 500000) continue;
+                            // 가격 범위 검증 (국내선: 1천원 ~ 1000만원)
+                            if (price < 1000 || price > 10000000) continue;
                             
                             // 광고 제외
                             if (text.includes('이벤트') || text.includes('프로모션')) continue;
                             
                             // 항공사 찾기
                             let airline = '기타';
-                            for (const a of airlines) {
-                                if (text.includes(a)) {
+                            for (const a of airlines) {{
+                                if (text.includes(a)) {{
                                     airline = a;
                                     break;
-                                }
-                            }
+                                }}
+                            }}
                             
                             // 경유 확인
                             let stops = 0;
-                            if (text.includes('경유')) {
+                            if (text.includes('경유')) {{
                                 stops = 1;
-                            }
+                            }}
                             
-                            results.push({
+                            results.push({{
                                 airline: airline,
                                 price: price,
                                 depTime: timeMatch[1],
                                 arrTime: timeMatch[2],
                                 stops: stops,
-                                key: airline + '_' + timeMatch[1] + '_' + timeMatch[2] + '_' + price  // 중복 체크 강화 (도착시간 추가)
-                            });
-                        } catch (e) { }
-                    }
+                                key: airline + '_' + timeMatch[1] + '_' + timeMatch[2] + '_' + price
+                            }});
+                        }} catch (e) {{ }}
+                    }}
                     
                     return results;
-                }
+                }}
                 """
                 
                 batch = self.page.evaluate(js_script)
@@ -476,47 +531,49 @@ class PlaywrightScraper:
         results = []
         logger.info("🇰🇷 국내선 항공편 추출 시작...")
         
+        # Python 항공사 리스트를 JS 배열 문자열로 변환
+        airlines_js = str(self.DOMESTIC_AIRLINES)
+        
         try:
-            js_script = r"""
-            () => {
+            js_script = f"""
+            () => {{
                 const results = [];
-                const airlines = ['대한항공', '아시아나', '제주항공', '진에어', '티웨이', 
-                                  '에어부산', '에어서울', '이스타항공', '하이에어'];
+                const airlines = {airlines_js};
                 
                 const allButtons = document.querySelectorAll('button');
                 
-                for (const btn of allButtons) {
-                    try {
+                for (const btn of allButtons) {{
+                    try {{
                         const text = btn.textContent || '';
                         
                         // 시간 패턴 확인 (16:50 - 18:05)
-                        const timeMatch = text.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
+                        const timeMatch = text.match(/(\\d{{2}}:\\d{{2}})\\s*-\\s*(\\d{{2}}:\\d{{2}})/);
                         if (!timeMatch) continue;
                         
-                        // 가격 확인 (28,900 원)
-                        const priceMatch = text.match(/([0-9,]+)\s*원/);
+                        // 가격 확인 (28,900 원) - 개선된 정규식
+                        const priceMatch = text.match(/(\\d{{1,3}},\\d{{3}},?\\d{{0,3}})\\s*원/);
                         if (!priceMatch) continue;
                         
                         // 항공사 찾기
                         let airline = '기타';
-                        for (const a of airlines) {
-                            if (text.includes(a)) {
+                        for (const a of airlines) {{
+                            if (text.includes(a)) {{
                                 airline = a;
                                 break;
-                            }
-                        }
+                            }}
+                        }}
                         
                         // 경유 확인
                         let stops = 0;
-                        if (text.includes('경유')) {
-                            const stopMatch = text.match(/(\d)회\s*경유/);
+                        if (text.includes('경유')) {{
+                            const stopMatch = text.match(/(\\d)회\\s*경유/);
                             if (stopMatch) stops = parseInt(stopMatch[1]);
                             else stops = 1;
-                        }
+                        }}
                         
                         const price = parseInt(priceMatch[1].replace(/,/g, ''));
                         
-                        results.push({
+                        results.push({{
                             airline: airline,
                             price: price,
                             depTime: timeMatch[1],
@@ -526,12 +583,12 @@ class PlaywrightScraper:
                             retArrTime: '',
                             retStops: 0,
                             isRoundTrip: false
-                        });
-                    } catch (e) { }
-                }
+                        }});
+                    }} catch (e) {{ }}
+                }}
                 
                 return results;
-            }
+            }}
             """
             
             extracted = self.page.evaluate(js_script)
@@ -691,8 +748,8 @@ class PlaywrightScraper:
                 self.browser.close()
             if self.playwright:
                 self.playwright.stop()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"브라우저 종료 중 예외 (무시됨): {e}")
         finally:
             self.browser = None
             self.page = None
