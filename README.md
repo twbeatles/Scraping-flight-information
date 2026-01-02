@@ -1,72 +1,62 @@
 # ✈️ Flight Bot V2.3 - Pro
 
-Flight Bot is a powerful, modern desktop application for real-time flight search and comparison using **Playwright** and **PyQt6**. It supports both domestic and international flights with advanced features like batch search, Excel export, and price history tracking.
+Flight Bot은 **Playwright**와 **PyQt6**를 기반으로 한 강력한 데스크탑 항공권 검색 및 비교 애플리케이션입니다. 인터파크 투어 데이터를 실시간으로 수집하여 최저가 항공권을 찾아줍니다.
 
-## ✨ Key Features
+## ✨ 주요 기능
 
-### 🔍 Search Capabilities
-- **Real-time Scraping:** Fetches live data from Interpark Tours (and extensible to others).
-- **Domestic & International:** Optimized logic for both flight types.
-    - *Domestic:* Smart scraping with outbound/return flight matching.
-    - *International:* Comprehensive round-trip search.
-- **Batch Search:** Import search conditions from Excel to search multiple routes/dates at once.
-- **Flight Types:** Round-trip and One-way support.
+### 🔍 강력한 검색 기능
+- **실시간 검색:** 인터파크 투어 실시간 데이터를 스크래핑하여 최신 가격 정보를 제공합니다.
+- **국내선 & 국제선:** 
+    - *국내선:* 가는편/오는편 최저가 조합 자동 매칭
+    - *국제선:* 왕복/편도 여정 지원
+- **일괄 검색:** 엑셀 파일로 여러 날짜/노선을 한 번에 검색 가능
+- **스마트 스크롤:** 가상 스크롤(Virtual Scroll) 완벽 대응으로 누락 없는 데이터 수집
 
-### 📊 Data Management
-- **Excel/CSV Export:** Right-click on results to export data with detailed price breakdowns.
-- **Input Persistence:** Automatically saves and restores your last search settings (Origin, Dest, Dates, Passengers).
-- **Price History:** Tracks price trends for specific routes over time.
-- **Favorites:** Save interesting flights to watch later.
+### 📊 효율적인 데이터 관리
+- **Excel/CSV 내보내기:** 결과 테이블 우클릭으로 손쉽게 저장 (가격 상세 분리 포함)
+- **입력값 자동 저장:** 재실행 시 출발/도착지, 날짜 등의 설정이 유지됨
+- **가격 추적 Log:** 검색 기록 및 경쟁력 있는 가격 변동 추이 저장
 
-### 🎨 Modern UI/UX
-- **Dark Theme:** Sleek, eye-friendly design.
-- **Interactive Tables:** Sortable columns, adjustable widths, and color-coded prices.
-- **Split Price Display:** clearly shows `Total (Outbound + Return)` prices.
-- **Log Viewer:** Real-time status updates within the app.
+### 🎨 편리한 필터링 & UI
+- **정밀 타임 필터:** **가는편**과 **오는편**의 출발 시간을 각각 슬라이더로 조절 가능 (실시간 반영)
+- **직관적 테이블:** 열 너비 드래그 조절, 최저가 색상 강조, 상세 가격(`가는편+오는편`) 표시
+- **최적화:** 불필요한 라이브러리 제거로 가벼워진 프로그램
 
-## 🛠️ Installation
+## 🛠️ 설치 방법
 
-1. **Prerequisites**
-   - Python 3.9+
-   - Chrome/Chromium browser
+1. **필수 요구사항**
+   - Python 3.9 이상
+   - Chrome 브라우저
 
-2. **Install Dependencies**
+2. **라이브러리 설치**
    ```bash
-   pip install PyQt6 playwright openpyxl matplotlib
+   pip install PyQt6 playwright openpyxl
    playwright install
    ```
+   *(matplotlib은 제거되어 설치할 필요가 없습니다)*
 
-## 🚀 Usage
+## 🚀 사용 방법
 
-1. **Run the Application**
+1. **실행**
    ```bash
    python gui_v2.py
    ```
 
-2. **Search**
-   - Select Origin/Destination, Dates, and Passengers.
-   - Click **Search**.
+2. **검색 및 필터링**
+   - 조건 입력 후 검색 버튼 클릭
+   - 결과 화면 상단 **필터 패널**에서 시간/항공사/경유 횟수 조절
+   - '오는편' 시간 필터는 왕복 검색 시에만 적용됩니다.
 
-3. **Export & Manage**
-   - **Right-click** on any result row to copy info or export to Excel/CSV.
-   - Go to **Settings > Data** to import batch search conditions.
+3. **빌드 (exe 만들기)**
+   ```bash
+   pyinstaller flight_bot.spec
+   ```
 
-## 📁 Project Structure
+## 📁 파일 구조
+- `gui_v2.py`: 메인 GUI (PyQt6)
+- `scraper_v2.py`: 스크래핑 로직 (Playwright)
+- `database.py`: 로컬 DB 관리
+- `config.py`: 설정값
 
-- `gui_v2.py`: Main application entry point and GUI implementation.
-- `scraper_v2.py`: Core scraping logic using Playwright.
-- `database.py`: SQLite database manager for history and favorites.
-- `config.py`: Configuration settings (Airports, Airlines, etc.).
-
-## 📦 Building (PyInstaller)
-
-To create a standalone executable:
-
-```bash
-pyinstaller flight_bot.spec
-```
-
-The output will be in the `dist` folder.
-
-## 📝 License
+## 📝 라이선스
 MIT License

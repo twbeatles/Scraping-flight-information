@@ -37,16 +37,8 @@ try:
 except ImportError:
     HAS_OPENPYXL = False
 
-# Try importing matplotlib for charts
-try:
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-    from matplotlib.figure import Figure
-    import matplotlib.pyplot as plt
-    plt.rcParams['font.family'] = 'Malgun Gothic'
-    plt.rcParams['axes.unicode_minus'] = False
-    HAS_MATPLOTLIB = True
-except ImportError:
-    HAS_MATPLOTLIB = False
+# matplotlib 제거 (차트 미사용)
+HAS_MATPLOTLIB = False
 # --- Styling ---
 MODERN_THEME = """
 /* ===== Base Application ===== */
@@ -1647,9 +1639,9 @@ class SearchPanel(QFrame):
         
         # Domestic/International
         is_domestic = settings.value("is_domestic", False, type=bool)
-        if hasattr(self, 'rb_domestic'):
+        if hasattr(self, 'rb_domestic') and hasattr(self, 'rb_intl'):
             self.rb_domestic.setChecked(is_domestic)
-            self.rb_international.setChecked(not is_domestic)
+            self.rb_intl.setChecked(not is_domestic)
             self._on_flight_type_changed()
 
 
@@ -1689,12 +1681,55 @@ class FilterPanel(QFrame):
         
         layout.addWidget(self._create_separator())
         
+        # Time Filter (Outbound)
+        layout.addWidget(QLabel("가는편:"))
+        self.spin_start_time = QSpinBox()
+        self.spin_start_time.setRange(0, 23)
+        self.spin_start_time.setSuffix("시")
+        self.spin_start_time.setFixedWidth(55)
+        self.spin_start_time.valueChanged.connect(self._on_time_changed)
+        
+        layout.addWidget(self.spin_start_time)
+        layout.addWidget(QLabel("~"))
+        
+        self.spin_end_time = QSpinBox()
+        self.spin_end_time.setRange(1, 24)
+        self.spin_end_time.setValue(24)
+        self.spin_end_time.setSuffix("시")
+        self.spin_end_time.setFixedWidth(55)
+        self.spin_end_time.valueChanged.connect(self._on_time_changed)
+        layout.addWidget(self.spin_end_time)
+        
+        layout.addWidget(self._create_separator())
+        
+        # Time Filter (Inbound)
+        layout.addWidget(QLabel("오는편:"))
+        self.spin_ret_start = QSpinBox()
+        self.spin_ret_start.setRange(0, 23)
+        self.spin_ret_start.setSuffix("시")
+        self.spin_ret_start.setFixedWidth(55)
+        self.spin_ret_start.valueChanged.connect(self._on_time_changed)
+        layout.addWidget(self.spin_ret_start)
+        
+        layout.addWidget(QLabel("~"))
+        
+        self.spin_ret_end = QSpinBox()
+        self.spin_ret_end.setRange(1, 24)
+        self.spin_ret_end.setValue(24)
+        self.spin_ret_end.setSuffix("시")
+        self.spin_ret_end.setFixedWidth(55)
+        self.spin_ret_end.valueChanged.connect(self._on_time_changed)
+        layout.addWidget(self.spin_ret_end)
+        
+        layout.addWidget(self._create_separator())
+        
         # Max Stops Filter
-        layout.addWidget(QLabel("최대 경유:"))
+        layout.addWidget(QLabel("경유:"))
         self.spin_max_stops = NoWheelSpinBox()
         self.spin_max_stops.setRange(0, 5)
         self.spin_max_stops.setValue(3)
         self.spin_max_stops.setSuffix("회")
+        self.spin_max_stops.setFixedWidth(50)
         self.spin_max_stops.setToolTip("허용할 최대 경유 횟수")
         self.spin_max_stops.valueChanged.connect(self._emit_filter)
         layout.addWidget(self.spin_max_stops)
@@ -1702,9 +1737,10 @@ class FilterPanel(QFrame):
         layout.addStretch()
         
         # Reset Button
-        btn_reset = QPushButton("↺ 초기화")
+        btn_reset = QPushButton("↺")
+        btn_reset.setToolTip("필터 초기화")
         btn_reset.setObjectName("tool_btn")
-        btn_reset.setFixedWidth(70)
+        btn_reset.setFixedWidth(30)
         btn_reset.clicked.connect(self._reset_filters)
         layout.addWidget(btn_reset)
     
@@ -1714,28 +1750,52 @@ class FilterPanel(QFrame):
         sep.setStyleSheet("color: #30475e;")
         return sep
     
+    def _on_time_changed(self):
+        """시간 변경 시 유효성 검사 후 시그널 발생"""
+        # 가는편
+        start = self.spin_start_time.value()
+        end = self.spin_end_time.value()
+        if start >= end:
+            if self.sender() == self.spin_start_time:
+                self.spin_end_time.setValue(start + 1)
+            else:
+                self.spin_start_time.setValue(end - 1)
+        
+        # 오는편
+        r_start = self.spin_ret_start.value()
+        r_end = self.spin_ret_end.value()
+        if r_start >= r_end:
+            if self.sender() == self.spin_ret_start:
+                self.spin_ret_end.setValue(r_start + 1)
+            else:
+                self.spin_ret_start.setValue(r_end - 1)
+                
+        self._emit_filter()
+
     def _emit_filter(self):
-        filters = {
-            "direct_only": self.chk_direct.isChecked(),
-            "include_layover": self.chk_layover.isChecked(),
-            "airline_category": self.cb_airline_category.currentData(),
-            "max_stops": self.spin_max_stops.value()
-        }
+        filters = self.get_current_filters()
         self.filter_changed.emit(filters)
-    
+
     def _reset_filters(self):
         self.chk_direct.setChecked(False)
         self.chk_layover.setChecked(True)
-        self.cb_airline_category.setCurrentIndex(0)
+        self.cb_airline_category.setCurrentIndex(0)  # ALL
         self.spin_max_stops.setValue(3)
-        self._emit_filter()
-    
+        self.spin_start_time.setValue(0)
+        self.spin_end_time.setValue(24)
+        self.spin_ret_start.setValue(0)
+        self.spin_ret_end.setValue(24)
+
     def get_current_filters(self):
         return {
             "direct_only": self.chk_direct.isChecked(),
             "include_layover": self.chk_layover.isChecked(),
             "airline_category": self.cb_airline_category.currentData(),
-            "max_stops": self.spin_max_stops.value()
+            "max_stops": self.spin_max_stops.value(),
+            "start_time": self.spin_start_time.value(),
+            "end_time": self.spin_end_time.value(),
+            "ret_start_time": self.spin_ret_start.value(),
+            "ret_end_time": self.spin_ret_end.value()
         }
 
 
@@ -2635,10 +2695,20 @@ class MainWindow(QMainWindow):
         airline_category = filters.get("airline_category", "ALL")
         max_stops = filters.get("max_stops", 3)
         
-        # Get Time Pref
-        pref_time = self.prefs.get_preferred_time()
-        start_h = pref_time.get("departure_start", 0)
-        end_h = pref_time.get("departure_end", 24)
+        # Outbound Time Filter
+        start_h = filters.get("start_time", 0)
+        end_h = filters.get("end_time", 24)
+        
+        # Inbound Time Filter
+        ret_start_h = filters.get("ret_start_time", 0)
+        ret_end_h = filters.get("ret_end_time", 24)
+        
+        # 만약 필터 패널에서 값을 안 줬다면(초기 로딩 등) 설정값 사용
+        if "start_time" not in filters:
+            pref_time = self.prefs.get_preferred_time()
+            start_h = pref_time.get("departure_start", 0)
+            end_h = pref_time.get("departure_end", 24)
+            # 오는편 선호 시간은 설정에 없으므로 기본값(0-24) 유지
             
         filtered = []
         for f in self.all_results:
@@ -2656,13 +2726,24 @@ class MainWindow(QMainWindow):
                 if category != airline_category:
                     continue
             
-            # 3. Time Filter
+            # 3. Time Filter (Outbound)
             try:
-                dep_h = int(f.departure_time.split(':')[0])
-                if not (start_h <= dep_h < end_h):
-                    continue
-            except:
+                if ':' in f.departure_time:
+                    dep_h = int(f.departure_time.split(':')[0])
+                    if not (start_h <= dep_h < end_h):
+                        continue
+            except Exception:
                 pass
+            
+            # 4. Time Filter (Inbound) - Only for round trips
+            if f.is_round_trip and hasattr(f, 'return_departure_time') and f.return_departure_time:
+                try:
+                    if ':' in f.return_departure_time:
+                        ret_dep_h = int(f.return_departure_time.split(':')[0])
+                        if not (ret_start_h <= ret_dep_h < ret_end_h):
+                            continue
+                except Exception:
+                    pass
                 
             filtered.append(f)
             

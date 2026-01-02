@@ -366,7 +366,7 @@ class PlaywrightScraper:
                                 depTime: timeMatch[1],
                                 arrTime: timeMatch[2],
                                 stops: stops,
-                                key: airline + '_' + timeMatch[1] + '_' + price  // 중복 체크용
+                                key: airline + '_' + timeMatch[1] + '_' + timeMatch[2] + '_' + price  // 중복 체크 강화 (도착시간 추가)
                             });
                         } catch (e) { }
                     }
@@ -380,35 +380,42 @@ class PlaywrightScraper:
                 # 중복 제거하며 추가
                 new_count = 0
                 for f in batch:
-                    key = f.get('key', f'{f["airline"]}_{f["depTime"]}_{f["price"]}')
+                    # 키 생성 방식 변경 (도착시간 포함)
+                    key = f.get('key', f'{f["airline"]}_{f["depTime"]}_{f["arrTime"]}_{f["price"]}')
                     if key not in all_flights:
                         all_flights[key] = f
                         new_count += 1
+                    # else:
+                        # logger.debug(f"중복 항목 무시: {key}")
                 
-                # 스크롤 다운 (국내선 목록 영역 대상)
+                # 스크롤 다운 (점진적으로 부드럽게)
                 self.page.evaluate("""
                     () => {
-                        // 국내선 항공편 목록 컨테이너 찾기 (여러 방법 시도)
-                        const containers = [
-                            document.querySelector('div[scrollable="true"]'),
-                            document.querySelector('[class*="flightList"]'),
-                            document.querySelector('[class*="resultList"]'),
-                            document.querySelector('[class*="scroll"]'),
-                            document.querySelector('main'),
-                            document.documentElement
-                        ];
+                        // 1. 우선 window 스크롤 시도 (가장 일반적)
+                        const totalHeight = document.body.scrollHeight;
+                        const currentScroll = window.scrollY + window.innerHeight;
                         
-                        for (const container of containers) {
-                            if (container && container.scrollHeight > container.clientHeight) {
-                                container.scrollTop += 1000;
-                                return;
+                        if (currentScroll < totalHeight) {
+                            window.scrollBy(0, 800);
+                        } else {
+                            // 2. 만약 window 스크롤이 끝이라면 특정 컨테이너 스크롤 시도
+                             const containers = [
+                                document.querySelector('div[scrollable="true"]'),
+                                document.querySelector('[class*="flightList"]'),
+                                document.querySelector('[class*="resultList"]'),
+                                document.querySelector('.ReactVirtualizados'),
+                                document.querySelector('div[style*="overflow"]'),
+                            ];
+                            
+                            for (const container of containers) {
+                                if (container && container.scrollHeight > container.clientHeight) {
+                                    container.scrollTop += 800;
+                                }
                             }
                         }
-                        // Fallback: 전체 페이지 스크롤
-                        window.scrollBy(0, 1000);
                     }
                 """)
-                time.sleep(1.0)  # 데이터 로딩 시간 더 확보
+                time.sleep(1.5)  # 데이터 로딩 시간
                 
                 # 3회 연속 새 항목 없으면 종료 (2→3으로 완화)
                 if new_count == 0:
