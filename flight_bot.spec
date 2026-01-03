@@ -26,8 +26,6 @@ excludes = [
     'flask', 'django', 'tornado', 'aiohttp', 'fastapi',
     'http.server', 'ftplib', 'telnetlib',
     
-    # 기타
-    'asyncio.windows_events',  # PyInstaller 호환성
 ]
 
 # ===== Hidden Imports =====
@@ -41,6 +39,13 @@ hiddenimports = [
     # Playwright
     'playwright.sync_api',
     'playwright._impl._api_types',
+    
+    # asyncio (Windows 필수)
+    'asyncio',
+    'asyncio.windows_events',
+    'asyncio.windows_utils',
+    'asyncio.proactor_events',
+    'asyncio.selector_events',
     
     # 표준 라이브러리 (동적 임포트)
     'json',

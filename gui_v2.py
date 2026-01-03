@@ -1914,8 +1914,22 @@ class SearchPanel(QFrame):
         
         # --- Row 1: Origin & Destination ---
         # Origin
-        self.cb_origin = self._create_airport_combo()
-        layout.addWidget(self._labeled_widget("출발지 (Origin)", self.cb_origin), 1, 0)
+        self.cb_origin = self._create_airport_combo(include_presets=True)
+        btn_preset_origin = QPushButton("➕")
+        btn_preset_origin.setToolTip("직접 공항 코드 추가/관리")
+        btn_preset_origin.setObjectName("tool_btn")
+        btn_preset_origin.setFixedWidth(40)
+        btn_preset_origin.clicked.connect(lambda: self._manage_preset(self.cb_origin))
+        
+        origin_layout = QHBoxLayout()
+        origin_layout.setContentsMargins(0,0,0,0)
+        origin_layout.setSpacing(5)
+        origin_layout.addWidget(self.cb_origin)
+        origin_layout.addWidget(btn_preset_origin)
+        origin_container = QWidget()
+        origin_container.setLayout(origin_layout)
+        
+        layout.addWidget(self._labeled_widget("출발지 (Origin)", origin_container), 1, 0)
         
         # Arrow
         arrow_lbl = QLabel("✈️")
@@ -1925,17 +1939,17 @@ class SearchPanel(QFrame):
         
         # Destination
         self.cb_dest = self._create_airport_combo("NRT", include_presets=True)
-        btn_preset = QPushButton("➕")
-        btn_preset.setToolTip("현재 도착지를 프리셋에 추가/삭제")
-        btn_preset.setObjectName("tool_btn")
-        btn_preset.setFixedWidth(40)
-        btn_preset.clicked.connect(self._manage_preset)
+        btn_preset_dest = QPushButton("➕")
+        btn_preset_dest.setToolTip("직접 공항 코드 추가/관리")
+        btn_preset_dest.setObjectName("tool_btn")
+        btn_preset_dest.setFixedWidth(40)
+        btn_preset_dest.clicked.connect(lambda: self._manage_preset(self.cb_dest))
         
         dest_layout = QHBoxLayout()
         dest_layout.setContentsMargins(0,0,0,0)
         dest_layout.setSpacing(5)
         dest_layout.addWidget(self.cb_dest)
-        dest_layout.addWidget(btn_preset)
+        dest_layout.addWidget(btn_preset_dest)
         dest_container = QWidget()
         dest_container.setLayout(dest_layout)
         
@@ -2026,9 +2040,11 @@ class SearchPanel(QFrame):
         if include_presets:
             try:
                 presets = self.prefs.get_all_presets()
-                cb.clear()
+                # cb.clear()  <-- Don't clear, append. But avoid duplicates.
+                # Already added standard airports above.
                 for code, name in presets.items():
-                     cb.addItem(f"{code} ({name})", code)
+                     if code not in config.AIRPORTS:
+                        cb.addItem(f"{code} ({name})", code)
             except Exception as e:
                 logger.warning(f"Failed to load presets: {e}")
 
@@ -2048,48 +2064,66 @@ class SearchPanel(QFrame):
         vbox.addWidget(widget)
         return container
 
-    def _manage_preset(self):
-        current_text = self.cb_dest.currentText()
+    def _manage_preset(self, combo_widget=None):
+        if not combo_widget:
+            combo_widget = self.cb_dest
+            
+        current_text = combo_widget.currentText()
         
         menu = QMenu(self)
-        add_action = menu.addAction("현재 입력값을 프리셋에 추가")
-        del_action = menu.addAction("선택된 프리셋 삭제")
+        add_action = menu.addAction("새로운 공항 추가 (Custom)")
+        del_action = menu.addAction("선택된 공항 삭제 (Custom)")
         
-        action = menu.exec(self.cb_dest.mapToGlobal(self.cb_dest.rect().bottomRight()))
+        action = menu.exec(combo_widget.mapToGlobal(combo_widget.rect().bottomRight()))
         
         if action == add_action:
-            code = self.cb_dest.currentData() or self.cb_dest.currentText().split(' ')[0]
-            code, ok = QInputDialog.getText(self, "프리셋 추가", "도시/공항 코드 (예: DAD):", text=code)
+            # Default text: extract code if possible
+            code = combo_widget.currentData() or ""
+            if not code and " " in current_text:
+                code = current_text.split(' ')[0]
+                
+            code, ok = QInputDialog.getText(self, "공항 추가", "공항/도시 코드 (예: JFK):", text=code)
             if ok and code:
-                name, ok2 = QInputDialog.getText(self, "프리셋 추가", f"{code}의 도시명:")
+                code = code.upper().strip()
+                name, ok2 = QInputDialog.getText(self, "공항 추가", f"{code}의 한글 명칭:")
                 if ok2:
-                    self.prefs.add_preset(code.upper(), name)
-                    self._refresh_dest_combo()
+                    self.prefs.add_preset(code, name)
+                    self._refresh_combos()
+                    QMessageBox.information(self, "추가 완료", f"{code} ({name}) 공항이 추가되었습니다.")
                     
         elif action == del_action:
-            code = self.cb_dest.currentData()
+            code = combo_widget.currentData()
+            if not code:
+                 QMessageBox.warning(self, "선택 없음", "삭제할 공항을 선택하세요.")
+                 return
+
             if code in config.AIRPORTS:
-                QMessageBox.warning(self, "삭제 불가", "기본 공항은 삭제할 수 없습니다.")
+                QMessageBox.warning(self, "삭제 불가", "기본 제공 공항은 삭제할 수 없습니다.\n사용자가 추가한 공항만 삭제 가능합니다.")
             else:
-                self.prefs.remove_preset(code)
-                self._refresh_dest_combo()
+                ret = QMessageBox.question(self, "삭제 확인", f"정말 {code} 공항을 목록에서 삭제하시겠습니까?", 
+                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if ret == QMessageBox.StandardButton.Yes:
+                    self.prefs.remove_preset(code)
+                    self._refresh_combos()
 
-    def _refresh_dest_combo(self):
-        current = self.cb_dest.currentData()
-        self.cb_dest.clear()
-        
-        # 1. Standard Airports
-        for code, name in config.AIRPORTS.items():
-            self.cb_dest.addItem(f"{code} ({name})", code)
+    def _refresh_combos(self):
+        """출발/도착 콤보박스 모두 갱신"""
+        for cb in [self.cb_origin, self.cb_dest]:
+            current = cb.currentData()
+            cb.clear()
             
-        # 2. Custom Presets (Only if not already added)
-        presets = self.prefs.get_all_presets()
-        for code, name in presets.items():
-            if code not in config.AIRPORTS:
-                self.cb_dest.addItem(f"{code} ({name})", code)
+            # 1. Standard Airports
+            for code, name in config.AIRPORTS.items():
+                cb.addItem(f"{code} ({name})", code)
+                
+            # 2. Custom Presets
+            presets = self.prefs.get_all_presets()
+            for code, name in presets.items():
+                if code not in config.AIRPORTS:
+                    cb.addItem(f"{code} ({name})", code)
 
-        idx = self.cb_dest.findData(current)
-        if idx >= 0: self.cb_dest.setCurrentIndex(idx)
+            idx = cb.findData(current)
+            if idx >= 0: cb.setCurrentIndex(idx)
 
     def _toggle_return_date(self):
         is_round = self.rb_round.isChecked()
@@ -2261,7 +2295,7 @@ class SearchPanel(QFrame):
         dlg = SettingsDialog(self, self.prefs)
         dlg.exec()
         # Refresh UI after settings close (presets might have changed)
-        self._refresh_dest_combo()
+        self._refresh_combos()
         self._refresh_profiles()
     
     def save_settings(self):
