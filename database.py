@@ -6,9 +6,18 @@ SQLite 기반 즐겨찾기, 가격 히스토리, 검색 로그 관리
 import sqlite3
 import os
 import json
+import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
+
+# 로거 설정
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logger.setLevel(logging.DEBUG)
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
 
 
 @dataclass
@@ -344,19 +353,20 @@ if __name__ == "__main__":
         "arrival_time": "13:00",
         "stops": 0
     })
-    print(f"추가된 즐겨찾기 ID: {fav_id}")
+    logger.info(f"추가된 즐겨찾기 ID: {fav_id}")
     
     # 가격 히스토리 테스트
     db.add_price_history("ICN", "NRT", "20260115", 350000, "대한항공")
     db.add_price_history("ICN", "NRT", "20260115", 320000, "진에어")
     
     trend = db.get_price_trend("ICN", "NRT")
-    print(f"가격 추이: {trend}")
+    logger.info(f"가격 추이: {trend}")
     
     # 통계
     stats = db.get_stats()
-    print(f"DB 통계: {stats}")
+    logger.info(f"DB 통계: {stats}")
     
     # 정리
     os.remove("test_flight.db")
-    print("테스트 완료!")
+    logger.info("테스트 완료!")
+

@@ -25,7 +25,17 @@ from PyQt6.QtWidgets import (
     QToolButton, QInputDialog
 )
 from PyQt6.QtCore import QDate, Qt, QThread, pyqtSignal, QSize, pyqtSlot, QTimer, QSettings
-from PyQt6.QtGui import QFont, QColor, QIcon, QPalette, QShortcut, QKeySequence, QAction
+from PyQt6.QtGui import QFont, QColor, QIcon, QPalette, QShortcut, QKeySequence, QAction, QTextCharFormat
+import json
+import logging
+
+# 로거 설정
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logger.setLevel(logging.DEBUG)
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
 
 from scraper_v2 import FlightSearcher, FlightResult
 import config
@@ -38,28 +48,26 @@ try:
 except ImportError:
     HAS_OPENPYXL = False
 
-# matplotlib 제거 (차트 미사용)
-HAS_MATPLOTLIB = False
 # --- Styling ---
 DARK_THEME = """
 /* ===== Base Application ===== */
 QMainWindow, QWidget {
-    background-color: #1a1a2e;
-    color: #e6e6e6;
+    background-color: #0f0f1a;
+    color: #e2e8f0;
     font-family: 'Pretendard', 'Malgun Gothic', 'Segoe UI', sans-serif;
     font-size: 14px;
 }
 
 /* ===== Typography ===== */
 QLabel#title {
-    font-size: 26px;
-    font-weight: bold;
-    color: #4cc9f0;
+    font-size: 32px;
+    font-weight: 800;
+    color: #06b6d4;
     margin-bottom: 5px;
 }
 QLabel#subtitle {
     font-size: 13px;
-    color: #94a3b8;
+    color: #64748b;
     margin-bottom: 15px;
 }
 QLabel#section_title {
@@ -68,8 +76,8 @@ QLabel#section_title {
     color: #e2e8f0;
     margin-top: 10px;
     margin-bottom: 8px;
-    padding-left: 5px;
-    border-left: 3px solid #4cc9f0;
+    padding-left: 8px;
+    border-left: 3px solid #06b6d4;
 }
 QLabel#field_label {
     font-size: 12px;
@@ -77,33 +85,35 @@ QLabel#field_label {
     margin-bottom: 3px;
 }
 
-/* ===== Cards (Container Panels) ===== */
+/* ===== Cards (Glassmorphism) ===== */
 QFrame#card {
-    background-color: #16213e;
-    border: 1px solid #30475e;
-    border-radius: 12px;
+    background-color: rgba(22, 33, 62, 0.9);
+    border: 1px solid rgba(6, 182, 212, 0.2);
+    border-radius: 16px;
     padding: 20px;
 }
 QFrame#card:hover {
-    border: 1px solid #4cc9f080;
+    border: 1px solid rgba(6, 182, 212, 0.4);
+    background-color: rgba(22, 33, 62, 0.95);
 }
 
-/* ===== Input Fields ===== */
+/* ===== Input Fields (Glow Focus) ===== */
 QComboBox, QDateEdit, QSpinBox, QLineEdit {
-    background-color: #0f3460;
-    border: 1px solid #30475e;
-    border-radius: 8px;
+    background-color: rgba(15, 52, 96, 0.8);
+    border: 1px solid #1e3a5f;
+    border-radius: 10px;
     padding: 10px 14px;
     color: white;
-    selection-background-color: #4cc9f0;
+    selection-background-color: #06b6d4;
     min-height: 22px;
 }
 QComboBox:hover, QDateEdit:hover, QSpinBox:hover, QLineEdit:hover {
-    border: 1px solid #4cc9f0;
+    border: 1px solid #06b6d4;
+    background-color: rgba(15, 52, 96, 0.9);
 }
 QComboBox:focus, QDateEdit:focus, QSpinBox:focus, QLineEdit:focus {
-    border: 2px solid #4cc9f0;
-    background-color: #0f3460;
+    border: 2px solid #06b6d4;
+    background-color: rgba(6, 182, 212, 0.1);
 }
 QComboBox::drop-down {
     border: none;
@@ -114,15 +124,16 @@ QComboBox::down-arrow {
     image: none;
     border-left: 6px solid transparent;
     border-right: 6px solid transparent;
-    border-top: 6px solid #4cc9f0;
-    margin-right: 8px;
+    border-top: 6px solid #06b6d4;
+    margin-right: 10px;
 }
 QComboBox QAbstractItemView {
     background-color: #16213e;
-    border: 1px solid #30475e;
-    selection-background-color: #4361ee;
+    border: 1px solid #1e3a5f;
+    selection-background-color: #6366f1;
     color: white;
     padding: 5px;
+    border-radius: 8px;
 }
 
 /* ===== Checkboxes ===== */
@@ -173,95 +184,101 @@ QRadioButton::indicator:checked::after {
     background: #1a1a2e;
 }
 
-/* ===== Buttons ===== */
+/* ===== Buttons (Gradient + Glow) ===== */
 QPushButton {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
-        stop:0 #4361ee, stop:1 #7c3aed);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+        stop:0 #6366f1, stop:0.5 #8b5cf6, stop:1 #a855f7);
     color: white;
     border: none;
-    border-radius: 8px;
-    padding: 10px 18px;
-    font-weight: bold;
+    border-radius: 10px;
+    padding: 12px 24px;
+    font-weight: 600;
     min-height: 20px;
 }
 QPushButton:hover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
-        stop:0 #5b7cfa, stop:1 #8b5cf6);
-    /* 글로우 효과 - border로 구현 */
-    border: 2px solid #a78bfa;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+        stop:0 #818cf8, stop:0.5 #a78bfa, stop:1 #c084fc);
+    border: 2px solid rgba(167, 139, 250, 0.5);
 }
 QPushButton:pressed {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
-        stop:0 #3b54d4, stop:1 #6d28d9);
-    padding-top: 12px;
-    padding-bottom: 8px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+        stop:0 #4f46e5, stop:0.5 #7c3aed, stop:1 #9333ea);
+    padding-top: 13px;
+    padding-bottom: 11px;
 }
 QPushButton:disabled {
-    background-color: #334155;
-    color: #64748b;
+    background-color: #1e293b;
+    color: #475569;
 }
 
-/* Tool Buttons (Secondary) */
+/* Tool Buttons (Secondary - Cyan) */
 QPushButton#tool_btn {
-    background-color: #30475e;
-    color: #e2e8f0;
-    padding: 8px 14px;
-    border-radius: 6px;
+    background-color: rgba(6, 182, 212, 0.15);
+    color: #06b6d4;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid rgba(6, 182, 212, 0.3);
 }
 QPushButton#tool_btn:hover {
-    background-color: #4cc9f0;
-    color: #1a1a2e;
+    background-color: #06b6d4;
+    color: #0f0f1a;
+    border: 1px solid #06b6d4;
 }
 
 /* Filter/Toggle Buttons */
 QPushButton#filter_btn {
     background-color: transparent;
-    border: 1px solid #30475e;
+    border: 1px solid #1e3a5f;
     color: #94a3b8;
-    border-radius: 6px;
+    border-radius: 8px;
 }
 QPushButton#filter_btn:checked, QPushButton#filter_btn:hover {
-    background-color: #4cc9f015;
-    border: 1px solid #4cc9f0;
-    color: #4cc9f0;
+    background-color: rgba(6, 182, 212, 0.15);
+    border: 1px solid #06b6d4;
+    color: #06b6d4;
 }
 
-/* Manual Extract Button (Attention) */
+/* Manual Extract Button (Attention - Rose) */
 QPushButton#manual_btn {
-    background-color: #f72585;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #f43f5e, stop:1 #ec4899);
     font-size: 15px;
-    padding: 12px 20px;
+    padding: 14px 24px;
+    border-radius: 12px;
 }
 QPushButton#manual_btn:hover {
-    background-color: #ff3d9a;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #fb7185, stop:1 #f472b6);
+    border: 2px solid rgba(251, 113, 133, 0.5);
 }
 
-/* ===== Table ===== */
+/* ===== Table (Enhanced Rows) ===== */
 QTableWidget {
-    background-color: #16213e;
-    border: 1px solid #30475e;
-    border-radius: 8px;
-    gridline-color: #30475e;
-    selection-background-color: #4361ee40;
-    selection-color: white;
-    alternate-background-color: #1a1a2e;
+    background-color: rgba(22, 33, 62, 0.6);
+    border: 1px solid #1e3a5f;
+    border-radius: 12px;
+    gridline-color: rgba(30, 58, 95, 0.5);
+    selection-background-color: rgba(99, 102, 241, 0.25);
+    selection-color: #e0e7ff;
+    alternate-background-color: rgba(15, 15, 26, 0.4);
 }
 QTableWidget::item {
-    padding: 8px 6px;
-    border-bottom: 1px solid #30475e20;
+    padding: 10px 8px;
+    border-bottom: 1px solid rgba(30, 58, 95, 0.3);
 }
 QTableWidget::item:selected {
-    background-color: #4361ee40;
+    background-color: rgba(99, 102, 241, 0.3);
+    border-left: 3px solid #6366f1;
 }
 QTableWidget::item:hover {
-    background-color: #4cc9f010;
+    background-color: rgba(6, 182, 212, 0.1);
 }
 QHeaderView::section {
-    background-color: #0f3460;
+    background-color: rgba(15, 52, 96, 0.9);
     color: #94a3b8;
-    padding: 10px 8px;
+    padding: 12px 10px;
     border: none;
-    border-bottom: 2px solid #4cc9f0;
+    border-bottom: 2px solid #06b6d4;
     font-weight: bold;
     font-size: 12px;
 }
@@ -336,19 +353,20 @@ QTextEdit#log_view {
     selection-background-color: #4361ee;
 }
 
-/* ===== Progress Bar ===== */
+/* ===== Progress Bar (Animated Gradient) ===== */
 QProgressBar {
-    background: #16213e;
-    border-radius: 8px;
+    background: rgba(15, 52, 96, 0.6);
+    border-radius: 12px;
     text-align: center;
     color: white;
-    border: 1px solid #30475e;
-    height: 28px;
+    border: 1px solid #1e3a5f;
+    height: 30px;
     font-weight: bold;
 }
 QProgressBar::chunk {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4361ee, stop:1 #4cc9f0);
-    border-radius: 7px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #06b6d4, stop:0.5 #8b5cf6, stop:1 #ec4899);
+    border-radius: 11px;
 }
 
 /* ===== Tooltips ===== */
@@ -755,20 +773,21 @@ class SearchWorker(QThread):
     error = pyqtSignal(str)
     manual_mode_signal = pyqtSignal(object)  # active_searcher
 
-    def __init__(self, origin, destination, date, return_date, adults):
+    def __init__(self, origin, destination, date, return_date, adults, cabin_class="ECONOMY"):
         super().__init__()
         self.origin = origin
         self.destination = destination
         self.date = date
         self.return_date = return_date
         self.adults = adults
+        self.cabin_class = cabin_class
         self.searcher = FlightSearcher()
 
     def run(self):
         try:
             results = self.searcher.search(
                 self.origin, self.destination, self.date, 
-                self.return_date, self.adults,
+                self.return_date, self.adults, self.cabin_class,
                 progress_callback=lambda msg: self.progress.emit(msg)
             )
             
@@ -893,6 +912,306 @@ class DateRangeWorker(QThread):
         self.all_finished.emit(all_results)
 
 
+# --- Session Management ---
+
+class SessionManager:
+    """세션 저장/복원 관리자"""
+    
+    @staticmethod
+    def save_session(filepath: str, search_params: dict, results: list) -> bool:
+        """세션을 JSON 파일로 저장"""
+        try:
+            session_data = {
+                "saved_at": datetime.now().isoformat(),
+                "search_params": search_params,
+                "results": [r.to_dict() if hasattr(r, 'to_dict') else r for r in results]
+            }
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(session_data, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            logging.error(f"Session save error: {e}")
+            return False
+    
+    @staticmethod
+    def load_session(filepath: str) -> tuple:
+        """저장된 세션 로드, (params, results, saved_at) 반환"""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # 결과를 FlightResult 객체로 변환
+            from scraper_v2 import FlightResult
+            results = []
+            for r in data.get("results", []):
+                flight = FlightResult(
+                    airline=r.get("airline", "Unknown"),
+                    price=r.get("price", 0),
+                    currency=r.get("currency", "KRW"),
+                    departure_time=r.get("departure_time", ""),
+                    arrival_time=r.get("arrival_time", ""),
+                    duration=r.get("duration", ""),
+                    stops=r.get("stops", 0),
+                    flight_number=r.get("flight_number", ""),
+                    source=r.get("source", "Session"),
+                    return_departure_time=r.get("return_departure_time", ""),
+                    return_arrival_time=r.get("return_arrival_time", ""),
+                    return_duration=r.get("return_duration", ""),
+                    return_stops=r.get("return_stops", 0),
+                    is_round_trip=r.get("is_round_trip", False),
+                    outbound_price=r.get("outbound_price", 0),
+                    return_price=r.get("return_price", 0),
+                    return_airline=r.get("return_airline", "")
+                )
+                results.append(flight)
+            
+            return data.get("search_params", {}), results, data.get("saved_at", "")
+        except Exception as e:
+            logging.error(f"Session load error: {e}")
+            return {}, [], ""
+
+
+# --- Calendar View Dialog ---
+
+class CalendarViewDialog(QDialog):
+    """월별 최저가 캘린더 뷰"""
+    date_selected = pyqtSignal(str)  # 선택된 날짜 (yyyyMMdd)
+    
+    def __init__(self, price_data: dict, parent=None):
+        """
+        Args:
+            price_data: {date_str: (min_price, airline)} 형식
+        """
+        super().__init__(parent)
+        self.price_data = price_data
+        self.setWindowTitle("📅 날짜별 최저가 캘린더")
+        self.setMinimumSize(700, 550)
+        self.setStyleSheet(MODERN_THEME)
+        self._init_ui()
+    
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        
+        # 범례
+        legend = QLabel("🟢 최저가  🟡 중간  🔴 비쌈  ⬜ 데이터 없음")
+        legend.setStyleSheet("font-size: 12px; color: #94a3b8;")
+        layout.addWidget(legend)
+        
+        # 캘린더 위젯
+        self.calendar = QCalendarWidget()
+        self.calendar.setGridVisible(True)
+        self.calendar.setMinimumDate(QDate.currentDate())
+        self.calendar.clicked.connect(self._on_date_clicked)
+        layout.addWidget(self.calendar)
+        
+        # 가격 범위 계산
+        if self.price_data:
+            prices = [p for p, _ in self.price_data.values() if p > 0]
+            if prices:
+                self.min_price = min(prices)
+                self.max_price = max(prices)
+                self.price_range = self.max_price - self.min_price if self.max_price > self.min_price else 1
+            else:
+                self.min_price = self.max_price = self.price_range = 0
+        else:
+            self.min_price = self.max_price = self.price_range = 0
+        
+        # 날짜별 색상 적용
+        self._apply_price_colors()
+        
+        # 선택된 날짜 정보
+        self.lbl_info = QLabel("날짜를 클릭하면 해당 날짜로 검색합니다")
+        self.lbl_info.setStyleSheet("font-size: 14px; font-weight: bold;")
+        layout.addWidget(self.lbl_info)
+        
+        # 버튼
+        btn_layout = QHBoxLayout()
+        btn_close = QPushButton("닫기")
+        btn_close.clicked.connect(self.close)
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_close)
+        layout.addLayout(btn_layout)
+    
+    def _apply_price_colors(self):
+        """날짜별 가격에 따른 색상 적용"""
+        for date_str, (price, airline) in self.price_data.items():
+            if price <= 0:
+                continue
+            
+            # 날짜 파싱
+            try:
+                qdate = QDate.fromString(date_str, "yyyyMMdd")
+                if not qdate.isValid():
+                    continue
+            except Exception as e:
+                logger.debug(f"Date parsing error: {e}")
+                continue
+            
+            # 가격 기반 색상 결정
+            if self.price_range > 0:
+                ratio = (price - self.min_price) / self.price_range
+            else:
+                ratio = 0
+            
+            if ratio < 0.3:
+                color = QColor("#22c55e")  # 녹색 - 저렴
+            elif ratio < 0.6:
+                color = QColor("#f59e0b")  # 주황색 - 중간
+            else:
+                color = QColor("#ef4444")  # 빨간색 - 비쌈
+            
+            # 캘린더 날짜에 포맷 적용
+            fmt = QTextCharFormat()
+            fmt.setBackground(color)
+            fmt.setForeground(QColor("white"))
+            fmt.setToolTip(f"{price:,}원 ({airline})")
+            self.calendar.setDateTextFormat(qdate, fmt)
+    
+    def _on_date_clicked(self, qdate):
+        date_str = qdate.toString("yyyyMMdd")
+        if date_str in self.price_data:
+            price, airline = self.price_data[date_str]
+            self.lbl_info.setText(f"📅 {qdate.toString('yyyy-MM-dd')}: {price:,}원 ({airline})")
+        else:
+            self.lbl_info.setText(f"📅 {qdate.toString('yyyy-MM-dd')}: 데이터 없음")
+        
+        # 시그널 발생
+        self.date_selected.emit(date_str)
+
+
+# --- Combination Selector Dialog ---
+
+class CombinationSelectorDialog(QDialog):
+    """가는편/오는편 개별 선택 다이얼로그"""
+    combination_selected = pyqtSignal(object, object)  # outbound_flight, return_flight
+    
+    def __init__(self, outbound_flights: list, return_flights: list, parent=None):
+        super().__init__(parent)
+        self.outbound_flights = outbound_flights
+        self.return_flights = return_flights
+        self.selected_outbound = None
+        self.selected_return = None
+        
+        self.setWindowTitle("✈️ 가는편/오는편 조합 선택")
+        self.setMinimumSize(1000, 600)
+        self.setStyleSheet(MODERN_THEME)
+        self._init_ui()
+    
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        
+        # 상단 설명
+        info = QLabel("가는편과 오는편을 각각 선택하여 원하는 조합을 만들 수 있습니다.")
+        info.setStyleSheet("font-size: 13px; color: #94a3b8;")
+        layout.addWidget(info)
+        
+        # 메인 컨텐츠 (좌: 가는편, 우: 오는편)
+        content_layout = QHBoxLayout()
+        
+        # 가는편 리스트
+        outbound_group = QGroupBox("✈️ 가는편 선택")
+        outbound_layout = QVBoxLayout(outbound_group)
+        
+        self.list_outbound = QListWidget()
+        self.list_outbound.setAlternatingRowColors(True)
+        for i, flight in enumerate(outbound_flights):
+            item_text = f"{flight.airline} | {flight.departure_time} → {flight.arrival_time} | {flight.price:,}원"
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            self.list_outbound.addItem(item)
+        self.list_outbound.currentRowChanged.connect(self._on_outbound_selected)
+        outbound_layout.addWidget(self.list_outbound)
+        
+        content_layout.addWidget(outbound_group)
+        
+        # 오는편 리스트
+        return_group = QGroupBox("🔙 오는편 선택")
+        return_layout = QVBoxLayout(return_group)
+        
+        self.list_return = QListWidget()
+        self.list_return.setAlternatingRowColors(True)
+        for i, flight in enumerate(return_flights):
+            item_text = f"{flight.airline} | {flight.departure_time} → {flight.arrival_time} | {flight.price:,}원"
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            self.list_return.addItem(item)
+        self.list_return.currentRowChanged.connect(self._on_return_selected)
+        return_layout.addWidget(self.list_return)
+        
+        content_layout.addWidget(return_group)
+        
+        layout.addLayout(content_layout)
+        
+        # 선택된 조합 요약
+        summary_frame = QFrame()
+        summary_frame.setStyleSheet("background-color: #16213e; border-radius: 8px; padding: 15px;")
+        summary_layout = QVBoxLayout(summary_frame)
+        
+        self.lbl_summary = QLabel("가는편과 오는편을 선택하세요")
+        self.lbl_summary.setStyleSheet("font-size: 16px; font-weight: bold;")
+        summary_layout.addWidget(self.lbl_summary)
+        
+        self.lbl_total = QLabel("")
+        self.lbl_total.setStyleSheet("font-size: 24px; font-weight: bold; color: #22c55e;")
+        summary_layout.addWidget(self.lbl_total)
+        
+        layout.addWidget(summary_frame)
+        
+        # 버튼
+        btn_layout = QHBoxLayout()
+        
+        btn_confirm = QPushButton("✅ 이 조합으로 선택")
+        btn_confirm.setEnabled(False)
+        btn_confirm.clicked.connect(self._on_confirm)
+        self.btn_confirm = btn_confirm
+        
+        btn_cancel = QPushButton("취소")
+        btn_cancel.clicked.connect(self.close)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_confirm)
+        btn_layout.addWidget(btn_cancel)
+        
+        layout.addLayout(btn_layout)
+    
+    def _on_outbound_selected(self, row):
+        if 0 <= row < len(self.outbound_flights):
+            self.selected_outbound = self.outbound_flights[row]
+            self._update_summary()
+    
+    def _on_return_selected(self, row):
+        if 0 <= row < len(self.return_flights):
+            self.selected_return = self.return_flights[row]
+            self._update_summary()
+    
+    def _update_summary(self):
+        if self.selected_outbound and self.selected_return:
+            out = self.selected_outbound
+            ret = self.selected_return
+            
+            total = out.price + ret.price
+            
+            self.lbl_summary.setText(
+                f"가는편: {out.airline} {out.departure_time}→{out.arrival_time} ({out.price:,}원)\n"
+                f"오는편: {ret.airline} {ret.departure_time}→{ret.arrival_time} ({ret.price:,}원)"
+            )
+            self.lbl_total.setText(f"총 {total:,}원")
+            self.btn_confirm.setEnabled(True)
+        elif self.selected_outbound:
+            self.lbl_summary.setText(f"가는편 선택됨: {self.selected_outbound.airline} - 오는편을 선택하세요")
+            self.lbl_total.setText("")
+            self.btn_confirm.setEnabled(False)
+        elif self.selected_return:
+            self.lbl_summary.setText(f"오는편 선택됨: {self.selected_return.airline} - 가는편을 선택하세요")
+            self.lbl_total.setText("")
+            self.btn_confirm.setEnabled(False)
+    
+    def _on_confirm(self):
+        if self.selected_outbound and self.selected_return:
+            self.combination_selected.emit(self.selected_outbound, self.selected_return)
+            self.accept()
 
 # --- Dialogs ---
 
@@ -1268,7 +1587,8 @@ class DateRangeResultDialog(QDialog):
             try:
                 best_dt = datetime.strptime(best[0], "%Y%m%d")
                 best_str = best_dt.strftime("%Y-%m-%d (%a)")
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Date format error: {e}")
                 best_str = best[0]
             rec_label = QLabel(f"💡 최저가 날짜: {best_str} - {best[1]:,}원 ({best[2]})")
             rec_label.setStyleSheet("font-size: 16px; color: #00ff00; font-weight: bold; padding: 10px;")
@@ -1517,7 +1837,7 @@ class SettingsDialog(QDialog):
 # --- Components ---
 
 class SearchPanel(QFrame):
-    search_requested = pyqtSignal(str, str, str, str, int)  # origin, dest, dep, ret, adults
+    search_requested = pyqtSignal(str, str, str, str, int, str)  # origin, dest, dep, ret, adults, cabin_class
 
     def __init__(self, prefs):
         super().__init__()
@@ -1634,12 +1954,19 @@ class SearchPanel(QFrame):
         self.date_ret.setDate(QDate.currentDate().addDays(10))
         layout.addWidget(self._labeled_widget("오는 날 (Return)", self.date_ret), 2, 2)
 
-        # --- Row 3: Passengers & Time ---
+        # --- Row 3: Passengers, Cabin Class & Time ---
         # Passengers
         self.spin_adults = NoWheelSpinBox()
         self.spin_adults.setRange(1, 9)
         self.spin_adults.setSuffix("명")
         layout.addWidget(self._labeled_widget("성인 (Adults)", self.spin_adults), 3, 0)
+        
+        # Cabin Class (좌석등급)
+        self.cb_cabin_class = NoWheelComboBox()
+        self.cb_cabin_class.addItem("💺 이코노미", "ECONOMY")
+        self.cb_cabin_class.addItem("💼 비즈니스", "BUSINESS")
+        self.cb_cabin_class.addItem("👑 일등석", "FIRST")
+        self.cb_cabin_class.setToolTip("좌석 등급을 선택하세요 (가격이 다릅니다)")
         
         # Time Range
         time_layout = QHBoxLayout()
@@ -1652,13 +1979,15 @@ class SearchPanel(QFrame):
         self.spin_time_end.setValue(24)
         self.spin_time_end.setSuffix("시")
         
+        time_layout.addWidget(self.cb_cabin_class)
+        time_layout.addWidget(QLabel("|"))
         time_layout.addWidget(self.spin_time_start)
         time_layout.addWidget(QLabel("~"))
         time_layout.addWidget(self.spin_time_end)
         time_container = QWidget()
         time_container.setLayout(time_layout)
         
-        layout.addWidget(self._labeled_widget("선호 출발 시간 (Departure Time)", time_container), 3, 2)
+        layout.addWidget(self._labeled_widget("좌석등급 / 선호시간", time_container), 3, 2)
 
         # --- Row 4: Search Button ---
         self.btn_search = QPushButton("🔍 최저가 항공권 검색하기")
@@ -1700,8 +2029,8 @@ class SearchPanel(QFrame):
                 cb.clear()
                 for code, name in presets.items():
                      cb.addItem(f"{code} ({name})", code)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to load presets: {e}")
 
         index = cb.findData(default_code)
         if index >= 0:
@@ -1783,6 +2112,7 @@ class SearchPanel(QFrame):
         dep = dep_date.toString("yyyyMMdd")
         ret = ret_date.toString("yyyyMMdd") if ret_date else None
         adults = self.spin_adults.value()
+        cabin_class = self.cb_cabin_class.currentData() or "ECONOMY"
         
         # 입력 유효성 검사
         if not origin_code or not dest_code:
@@ -1803,7 +2133,7 @@ class SearchPanel(QFrame):
             QMessageBox.warning(self, "날짜 오류", "귀국일이 출발일보다 이전입니다.")
             return
 
-        self.search_requested.emit(origin_code, dest_code, dep, ret, adults)
+        self.search_requested.emit(origin_code, dest_code, dep, ret, adults, cabin_class)
 
 
     def set_searching(self, searching):
@@ -1852,8 +2182,8 @@ class SearchPanel(QFrame):
                 for code, name in presets.items():
                     if code not in config.AIRPORTS:
                         self.cb_dest.addItem(f"{code} ({name})", code)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to add custom presets: {e}")
             
             # 기본값 설정 (인천-도쿄 나리타)
             self.cb_origin.setCurrentIndex(self.cb_origin.findData("ICN"))
@@ -2102,6 +2432,30 @@ class FilterPanel(QFrame):
         self.spin_max_stops.valueChanged.connect(self._emit_filter)
         layout.addWidget(self.spin_max_stops)
         
+        layout.addWidget(self._create_separator())
+        
+        # Price Range Filter (Advanced)
+        layout.addWidget(QLabel("가격:"))
+        self.spin_min_price = NoWheelSpinBox()
+        self.spin_min_price.setRange(0, 9999)
+        self.spin_min_price.setValue(0)
+        self.spin_min_price.setSuffix("만")
+        self.spin_min_price.setFixedWidth(65)
+        self.spin_min_price.setToolTip("최소 가격 (만원 단위)")
+        self.spin_min_price.valueChanged.connect(self._emit_filter)
+        layout.addWidget(self.spin_min_price)
+        
+        layout.addWidget(QLabel("~"))
+        
+        self.spin_max_price = NoWheelSpinBox()
+        self.spin_max_price.setRange(0, 9999)
+        self.spin_max_price.setValue(9999)
+        self.spin_max_price.setSuffix("만")
+        self.spin_max_price.setFixedWidth(65)
+        self.spin_max_price.setToolTip("최대 가격 (만원 단위, 9999=무제한)")
+        self.spin_max_price.valueChanged.connect(self._emit_filter)
+        layout.addWidget(self.spin_max_price)
+        
         layout.addStretch()
         
         # Reset Button
@@ -2153,6 +2507,8 @@ class FilterPanel(QFrame):
         self.spin_end_time.setValue(24)
         self.spin_ret_start.setValue(0)
         self.spin_ret_end.setValue(24)
+        self.spin_min_price.setValue(0)
+        self.spin_max_price.setValue(9999)
 
     def get_current_filters(self):
         return {
@@ -2163,7 +2519,9 @@ class FilterPanel(QFrame):
             "start_time": self.spin_start_time.value(),
             "end_time": self.spin_end_time.value(),
             "ret_start_time": self.spin_ret_start.value(),
-            "ret_end_time": self.spin_ret_end.value()
+            "ret_end_time": self.spin_ret_end.value(),
+            "min_price": self.spin_min_price.value() * 10000,  # 만원 -> 원
+            "max_price": self.spin_max_price.value() * 10000   # 만원 -> 원
         }
 
 
@@ -2532,6 +2890,23 @@ class MainWindow(QMainWindow):
         btn_shortcuts.setToolTip("키보드 단축키 보기")
         btn_shortcuts.clicked.connect(self._show_shortcuts)
         h_layout.addWidget(btn_shortcuts)
+        
+        # Session Management Buttons
+        btn_save_session = QPushButton("💾 저장")
+        btn_save_session.setToolTip("현재 검색 결과를 파일로 저장")
+        btn_save_session.clicked.connect(self._save_session)
+        h_layout.addWidget(btn_save_session)
+        
+        btn_load_session = QPushButton("📂 불러오기")
+        btn_load_session.setToolTip("저장된 검색 결과 불러오기")
+        btn_load_session.clicked.connect(self._load_session)
+        h_layout.addWidget(btn_load_session)
+        
+        # Calendar View Button
+        btn_calendar = QPushButton("📆 캘린더뷰")
+        btn_calendar.setToolTip("날짜별 가격을 캘린더 형태로 보기 (날짜범위 검색 후 사용)")
+        btn_calendar.clicked.connect(self._show_calendar_view)
+        h_layout.addWidget(btn_calendar)
         
         # 테마 전환 버튼
         self.btn_theme = QPushButton("🌙 다크")
@@ -2953,14 +3328,17 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(100)
         self.progress_bar.setFormat("날짜 검색 완료")
         
+        # 캘린더 뷰용 데이터 저장
+        self.date_range_results = results
+        
         # Show results dialog
         dialog = DateRangeResultDialog(results, self)
         dialog.exec()
         
-        self.log_viewer.append_log(f"✅ 날짜 범위 검색 완료: {len(results)}일")
+        self.log_viewer.append_log(f"✅ 날짜 범위 검색 완료: {len(results)}일 (캘린더뷰 사용 가능)")
 
     # --- Standard Search ---
-    def _start_search(self, origin, dest, dep, ret, adults):
+    def _start_search(self, origin, dest, dep, ret, adults, cabin_class="ECONOMY"):
         # Save search params for later use
         self.current_search_params = {
             "origin": origin,
@@ -2968,6 +3346,7 @@ class MainWindow(QMainWindow):
             "dep": dep,
             "ret": ret,
             "adults": adults,
+            "cabin_class": cabin_class,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
         }
         
@@ -2982,15 +3361,16 @@ class MainWindow(QMainWindow):
         # Reset UI
         self.search_panel.set_searching(True)
         self.progress_bar.setRange(0, 0)
-        self.progress_bar.setFormat("항공권 검색 중...")
+        cabin_label = {"ECONOMY": "이코노미", "BUSINESS": "비즈니스", "FIRST": "일등석"}.get(cabin_class, "이코노미")
+        self.progress_bar.setFormat(f"항공권 검색 중... ({cabin_label})")
         self.table.setRowCount(0)
         self.manual_frame.setVisible(False)
         self.log_viewer.clear()
-        self.log_viewer.append_log("검색 프로세스 시작...")
+        self.log_viewer.append_log(f"검색 프로세스 시작... (좌석등급: {cabin_label})")
         self.tabs.setCurrentIndex(2)  # Switch to logs
         
         # Start Worker
-        self.worker = SearchWorker(origin, dest, dep, ret, adults)
+        self.worker = SearchWorker(origin, dest, dep, ret, adults, cabin_class)
         self.worker.progress.connect(self._update_progress)
         self.worker.finished.connect(self._search_finished)
         self.worker.error.connect(self._search_error)
@@ -3155,8 +3535,8 @@ class MainWindow(QMainWindow):
                     dep_h = int(f.departure_time.split(':')[0])
                     if not (start_h <= dep_h <= end_h):  # <= 로 변경하여 종료시간 포함
                         continue
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Time filter parsing error: {e}")
             
             # 4. Time Filter (Inbound) - Only for round trips
             if f.is_round_trip and hasattr(f, 'return_departure_time') and f.return_departure_time:
@@ -3165,13 +3545,29 @@ class MainWindow(QMainWindow):
                         ret_dep_h = int(f.return_departure_time.split(':')[0])
                         if not (ret_start_h <= ret_dep_h <= ret_end_h):  # <= 로 변경
                             continue
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Return time filter parsing error: {e}")
+            
+            # 5. Price Range Filter (Advanced)
+            min_price = filters.get("min_price", 0)
+            max_price = filters.get("max_price", 99990000)
+            if f.price < min_price:
+                continue
+            if max_price < 99990000 and f.price > max_price:  # 9999만원 = 무제한
+                continue
                 
             filtered.append(f)
             
         self.table.update_data(filtered)
-        msg = f"필터링: {len(filtered)}/{len(self.all_results)} | 시간: {start_h}~{end_h}시 | 항공사: {airline_category}"
+        
+        # 상태 메시지에 가격 범위 표시
+        price_msg = ""
+        min_p = filters.get("min_price", 0)
+        max_p = filters.get("max_price", 99990000)
+        if min_p > 0 or max_p < 99990000:
+            price_msg = f" | 가격: {min_p//10000}~{max_p//10000}만원"
+        
+        msg = f"필터링: {len(filtered)}/{len(self.all_results)} | 시간: {start_h}~{end_h}시 | 항공사: {airline_category}{price_msg}"
         self.statusBar().showMessage(msg)
         self.log_viewer.append_log(msg)
 
@@ -3239,6 +3635,98 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             QMessageBox.warning(self, "오류", f"복원 중 오류: {e}")
+    
+    # --- Session Management Methods ---
+    def _save_session(self):
+        """현재 검색 결과를 파일로 저장"""
+        if not self.all_results:
+            QMessageBox.warning(self, "저장 실패", "저장할 검색 결과가 없습니다.\n먼저 검색을 수행해주세요.")
+            return
+        
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "세션 저장",
+            f"flight_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            "JSON Files (*.json)"
+        )
+        
+        if not filename:
+            return
+        
+        if SessionManager.save_session(filename, self.current_search_params, self.all_results):
+            QMessageBox.information(self, "저장 완료", f"세션이 저장되었습니다:\n{filename}")
+            self.log_viewer.append_log(f"💾 세션 저장 완료: {filename}")
+        else:
+            QMessageBox.critical(self, "저장 실패", "세션 저장 중 오류가 발생했습니다.")
+    
+    def _load_session(self):
+        """저장된 세션 불러오기"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "세션 불러오기",
+            "",
+            "JSON Files (*.json)"
+        )
+        
+        if not filename:
+            return
+        
+        params, results, saved_at = SessionManager.load_session(filename)
+        
+        if not results:
+            QMessageBox.warning(self, "불러오기 실패", "세션 파일을 읽을 수 없거나 결과가 없습니다.")
+            return
+        
+        # 결과 표시
+        self.all_results = results
+        self.current_search_params = params
+        self._apply_filter()
+        
+        # 검색 조건 복원
+        if params:
+            try:
+                sp = self.search_panel
+                if 'origin' in params:
+                    idx = sp.cb_origin.findData(params['origin'])
+                    if idx >= 0:
+                        sp.cb_origin.setCurrentIndex(idx)
+                if 'dest' in params:
+                    idx = sp.cb_dest.findData(params['dest'])
+                    if idx >= 0:
+                        sp.cb_dest.setCurrentIndex(idx)
+            except Exception as e:
+                logger.debug(f"Failed to restore session params: {e}")
+        
+        saved_info = f" (저장: {saved_at[:16]})" if saved_at else ""
+        QMessageBox.information(
+            self, "불러오기 완료", 
+            f"세션을 불러왔습니다{saved_info}\n\n결과: {len(results)}개 항공편"
+        )
+        self.log_viewer.append_log(f"📂 세션 불러오기 완료: {len(results)}개 결과")
+    
+    # --- Calendar View Methods ---
+    def _show_calendar_view(self):
+        """날짜별 가격 캘린더 뷰 표시"""
+        # 저장된 날짜별 가격 데이터가 있는지 확인
+        if not hasattr(self, 'date_range_results') or not self.date_range_results:
+            QMessageBox.information(
+                self, "캘린더 뷰", 
+                "날짜별 가격 데이터가 없습니다.\n\n'📅 날짜 범위' 버튼을 눌러 먼저 날짜별 최저가를 검색해주세요."
+            )
+            return
+        
+        # 캘린더 다이얼로그 표시
+        dlg = CalendarViewDialog(self.date_range_results, self)
+        dlg.date_selected.connect(self._on_calendar_date_selected)
+        dlg.exec()
+    
+    def _on_calendar_date_selected(self, date_str):
+        """캘린더에서 날짜 선택 시 해당 날짜로 검색 조건 설정"""
+        try:
+            qdate = QDate.fromString(date_str, "yyyyMMdd")
+            if qdate.isValid():
+                self.search_panel.date_dep.setDate(qdate)
+                self.log_viewer.append_log(f"📅 출발일 변경: {qdate.toString('yyyy-MM-dd')}")
+        except Exception as e:
+            logger.debug(f"Calendar date selection error: {e}")
 
     def closeEvent(self, event):
         """창 닫기 시 워커 스레드 및 리소스 정리"""
@@ -3253,16 +3741,16 @@ class MainWindow(QMainWindow):
         if self.active_searcher:
             try:
                 self.active_searcher.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to close searcher: {e}")
         
         # 설정 저장
         try:
             if hasattr(self, 'search_panel'):
                 self.search_panel.save_settings()
             self.prefs.save()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to save settings on exit: {e}")
         
         event.accept()
 

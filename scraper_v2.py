@@ -85,10 +85,14 @@ class PlaywrightScraper:
     
     def search(self, origin: str, destination: str, 
                departure_date: str, return_date: Optional[str] = None,
-               adults: int = 1, emit: Callable[[str], None] = None) -> List[FlightResult]:
+               adults: int = 1, cabin_class: str = "ECONOMY",
+               emit: Callable[[str], None] = None) -> List[FlightResult]:
         """
         항공권 검색 (Playwright 사용, 실패시 수동 모드)
         국내선의 경우 가는편 선택 후 오는편 데이터 추출
+        
+        Args:
+            cabin_class: "ECONOMY" | "BUSINESS" | "FIRST"
         """
         def log(msg):
             if emit:
@@ -102,6 +106,11 @@ class PlaywrightScraper:
         origin_domestic = origin.upper() in domestic_airports or config.CITY_CODES_MAP.get(origin.upper(), origin.upper()) in domestic_airports
         dest_domestic = destination.upper() in domestic_airports or config.CITY_CODES_MAP.get(destination.upper(), destination.upper()) in domestic_airports
         is_domestic = origin_domestic and dest_domestic
+        
+        # 좌석등급 선택 (기본: ECONOMY)
+        cabin = cabin_class.upper() if cabin_class else "ECONOMY"
+        if cabin not in ["ECONOMY", "BUSINESS", "FIRST"]:
+            cabin = "ECONOMY"
         
         try:
             log("Playwright 브라우저 시작 중...")
@@ -145,14 +154,14 @@ class PlaywrightScraper:
             
             self.page = context.new_page()
             
-            # URL 구성
+            # URL 구성 (좌석등급 반영)
             origin_city = config.CITY_CODES_MAP.get(origin.upper(), origin.upper())
             dest_city = config.CITY_CODES_MAP.get(destination.upper(), destination.upper())
             
             if return_date:
-                url = f"https://travel.interpark.com/air/search/c:{origin_city}-c:{dest_city}-{departure_date}/c:{dest_city}-c:{origin_city}-{return_date}?cabin=ECONOMY&infant=0&child=0&adult={adults}"
+                url = f"https://travel.interpark.com/air/search/c:{origin_city}-c:{dest_city}-{departure_date}/c:{dest_city}-c:{origin_city}-{return_date}?cabin={cabin}&infant=0&child=0&adult={adults}"
             else:
-                url = f"https://travel.interpark.com/air/search/c:{origin_city}-c:{dest_city}-{departure_date}?cabin=ECONOMY&infant=0&child=0&adult={adults}"
+                url = f"https://travel.interpark.com/air/search/c:{origin_city}-c:{dest_city}-{departure_date}?cabin={cabin}&infant=0&child=0&adult={adults}"
             
             if is_domestic:
                 log(f"🇰🇷 국내선 검색 모드 ({origin_city} → {dest_city})")
@@ -770,19 +779,25 @@ class FlightSearcher:
     
     def search(self, origin: str, destination: str, 
                departure_date: str, return_date: Optional[str] = None,
-               adults: int = 1, progress_callback: Callable = None) -> List[FlightResult]:
-        """항공권 검색 진입점"""
+               adults: int = 1, cabin_class: str = "ECONOMY",
+               progress_callback: Callable = None) -> List[FlightResult]:
+        """항공권 검색 진입점
+        
+        Args:
+            cabin_class: "ECONOMY" | "BUSINESS" | "FIRST"
+        """
         def emit(msg):
             if progress_callback:
                 progress_callback(msg)
             logger.info(msg)
         
-        emit(f"🔍 {origin} → {destination} 항공권 검색 시작")
+        cabin_label = {"ECONOMY": "이코노미", "BUSINESS": "비즈니스", "FIRST": "일등석"}.get(cabin_class.upper(), "이코노미")
+        emit(f"🔍 {origin} → {destination} 항공권 검색 시작 ({cabin_label})")
         
         results = self.scraper.search(
             origin, destination, 
             departure_date, return_date, 
-            adults, emit
+            adults, cabin_class, emit
         )
         
         # 가격순 정렬
@@ -816,6 +831,151 @@ class FlightSearcher:
         if self.last_results:
             return self.last_results[0]
         return None
+
+
+class ParallelSearcher:
+    """다중 검색을 병렬로 실행하는 검색 엔진"""
+    
+    def __init__(self, max_concurrent: int = 2):
+        """
+        Args:
+            max_concurrent: 동시 실행 최대 수 (권장: 2-3, 너무 높으면 차단 위험)
+        """
+        self.max_concurrent = min(max_concurrent, 4)  # 최대 4개로 제한
+        self.results = {}
+        self._lock = None
+    
+    def search_multiple_destinations(self, origin: str, destinations: List[str],
+                                     departure_date: str, return_date: Optional[str] = None,
+                                     adults: int = 1, cabin_class: str = "ECONOMY",
+                                     progress_callback: Callable = None) -> Dict[str, List[FlightResult]]:
+        """
+        여러 목적지를 병렬로 검색
+        
+        Returns:
+            {destination: [FlightResult, ...], ...}
+        """
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        self._lock = threading.Lock()
+        self.results = {}
+        
+        def search_single(dest: str) -> tuple:
+            """단일 목적지 검색"""
+            searcher = FlightSearcher()
+            try:
+                def emit(msg):
+                    if progress_callback:
+                        progress_callback(f"[{dest}] {msg}")
+                    logger.info(f"[{dest}] {msg}")
+                
+                results = searcher.scraper.search(
+                    origin, dest, departure_date, return_date, 
+                    adults, cabin_class, emit
+                )
+                return dest, results
+            except Exception as e:
+                logger.error(f"Parallel search error for {dest}: {e}")
+                return dest, []
+            finally:
+                searcher.close()
+        
+        if progress_callback:
+            progress_callback(f"🚀 병렬 검색 시작: {len(destinations)}개 목적지 (동시 {self.max_concurrent}개)")
+        
+        with ThreadPoolExecutor(max_workers=self.max_concurrent) as executor:
+            futures = {executor.submit(search_single, dest): dest for dest in destinations}
+            
+            for future in as_completed(futures):
+                try:
+                    dest, results = future.result()
+                    with self._lock:
+                        self.results[dest] = results
+                        
+                    if progress_callback:
+                        count = len(results)
+                        cheapest = min((r.price for r in results), default=0) if results else 0
+                        progress_callback(f"✅ {dest} 완료: {count}개 결과, 최저가 {cheapest:,}원")
+                except Exception as e:
+                    logger.error(f"Future error: {e}")
+        
+        if progress_callback:
+            progress_callback(f"🏁 병렬 검색 완료: {len(self.results)}개 목적지")
+        
+        return self.results
+    
+    def search_date_range(self, origin: str, destination: str,
+                          dates: List[str], return_offset: int = 0,
+                          adults: int = 1, cabin_class: str = "ECONOMY",
+                          progress_callback: Callable = None) -> Dict[str, tuple]:
+        """
+        여러 날짜를 병렬로 검색
+        
+        Returns:
+            {date: (min_price, airline), ...}
+        """
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from datetime import datetime, timedelta
+        
+        self._lock = threading.Lock()
+        date_results = {}
+        
+        def search_single_date(dep_date: str) -> tuple:
+            """단일 날짜 검색"""
+            ret_date = None
+            if return_offset > 0:
+                try:
+                    dt = datetime.strptime(dep_date, "%Y%m%d")
+                    ret_date = (dt + timedelta(days=return_offset)).strftime("%Y%m%d")
+                except Exception:
+                    pass
+            
+            searcher = FlightSearcher()
+            try:
+                results = searcher.scraper.search(
+                    origin, destination, dep_date, ret_date,
+                    adults, cabin_class, lambda msg: None  # 조용히 실행
+                )
+                
+                if results:
+                    cheapest = min(results, key=lambda x: x.price)
+                    return dep_date, (cheapest.price, cheapest.airline)
+                return dep_date, (0, "N/A")
+            except Exception as e:
+                logger.error(f"Date search error for {dep_date}: {e}")
+                return dep_date, (0, "Error")
+            finally:
+                searcher.close()
+        
+        if progress_callback:
+            progress_callback(f"🚀 날짜 병렬 검색: {len(dates)}일 (동시 {self.max_concurrent}개)")
+        
+        with ThreadPoolExecutor(max_workers=self.max_concurrent) as executor:
+            futures = {executor.submit(search_single_date, d): d for d in dates}
+            completed = 0
+            
+            for future in as_completed(futures):
+                try:
+                    dep_date, price_info = future.result()
+                    with self._lock:
+                        date_results[dep_date] = price_info
+                        completed += 1
+                    
+                    if progress_callback:
+                        price, airline = price_info
+                        if price > 0:
+                            progress_callback(f"📅 {dep_date}: {price:,}원 ({airline}) [{completed}/{len(dates)}]")
+                        else:
+                            progress_callback(f"📅 {dep_date}: 결과 없음 [{completed}/{len(dates)}]")
+                except Exception as e:
+                    logger.error(f"Future error: {e}")
+        
+        if progress_callback:
+            progress_callback(f"🏁 날짜 검색 완료: {len(date_results)}일")
+        
+        return date_results
 
 
 if __name__ == "__main__":
