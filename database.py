@@ -50,6 +50,22 @@ class PriceHistoryItem:
     recorded_at: str
 
 
+@dataclass
+class PriceAlert:
+    """가격 알림 항목"""
+    id: int
+    origin: str
+    destination: str
+    departure_date: str
+    return_date: Optional[str]
+    target_price: int
+    is_active: int
+    last_checked: Optional[str]
+    last_price: Optional[int]
+    triggered: int
+    created_at: str
+
+
 class FlightDatabase:
     """항공권 데이터베이스 관리자"""
     
@@ -113,6 +129,24 @@ class FlightDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ph_route ON price_history(origin, destination)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ph_date ON price_history(departure_date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fav_route ON favorites(origin, destination)")
+            
+            # 가격 알림 테이블
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS price_alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    origin TEXT NOT NULL,
+                    destination TEXT NOT NULL,
+                    departure_date TEXT NOT NULL,
+                    return_date TEXT,
+                    target_price INTEGER NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    last_checked TEXT,
+                    last_price INTEGER,
+                    triggered INTEGER DEFAULT 0,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_active ON price_alerts(is_active)")
             
             conn.commit()
     
@@ -336,6 +370,92 @@ class FlightDatabase:
             cursor.execute("DELETE FROM price_history WHERE recorded_at < ?", (cutoff,))
             cursor.execute("DELETE FROM search_logs WHERE searched_at < ?", (cutoff,))
             conn.commit()
+
+    # ===== 가격 알림 =====
+    
+    def add_price_alert(self, origin: str, dest: str, dep_date: str, 
+                        return_date: str, target_price: int) -> int:
+        """가격 알림 추가"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO price_alerts 
+                (origin, destination, departure_date, return_date, target_price, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                origin, dest, dep_date, return_date, target_price,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ))
+            conn.commit()
+            return cursor.lastrowid
+    
+    def get_active_alerts(self) -> List[PriceAlert]:
+        """활성화된 가격 알림 조회"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM price_alerts 
+                WHERE is_active = 1 AND triggered = 0
+                ORDER BY created_at DESC
+            """)
+            rows = cursor.fetchall()
+            return [PriceAlert(**dict(row)) for row in rows]
+    
+    def get_all_alerts(self) -> List[PriceAlert]:
+        """모든 가격 알림 조회"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM price_alerts ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            return [PriceAlert(**dict(row)) for row in rows]
+    
+    def update_alert_check(self, alert_id: int, current_price: int) -> bool:
+        """알림 마지막 체크 시간 및 가격 업데이트"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE price_alerts 
+                SET last_checked = ?, last_price = ?
+                WHERE id = ?
+            """, (
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                current_price,
+                alert_id
+            ))
+            conn.commit()
+            return cursor.rowcount > 0
+    
+    def mark_alert_triggered(self, alert_id: int) -> bool:
+        """알림 발동 상태로 표시"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE price_alerts 
+                SET triggered = 1, is_active = 0
+                WHERE id = ?
+            """, (alert_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+    
+    def delete_alert(self, alert_id: int) -> bool:
+        """가격 알림 삭제"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM price_alerts WHERE id = ?", (alert_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+    
+    def toggle_alert_active(self, alert_id: int, is_active: bool) -> bool:
+        """가격 알림 활성화/비활성화"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE price_alerts SET is_active = ? WHERE id = ?
+            """, (1 if is_active else 0, alert_id))
+            conn.commit()
+            return cursor.rowcount > 0
 
 
 # 테스트

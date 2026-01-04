@@ -1,35 +1,36 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-Flight Bot v2.6 - PyInstaller Build Spec (Optimized for Lightweight Build)
-빌드: pyinstaller flight_bot.spec
+Flight Bot v2.7 - PyInstaller Build Spec (Optimized for Lightweight Build)
+빌드: pyinstaller --clean flight_bot.spec
 """
 
 block_cipher = None
 
 # ===== 경량화를 위한 제외 목록 =====
-# 미사용 대형 라이브러리 제외
 excludes = [
     # 데이터 과학/시각화 (미사용)
     'matplotlib', 'numpy', 'pandas', 'scipy', 'PIL', 'cv2',
-    'seaborn', 'plotly', 'bokeh', 'altair',
+    'seaborn', 'plotly', 'bokeh', 'altair', 'sympy',
     
     # 테스트/개발 도구
-    'unittest', 'pytest', 'nose', 'pdb', 'pydoc',
+    'unittest', 'pytest', 'nose', 'pdb', 'pydoc', 'doctest',
     'IPython', 'jupyter', 'notebook', 'ipykernel',
     
     # 불필요한 표준 라이브러리
-    'tkinter', 'turtle', 'idlelib',
+    'tkinter', 'turtle', 'idlelib', 'turtledemo',
     'email', 'xml.dom', 'xml.sax', 'xmlrpc',
-    'distutils', 'setuptools', 'pkg_resources', 'pip',
+    'distutils', 'setuptools', 'pkg_resources', 'pip', 'ensurepip',
+    'lib2to3', 'test', 'tests',
     
     # 네트워크/서버 (미사용)
     'flask', 'django', 'tornado', 'aiohttp', 'fastapi',
-    'http.server', 'ftplib', 'telnetlib',
+    'http.server', 'ftplib', 'telnetlib', 'socketserver',
     
+    # 기타 미사용
+    'curses', 'multiprocessing.popen_spawn_posix',
 ]
 
 # ===== Hidden Imports =====
-# 자동 감지되지 않는 필수 모듈
 hiddenimports = [
     # PyQt6 필수 모듈
     'PyQt6.QtCore',
@@ -53,13 +54,13 @@ hiddenimports = [
     'sqlite3',
     'threading',
     'concurrent.futures',
+    'shutil',
+    'tempfile',
 ]
 
 # ===== 데이터 파일 =====
 datas = [
-    # 아이콘 파일이 있는 경우:
     # ('icon.ico', '.'),
-    # ('assets/*', 'assets'),
 ]
 
 a = Analysis(
@@ -79,14 +80,24 @@ a = Analysis(
 )
 
 # ===== 바이너리 필터링 (추가 경량화) =====
-# 불필요한 DLL/SO 파일 제외
 a.binaries = [b for b in a.binaries if not any(
     exclude in b[0].lower() for exclude in [
+        # 미사용 Qt 모듈
         'qt6quick', 'qt6qml', 'qt6network', 'qt63d',
         'qt6multimedia', 'qt6pdf', 'qt6webengine',
         'qt6bluetooth', 'qt6nfc', 'qt6sensors',
-        'qt6positioning', 'qt6serialport',
-        'libcrypto', 'libssl',  # OpenSSL (Playwright가 자체 포함)
+        'qt6positioning', 'qt6serialport', 'qt6charts',
+        'qt6designer', 'qt6help', 'qt6test',
+        'qt6webenginequick', 'qt6webview',
+        # OpenSSL (Playwright 자체 포함)
+        'libcrypto', 'libssl',
+    ]
+)]
+
+# ===== 추가 경량화: 불필요한 pure python 모듈 제거 =====
+a.pure = [p for p in a.pure if not any(
+    p[0].startswith(exclude) for exclude in [
+        'test.', 'tests.', 'unittest.', '_pytest',
     ]
 )]
 
@@ -99,27 +110,28 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='FlightBot_v2.6',
+    name='FlightBot_v2.7',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,  # 심볼 제거 (경량화)
-    upx=True,    # UPX 압축 활성화
+    strip=True,      # 심볼 제거 (경량화)
+    upx=True,        # UPX 압축 활성화
     upx_exclude=[
-        'vcruntime140.dll',  # UPX 호환성 문제 방지
+        'vcruntime140.dll',
         'python*.dll',
+        'Qt6Core.dll',  # UPX 호환성 문제 방지
     ],
     runtime_tmpdir=None,
-    console=False,  # GUI 앱 - 콘솔 숨김
+    console=False,   # GUI 앱 - 콘솔 숨김
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # icon='icon.ico',  # 아이콘 파일이 있는 경우 주석 해제
+    # icon='icon.ico',
 )
 
-# ===== 빌드 팁 =====
-# 1. UPX 설치 권장: https://github.com/upx/upx/releases
-#    - PATH에 추가하면 자동으로 압축 적용
+# ===== 빌드 가이드 =====
+# 1. UPX 설치 (선택): https://github.com/upx/upx/releases
 # 2. 빌드 명령: pyinstaller --clean flight_bot.spec
-# 3. 예상 크기: ~80-120MB (Playwright 제외 시 ~30MB)
+# 3. 예상 크기: ~80-120MB (Playwright 포함)
+# 4. 실행 전 Playwright 브라우저 설치 필요: playwright install chromium

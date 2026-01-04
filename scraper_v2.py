@@ -269,7 +269,7 @@ class PlaywrightScraper:
                     
                     # Step 4: 오는편 데이터 추출
                     log("📋 4단계: 오는편 목록 추출 중...")
-                    time.sleep(1)  # 데이터 안정화
+                    time.sleep(0.5)  # 데이터 안정화 (최적화: 1초 → 0.5초)
                     return_flights = self._extract_domestic_flights_data()
                     log(f"✅ 오는편 {len(return_flights)}개 발견")
                     
@@ -278,18 +278,18 @@ class PlaywrightScraper:
                     
                     # 다양한 오는편 옵션 제공 (전체 조합 후 최저가 필터링)
                     if outbound_flights and return_flights:
-                        # 1. 모든 가능한 조합 생성 (가는편 x 오는편)
-                        # 주의: 조합 수가 많아질 수 있으므로 내부 연산 후 상위 결과만 남김
+                        # 성능 최적화: 가격순 정렬 후 상위 50개만 조합
+                        outbound_flights.sort(key=lambda x: x['price'])
+                        return_flights.sort(key=lambda x: x['price'])
+                        top_outbound = outbound_flights[:50]
+                        top_return = return_flights[:50]
+                        
                         temp_results = []
-                        
-                        # 오는편 시간순 정렬 (데이터 일관성용)
-                        return_flights.sort(key=lambda x: x['depTime'])
-                        
-                        for ob in outbound_flights:
-                            for ret in return_flights:
+                        for ob in top_outbound:
+                            for ret in top_return:
                                 flight = FlightResult(
                                     airline=ob['airline'],
-                                    price=ob['price'] + ret['price'],  # 왕복 합산
+                                    price=ob['price'] + ret['price'],
                                     departure_time=ob['depTime'],
                                     arrival_time=ob['arrTime'],
                                     stops=ob['stops'],
@@ -298,15 +298,15 @@ class PlaywrightScraper:
                                     return_arrival_time=ret['arrTime'],
                                     return_stops=ret['stops'],
                                     is_round_trip=True,
-                                    outbound_price=ob['price'],  # 가는편 가격
-                                    return_price=ret['price'],   # 오는편 가격
-                                    return_airline=ret['airline'] # 오는편 항공사
+                                    outbound_price=ob['price'],
+                                    return_price=ret['price'],
+                                    return_airline=ret['airline']
                                 )
                                 temp_results.append(flight)
                         
                         log(f"⚡ 전체 {len(temp_results)}개 조합 계산 완료")
                         
-                        # 2. 중복 제거
+                        # 중복 제거
                         seen = set()
                         unique_results = []
                         for r in temp_results:
@@ -315,11 +315,11 @@ class PlaywrightScraper:
                                 seen.add(key)
                                 unique_results.append(r)
                                 
-                        # 3. 가격순 정렬 후 상위 300개만 유지 (GUI 성능 보호)
+                        # 가격순 정렬 후 상위 300개만 유지 (GUI 성능 보호)
                         unique_results.sort(key=lambda x: x.price)
                         results = unique_results[:300]
                         
-                        log(f"✅ 최저가 기준 상위 {len(results)}개 조합 반환 (전체 조합 중)")
+                        log(f"✅ 최저가 기준 상위 {len(results)}개 조합 반환")
                     else:
                         # 가는편만/오는편만 있는 경우
                         for ob in outbound_flights:
@@ -342,8 +342,8 @@ class PlaywrightScraper:
             if found_data:
                 log("데이터 준비 완료! 추출 시작")
                 
-                # 페이지 안정화 대기 (스레드 오류 방지)
-                time.sleep(2)
+                # 페이지 안정화 대기 (최적화: 2초 → 1.5초)
+                time.sleep(1.5)
                 
                 if is_domestic:
                     # 국내선 편도: 버튼 기반 추출
@@ -368,6 +368,11 @@ class PlaywrightScraper:
             if emit:
                 emit(f"오류 발생: {e}")
             self.manual_mode = True
+        
+        finally:
+            # 수동 모드가 아니면 브라우저 정리 (리소스 누수 방지)
+            if not self.manual_mode:
+                self.close()
         
         return results
 
@@ -500,13 +505,13 @@ class PlaywrightScraper:
                         return (afterScroll !== beforeScroll) || (afterHeight !== beforeHeight);
                     }
                 """)
-                time.sleep(1.0)  # 데이터 로딩 시간
+                time.sleep(0.5)  # 데이터 로딩 시간 (최적화: 1.0초 → 0.5초)
                 
                 # 스크롤이 더 이상 불가능하면 종료
                 if not can_scroll:
                     no_scroll_count = getattr(self, '_no_scroll_count', 0) + 1
                     self._no_scroll_count = no_scroll_count
-                    if no_scroll_count >= 3:  # 3회 연속 스크롤 불가 시 종료
+                    if no_scroll_count >= 2:  # 2회 연속 스크롤 불가 시 종료 (최적화: 3회 → 2회)
                         logger.info(f"스크롤 끝 도달: 더 이상 스크롤할 수 없음")
                         break
                 else:
@@ -516,7 +521,7 @@ class PlaywrightScraper:
                 if new_count == 0:
                     no_new_count = getattr(self, '_no_new_count', 0) + 1
                     self._no_new_count = no_new_count
-                    if no_new_count >= 10:  # 10회 연속 새 항목 없으면 종료
+                    if no_new_count >= 5:  # 5회 연속 새 항목 없으면 종료 (최적화: 10회 → 5회)
                         logger.info(f"스크롤 조기 종료: {no_new_count}회 연속 새 항목 없음")
                         break
                 else:

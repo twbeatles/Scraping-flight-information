@@ -7,6 +7,15 @@
             "dep": "20260109",
             "ret": "20260112",
             "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-03 23:42"
+        },
+        {
+            "origin": "GMP",
+            "dest": "PUS",
+            "dep": "20260109",
+            "ret": "20260112",
+            "adults": 1,
             "timestamp": "2026-01-02 21:15"
         },
         {
@@ -152,14 +161,6 @@
             "ret": "20260112",
             "adults": 1,
             "timestamp": "2026-01-02 17:04"
-        },
-        {
-            "origin": "ICN",
-            "dest": "NRT",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 17:02"
         }
     ],
     "last_search": {
@@ -168,7 +169,8 @@
         "dep": "20260109",
         "ret": "20260112",
         "adults": 1,
-        "timestamp": "2026-01-02 21:15"
+        "cabin_class": "ECONOMY",
+        "timestamp": "2026-01-03 23:42"
     },
     "preferred_times": {
         "departure_start": 12,

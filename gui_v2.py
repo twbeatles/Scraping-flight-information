@@ -414,6 +414,115 @@ QStatusBar {
     border-top: 1px solid #30475e;
     padding: 5px;
 }
+
+/* ===== GroupBox (Enhanced Sections) ===== */
+QGroupBox {
+    background-color: rgba(22, 33, 62, 0.7);
+    border: 1px solid rgba(6, 182, 212, 0.2);
+    border-radius: 12px;
+    margin-top: 16px;
+    padding: 20px 15px 15px 15px;
+    font-weight: bold;
+    color: #e2e8f0;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 15px;
+    top: 3px;
+    padding: 0 8px;
+    background-color: rgba(22, 33, 62, 0.95);
+    color: #06b6d4;
+    border-radius: 4px;
+}
+
+/* ===== Secondary Button (Less Emphasis) ===== */
+QPushButton#secondary_btn {
+    background-color: rgba(30, 58, 95, 0.6);
+    color: #94a3b8;
+    border: 1px solid #30475e;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-weight: 500;
+}
+QPushButton#secondary_btn:hover {
+    background-color: rgba(6, 182, 212, 0.15);
+    color: #06b6d4;
+    border: 1px solid #06b6d4;
+}
+
+/* ===== Icon Button (Small Square) ===== */
+QPushButton#icon_btn {
+    background-color: transparent;
+    border: 1px solid #30475e;
+    border-radius: 8px;
+    padding: 8px;
+    min-width: 36px;
+    max-width: 36px;
+    min-height: 36px;
+    max-height: 36px;
+}
+QPushButton#icon_btn:hover {
+    background-color: rgba(6, 182, 212, 0.2);
+    border: 1px solid #06b6d4;
+}
+
+/* ===== Slider (Price Filter) ===== */
+QSlider::groove:horizontal {
+    background: rgba(15, 52, 96, 0.8);
+    height: 8px;
+    border-radius: 4px;
+}
+QSlider::handle:horizontal {
+    background: #06b6d4;
+    width: 20px;
+    height: 20px;
+    margin: -6px 0;
+    border-radius: 10px;
+    border: 2px solid #0f0f1a;
+}
+QSlider::handle:horizontal:hover {
+    background: #22d3ee;
+    border: 2px solid #06b6d4;
+}
+QSlider::sub-page:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #06b6d4, stop:1 #8b5cf6);
+    border-radius: 4px;
+}
+
+/* ===== Separator Line ===== */
+QFrame#separator {
+    background-color: #30475e;
+    max-height: 1px;
+    margin: 10px 0;
+}
+QFrame#v_separator {
+    background-color: #30475e;
+    max-width: 1px;
+    margin: 0 10px;
+}
+
+/* ===== Success/Warning/Error Labels ===== */
+QLabel#success_label {
+    color: #22c55e;
+    font-weight: bold;
+}
+QLabel#warning_label {
+    color: #f59e0b;
+    font-weight: bold;
+}
+QLabel#error_label {
+    color: #ef4444;
+    font-weight: bold;
+}
+
+/* ===== Price Highlight ===== */
+QLabel#price_highlight {
+    font-size: 24px;
+    font-weight: bold;
+    color: #22c55e;
+}
 """
 
 # 라이트 테마
@@ -737,6 +846,114 @@ QStatusBar {
     color: #64748b;
     border-top: 1px solid #e2e8f0;
     padding: 5px;
+}
+
+/* ===== GroupBox (Enhanced Sections) ===== */
+QGroupBox {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    margin-top: 16px;
+    padding: 20px 15px 15px 15px;
+    font-weight: bold;
+    color: #1e293b;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 15px;
+    top: 3px;
+    padding: 0 8px;
+    background-color: #ffffff;
+    color: #3b82f6;
+    border-radius: 4px;
+}
+
+/* ===== Secondary Button (Less Emphasis) ===== */
+QPushButton#secondary_btn {
+    background-color: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-weight: 500;
+}
+QPushButton#secondary_btn:hover {
+    background-color: #e0f2fe;
+    color: #3b82f6;
+    border: 1px solid #3b82f6;
+}
+
+/* ===== Icon Button (Small Square) ===== */
+QPushButton#icon_btn {
+    background-color: transparent;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px;
+    min-width: 36px;
+    max-width: 36px;
+    min-height: 36px;
+    max-height: 36px;
+}
+QPushButton#icon_btn:hover {
+    background-color: #e0f2fe;
+    border: 1px solid #3b82f6;
+}
+
+/* ===== Slider (Price Filter) ===== */
+QSlider::groove:horizontal {
+    background: #e2e8f0;
+    height: 8px;
+    border-radius: 4px;
+}
+QSlider::handle:horizontal {
+    background: #3b82f6;
+    width: 20px;
+    height: 20px;
+    margin: -6px 0;
+    border-radius: 10px;
+    border: 2px solid #ffffff;
+}
+QSlider::handle:horizontal:hover {
+    background: #2563eb;
+}
+QSlider::sub-page:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+        stop:0 #3b82f6, stop:1 #8b5cf6);
+    border-radius: 4px;
+}
+
+/* ===== Separator Line ===== */
+QFrame#separator {
+    background-color: #e2e8f0;
+    max-height: 1px;
+    margin: 10px 0;
+}
+QFrame#v_separator {
+    background-color: #e2e8f0;
+    max-width: 1px;
+    margin: 0 10px;
+}
+
+/* ===== Success/Warning/Error Labels ===== */
+QLabel#success_label {
+    color: #16a34a;
+    font-weight: bold;
+}
+QLabel#warning_label {
+    color: #d97706;
+    font-weight: bold;
+}
+QLabel#error_label {
+    color: #dc2626;
+    font-weight: bold;
+}
+
+/* ===== Price Highlight ===== */
+QLabel#price_highlight {
+    font-size: 24px;
+    font-weight: bold;
+    color: #16a34a;
 }
 """
 
@@ -1654,6 +1871,214 @@ class ShortcutsDialog(QDialog):
         layout.addWidget(btn_close)
 
 
+class PriceAlertDialog(QDialog):
+    """가격 알림 설정 다이얼로그"""
+    
+    def __init__(self, parent=None, db=None, prefs=None):
+        super().__init__(parent)
+        self.db = db
+        self.prefs = prefs
+        self.setWindowTitle("🔔 가격 알림 관리")
+        self.setMinimumSize(700, 550)
+        self.setStyleSheet(MODERN_THEME)
+        self._init_ui()
+        self._refresh_alerts()
+    
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        
+        # 설명
+        info = QLabel("목표 가격을 설정하면 가격이 그 이하로 떨어질 때 알림을 받을 수 있습니다.")
+        info.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        layout.addWidget(info)
+        
+        # 새 알림 추가 그룹
+        grp_new = QGroupBox("➕ 새 알림 추가")
+        new_layout = QGridLayout(grp_new)
+        
+        # 출발지
+        new_layout.addWidget(QLabel("출발지:"), 0, 0)
+        self.cb_origin = QComboBox()
+        for code, name in config.AIRPORTS.items():
+            self.cb_origin.addItem(f"{code} ({name})", code)
+        new_layout.addWidget(self.cb_origin, 0, 1)
+        
+        # 도착지
+        new_layout.addWidget(QLabel("도착지:"), 0, 2)
+        self.cb_dest = QComboBox()
+        all_presets = self.prefs.get_all_presets() if self.prefs else config.AIRPORTS
+        for code, name in all_presets.items():
+            self.cb_dest.addItem(f"{code} ({name})", code)
+        self.cb_dest.setCurrentIndex(1)
+        new_layout.addWidget(self.cb_dest, 0, 3)
+        
+        # 가는 날
+        new_layout.addWidget(QLabel("가는 날:"), 1, 0)
+        self.date_dep = QDateEdit()
+        self.date_dep.setCalendarPopup(True)
+        self.date_dep.setDate(QDate.currentDate().addDays(7))
+        new_layout.addWidget(self.date_dep, 1, 1)
+        
+        # 오는 날
+        new_layout.addWidget(QLabel("오는 날:"), 1, 2)
+        self.date_ret = QDateEdit()
+        self.date_ret.setCalendarPopup(True)
+        self.date_ret.setDate(QDate.currentDate().addDays(10))
+        new_layout.addWidget(self.date_ret, 1, 3)
+        
+        # 목표 가격
+        new_layout.addWidget(QLabel("목표 가격:"), 2, 0)
+        self.spin_target = QSpinBox()
+        self.spin_target.setRange(10000, 10000000)
+        self.spin_target.setSingleStep(10000)
+        self.spin_target.setValue(300000)
+        self.spin_target.setSuffix(" 원")
+        new_layout.addWidget(self.spin_target, 2, 1)
+        
+        # 추가 버튼
+        btn_add = QPushButton("🔔 알림 추가")
+        btn_add.clicked.connect(self._add_alert)
+        new_layout.addWidget(btn_add, 2, 2, 1, 2)
+        
+        layout.addWidget(grp_new)
+        
+        # 현재 알림 목록
+        layout.addWidget(QLabel("📋 설정된 알림 목록:", objectName="section_title"))
+        
+        self.table = QTableWidget()
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels([
+            "ID", "노선", "출발일", "귀국일", "목표가", "현재가", "상태"
+        ])
+        self.table.setColumnHidden(0, True)  # ID 숨김
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        layout.addWidget(self.table)
+        
+        # 버튼 영역
+        btn_layout = QHBoxLayout()
+        
+        btn_refresh = QPushButton("🔄 새로고침")
+        btn_refresh.clicked.connect(self._refresh_alerts)
+        btn_layout.addWidget(btn_refresh)
+        
+        btn_delete = QPushButton("🗑️ 선택 삭제")
+        btn_delete.clicked.connect(self._delete_selected)
+        btn_layout.addWidget(btn_delete)
+        
+        btn_layout.addStretch()
+        
+        btn_close = QPushButton("닫기")
+        btn_close.clicked.connect(self.accept)
+        btn_layout.addWidget(btn_close)
+        
+        layout.addLayout(btn_layout)
+    
+    def _add_alert(self):
+        """새 알림 추가"""
+        origin = self.cb_origin.currentData()
+        dest = self.cb_dest.currentData()
+        dep = self.date_dep.date().toString("yyyyMMdd")
+        ret = self.date_ret.date().toString("yyyyMMdd")
+        target = self.spin_target.value()
+        
+        if origin == dest:
+            QMessageBox.warning(self, "오류", "출발지와 도착지가 같습니다.")
+            return
+        
+        try:
+            alert_id = self.db.add_price_alert(origin, dest, dep, ret, target)
+            QMessageBox.information(self, "완료", f"가격 알림이 추가되었습니다. (ID: {alert_id})")
+            self._refresh_alerts()
+        except Exception as e:
+            QMessageBox.critical(self, "오류", f"알림 추가 실패: {e}")
+    
+    def _refresh_alerts(self):
+        """알림 목록 새로고침"""
+        if not self.db:
+            return
+        
+        alerts = self.db.get_all_alerts()
+        self.table.setRowCount(len(alerts))
+        
+        for i, alert in enumerate(alerts):
+            self.table.setItem(i, 0, QTableWidgetItem(str(alert.id)))
+            
+            route = f"{alert.origin} → {alert.destination}"
+            self.table.setItem(i, 1, QTableWidgetItem(route))
+            
+            # 날짜 포맷
+            try:
+                dep_dt = datetime.strptime(alert.departure_date, "%Y%m%d")
+                dep_str = dep_dt.strftime("%Y-%m-%d")
+            except:
+                dep_str = alert.departure_date
+            self.table.setItem(i, 2, QTableWidgetItem(dep_str))
+            
+            if alert.return_date:
+                try:
+                    ret_dt = datetime.strptime(alert.return_date, "%Y%m%d")
+                    ret_str = ret_dt.strftime("%Y-%m-%d")
+                except:
+                    ret_str = alert.return_date
+            else:
+                ret_str = "-"
+            self.table.setItem(i, 3, QTableWidgetItem(ret_str))
+            
+            # 목표 가격
+            target_item = QTableWidgetItem(f"{alert.target_price:,}원")
+            target_item.setForeground(QColor("#4cc9f0"))
+            self.table.setItem(i, 4, target_item)
+            
+            # 현재 가격
+            if alert.last_price:
+                current_item = QTableWidgetItem(f"{alert.last_price:,}원")
+                if alert.last_price <= alert.target_price:
+                    current_item.setForeground(QColor("#22c55e"))
+                else:
+                    current_item.setForeground(QColor("#f59e0b"))
+            else:
+                current_item = QTableWidgetItem("미확인")
+            self.table.setItem(i, 5, current_item)
+            
+            # 상태
+            if alert.triggered:
+                status = "✅ 발동됨"
+                color = "#22c55e"
+            elif alert.is_active:
+                status = "🔔 활성"
+                color = "#4cc9f0"
+            else:
+                status = "⏸️ 비활성"
+                color = "#94a3b8"
+            
+            status_item = QTableWidgetItem(status)
+            status_item.setForeground(QColor(color))
+            self.table.setItem(i, 6, status_item)
+    
+    def _delete_selected(self):
+        """선택된 알림 삭제"""
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "선택 오류", "삭제할 알림을 선택하세요.")
+            return
+        
+        alert_id = int(self.table.item(row, 0).text())
+        reply = QMessageBox.question(
+            self, "삭제 확인",
+            "선택한 알림을 삭제하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            if self.db.delete_alert(alert_id):
+                self._refresh_alerts()
+            else:
+                QMessageBox.critical(self, "오류", "알림 삭제에 실패했습니다.")
+
+
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, prefs=None):
         super().__init__(parent)
@@ -1746,7 +2171,24 @@ class SettingsDialog(QDialog):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        grp_excel = QGroupBox("엑셀 (Excel)")
+        # 프로필 가져오기/내보내기 그룹
+        grp_profile = QGroupBox("📦 설정 백업/복원")
+        gp_layout = QVBoxLayout(grp_profile)
+        
+        btn_export_settings = QPushButton("💾 모든 설정 내보내기")
+        btn_export_settings.setToolTip("프리셋, 프로필, 선호 시간대, 테마 등 모든 설정을 JSON 파일로 저장")
+        btn_export_settings.clicked.connect(self._export_all_settings)
+        
+        btn_import_settings = QPushButton("📂 설정 가져오기")
+        btn_import_settings.setToolTip("JSON 파일에서 설정을 불러와 현재 설정에 병합")
+        btn_import_settings.clicked.connect(self._import_all_settings)
+        
+        gp_layout.addWidget(btn_export_settings)
+        gp_layout.addWidget(btn_import_settings)
+        layout.addWidget(grp_profile)
+        
+        # 엑셀 그룹
+        grp_excel = QGroupBox("📊 엑셀 (Excel)")
         gl = QVBoxLayout(grp_excel)
         
         btn_import = QPushButton("📂 검색 조건 가져오기 (Import)")
@@ -1765,6 +2207,46 @@ class SettingsDialog(QDialog):
         layout.addWidget(grp_excel)
         layout.addStretch()
         return widget
+
+    def _export_all_settings(self):
+        """모든 설정을 JSON 파일로 내보내기"""
+        from datetime import datetime
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "설정 내보내기",
+            f"flight_bot_settings_{datetime.now().strftime('%Y%m%d')}.json",
+            "JSON Files (*.json)"
+        )
+        if not filename:
+            return
+        
+        if self.prefs.export_all_settings(filename):
+            QMessageBox.information(self, "완료", f"설정이 저장되었습니다:\n{filename}")
+        else:
+            QMessageBox.critical(self, "오류", "설정 내보내기에 실패했습니다.")
+
+    def _import_all_settings(self):
+        """JSON 파일에서 설정 가져오기"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "설정 가져오기",
+            "",
+            "JSON Files (*.json)"
+        )
+        if not filename:
+            return
+        
+        reply = QMessageBox.question(
+            self, "설정 가져오기",
+            "현재 설정에 가져온 설정이 병합됩니다.\n계속하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        if self.prefs.import_settings(filename):
+            QMessageBox.information(self, "완료", "설정을 가져왔습니다.\n변경 사항을 적용하려면 프로그램을 재시작하세요.")
+            self._refresh_presets()
+        else:
+            QMessageBox.critical(self, "오류", "설정 가져오기에 실패했습니다.")
 
     def _import_excel(self):
         if not HAS_OPENPYXL:
@@ -2857,10 +3339,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("✈️ Flight Bot v2.4 - Pro")
         self.setMinimumSize(1280, 900)
         
-        # 테마 초기화
-        self.is_dark_theme = True
-        # 설정에서 테마 로드 (나중에 구현 가능, 현재는 기본 다크)
-        self.setStyleSheet(DARK_THEME)
+        # 테마 초기화 - 저장된 설정에서 로드
+        self.prefs = config.PreferenceManager()
+        saved_theme = self.prefs.get_theme()
+        self.is_dark_theme = (saved_theme == "dark")
+        self.setStyleSheet(DARK_THEME if self.is_dark_theme else LIGHT_THEME)
         
         self.worker = None
         self.multi_worker = None
@@ -2870,7 +3353,7 @@ class MainWindow(QMainWindow):
         self.all_results = []
         self.current_search_params = {}
         
-        self.prefs = config.PreferenceManager()
+        # prefs는 이미 테마 로드 시 초기화됨
         self.db = FlightDatabase()
         self.db.cleanup_old_data(days=60)
         
@@ -2909,7 +3392,7 @@ class MainWindow(QMainWindow):
         h_layout.addLayout(v_title)
         h_layout.addStretch()
         
-        # Advanced Search Buttons
+        # === 검색 버튼 그룹 ===
         btn_multi = QPushButton("🌍 다중 목적지")
         btn_multi.setToolTip("여러 목적지를 한 번에 비교 검색")
         btn_multi.clicked.connect(self._open_multi_dest_search)
@@ -2920,36 +3403,63 @@ class MainWindow(QMainWindow):
         btn_date.clicked.connect(self._open_date_range_search)
         h_layout.addWidget(btn_date)
         
-        btn_shortcuts = QPushButton("⌨️ 단축키")
-        btn_shortcuts.setToolTip("키보드 단축키 보기")
-        btn_shortcuts.clicked.connect(self._show_shortcuts)
-        h_layout.addWidget(btn_shortcuts)
+        # 구분선 1
+        sep1 = QFrame()
+        sep1.setObjectName("v_separator")
+        sep1.setFrameShape(QFrame.Shape.VLine)
+        sep1.setFixedWidth(2)
+        sep1.setFixedHeight(30)
+        h_layout.addWidget(sep1)
         
-        # Session Management Buttons
-        btn_save_session = QPushButton("💾 저장")
-        btn_save_session.setToolTip("현재 검색 결과를 파일로 저장")
-        btn_save_session.clicked.connect(self._save_session)
-        h_layout.addWidget(btn_save_session)
-        
-        btn_load_session = QPushButton("📂 불러오기")
-        btn_load_session.setToolTip("저장된 검색 결과 불러오기")
-        btn_load_session.clicked.connect(self._load_session)
-        h_layout.addWidget(btn_load_session)
-        
-        # Calendar View Button
+        # === 뷰/알림 버튼 그룹 ===
         btn_calendar = QPushButton("📆 캘린더뷰")
+        btn_calendar.setObjectName("secondary_btn")
         btn_calendar.setToolTip("날짜별 가격을 캘린더 형태로 보기 (날짜범위 검색 후 사용)")
         btn_calendar.clicked.connect(self._show_calendar_view)
         h_layout.addWidget(btn_calendar)
         
+        btn_alert = QPushButton("🔔 가격알림")
+        btn_alert.setObjectName("secondary_btn")
+        btn_alert.setToolTip("목표 가격 설정 및 알림 관리")
+        btn_alert.clicked.connect(self._open_price_alert_dialog)
+        h_layout.addWidget(btn_alert)
+        
+        # 구분선 2
+        sep2 = QFrame()
+        sep2.setObjectName("v_separator")
+        sep2.setFrameShape(QFrame.Shape.VLine)
+        sep2.setFixedWidth(2)
+        sep2.setFixedHeight(30)
+        h_layout.addWidget(sep2)
+        
+        # === 세션/설정 버튼 그룹 ===
+        btn_save_session = QPushButton("💾")
+        btn_save_session.setObjectName("icon_btn")
+        btn_save_session.setToolTip("현재 검색 결과를 파일로 저장")
+        btn_save_session.clicked.connect(self._save_session)
+        h_layout.addWidget(btn_save_session)
+        
+        btn_load_session = QPushButton("📂")
+        btn_load_session.setObjectName("icon_btn")
+        btn_load_session.setToolTip("저장된 검색 결과 불러오기")
+        btn_load_session.clicked.connect(self._load_session)
+        h_layout.addWidget(btn_load_session)
+        
+        btn_shortcuts = QPushButton("⌨️")
+        btn_shortcuts.setObjectName("icon_btn")
+        btn_shortcuts.setToolTip("키보드 단축키 보기")
+        btn_shortcuts.clicked.connect(self._show_shortcuts)
+        h_layout.addWidget(btn_shortcuts)
+        
         # 테마 전환 버튼
-        self.btn_theme = QPushButton("🌙 다크")
+        self.btn_theme = QPushButton("🌙" if self.is_dark_theme else "☀️")
+        self.btn_theme.setObjectName("icon_btn")
         self.btn_theme.setToolTip("라이트/다크 테마 전환")
         self.btn_theme.clicked.connect(self._toggle_theme)
         h_layout.addWidget(self.btn_theme)
         
+        # 설정 버튼
         btn_main_settings = QPushButton("⚙️ 설정")
-        btn_main_settings.setFixedSize(80, 40)
         btn_main_settings.clicked.connect(self._open_main_settings)
         h_layout.addWidget(btn_main_settings)
         
@@ -3507,18 +4017,25 @@ class MainWindow(QMainWindow):
         dlg = ShortcutsDialog(self)
         dlg.exec()
 
+    def _open_price_alert_dialog(self):
+        """가격 알림 관리 다이얼로그 열기"""
+        dlg = PriceAlertDialog(self, self.db, self.prefs)
+        dlg.exec()
+
     def _toggle_theme(self):
-        """라이트/다크 테마 전환"""
+        """라이트/다크 테마 전환 및 저장"""
         if self.is_dark_theme:
             # 다크 -> 라이트
             self.setStyleSheet(LIGHT_THEME)
-            self.btn_theme.setText("☀️ 라이트")
+            self.btn_theme.setText("☀️")
             self.is_dark_theme = False
+            self.prefs.set_theme("light")
         else:
             # 라이트 -> 다크
             self.setStyleSheet(DARK_THEME)
-            self.btn_theme.setText("🌙 다크")
+            self.btn_theme.setText("🌙")
             self.is_dark_theme = True
+            self.prefs.set_theme("dark")
 
     def _apply_filter(self, filters=None):
         if filters is None:
@@ -3764,12 +4281,14 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """창 닫기 시 워커 스레드 및 리소스 정리"""
-        # Worker threads 정리
+        # Worker threads 정리 (안전한 종료 패턴)
         workers = [self.worker, self.multi_worker, self.date_worker]
         for worker in workers:
             if worker and worker.isRunning():
-                worker.terminate()
-                worker.wait(2000)  # 최대 2초 대기
+                worker.requestInterruption()  # 안전한 중단 요청
+                if not worker.wait(1000):  # 1초 대기
+                    worker.terminate()  # 응답 없으면 강제 종료
+                    worker.wait(500)
         
         # Active searcher 브라우저 종료
         if self.active_searcher:
