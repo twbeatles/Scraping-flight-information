@@ -999,6 +999,16 @@ class SearchWorker(QThread):
         self.adults = adults
         self.cabin_class = cabin_class
         self.searcher = FlightSearcher()
+        self._cancelled = False
+
+    def cancel(self):
+        """검색 취소 요청 및 브라우저 정리"""
+        self._cancelled = True
+        try:
+            if self.searcher:
+                self.searcher.close()
+        except Exception as e:
+            logging.debug(f"검색 취소 중 오류 (무시됨): {e}")
 
     def run(self):
         try:
@@ -1008,14 +1018,26 @@ class SearchWorker(QThread):
                 progress_callback=lambda msg: self.progress.emit(msg)
             )
             
+            if self._cancelled:
+                self.progress.emit("검색이 취소되었습니다.")
+                return
+            
             if not results and self.searcher.is_manual_mode():
                 self.manual_mode_signal.emit(self.searcher)
             else:
                 self.finished.emit(results)
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            self.error.emit(str(e))
+            if not self._cancelled:
+                import traceback
+                traceback.print_exc()
+                self.error.emit(str(e))
+        finally:
+            # 항상 브라우저 정리 보장
+            if self._cancelled or not self.searcher.is_manual_mode():
+                try:
+                    self.searcher.close()
+                except Exception:
+                    pass
 
 
 class MultiSearchWorker(QThread):
@@ -3605,16 +3627,20 @@ class MainWindow(QMainWindow):
         shortcut_filter.activated.connect(lambda: self.filter_panel.cb_airline_category.setFocus())
 
     def _on_escape(self):
-        """Escape 키 처리"""
+        """Escape 키 처리 - 검색 취소 및 브라우저 정리"""
         if self.worker and self.worker.isRunning():
             reply = QMessageBox.question(
-                self, "검색 취소", "현재 검색을 취소하시겠습니까?",
+                self, "검색 취소", "현재 검색을 취소하시겠습니까?\n(브라우저가 안전하게 종료됩니다)",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.Yes:
-                self.worker.terminate()
+                # 새로운 cancel 메서드 사용 (브라우저 정리 포함)
+                self.worker.cancel()
                 self.search_panel.set_searching(False)
-                self.log_viewer.append_log("사용자가 검색을 취소했습니다.")
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setValue(0)
+                self.progress_bar.setFormat("검색 취소됨")
+                self.log_viewer.append_log("⚠️ 사용자가 검색을 취소했습니다. 브라우저가 정리되었습니다.")
 
     def _on_table_double_click(self, row, col):
         """테이블 더블클릭 - 예약 페이지 열기"""

@@ -5,6 +5,7 @@ Shared constants and settings for scraping and GUI.
 
 import json
 import os
+import sys
 import logging
 from typing import Dict, List, Any
 
@@ -66,8 +67,19 @@ def get_airline_category(airline_name: str) -> str:
 class PreferenceManager:
     """사용자 환경설정, 프리셋, 히스토리 관리자"""
     
-    def __init__(self, filepath: str = "user_preferences.json"):
-        self.filepath = filepath
+    def __init__(self, filepath: str = None):
+        if filepath is None:
+            if getattr(sys, 'frozen', False):
+                # Frozen/EXE: Use AppData
+                app_data = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'FlightBot')
+                os.makedirs(app_data, exist_ok=True)
+                self.filepath = os.path.join(app_data, "user_preferences.json")
+            else:
+                # Dev: Use default local file
+                self.filepath = "user_preferences.json"
+        else:
+            self.filepath = filepath
+            
         self.preferences = self._load()
         
     def _load(self) -> Dict[str, Any]:
@@ -80,7 +92,8 @@ class PreferenceManager:
                 "departure_start": 0,    # 0시
                 "departure_end": 24      # 24시
             },
-            "saved_profiles": {}   # { "ProfileName": { search_params... } }
+            "saved_profiles": {},   # { "ProfileName": { search_params... } }
+            "theme": "dark"         # 테마 설정 (dark/light)
         }
         
         if not os.path.exists(self.filepath):
@@ -158,3 +171,71 @@ class PreferenceManager:
         
     def get_preferred_time(self) -> Dict[str, int]:
         return self.preferences.get("preferred_times", {"departure_start": 0, "departure_end": 24})
+
+    # --- Theme ---
+    def get_theme(self) -> str:
+        """테마 설정 반환 ('dark' 또는 'light')"""
+        return self.preferences.get("theme", "dark")
+    
+    def set_theme(self, theme: str):
+        """테마 설정 저장"""
+        if theme in ("dark", "light"):
+            self.preferences["theme"] = theme
+            self.save()
+
+    # --- Export/Import Settings ---
+    def export_all_settings(self, filepath: str) -> bool:
+        """모든 설정을 JSON 파일로 내보내기
+        
+        Args:
+            filepath: 저장할 파일 경로
+        
+        Returns:
+            성공 여부
+        """
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(self.preferences, f, ensure_ascii=False, indent=4)
+            logger.info(f"Settings exported to: {filepath}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to export settings: {e}")
+            return False
+    
+    def import_settings(self, filepath: str) -> bool:
+        """JSON 파일에서 설정 가져오기 (현재 설정에 병합)
+        
+        Args:
+            filepath: 불러올 파일 경로
+        
+        Returns:
+            성공 여부
+        """
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                imported = json.load(f)
+            
+            # 현재 설정에 병합
+            for key, value in imported.items():
+                if key in self.preferences:
+                    if isinstance(value, dict) and isinstance(self.preferences[key], dict):
+                        # 딕셔너리는 깊은 병합
+                        self.preferences[key].update(value)
+                    elif isinstance(value, list) and isinstance(self.preferences[key], list):
+                        # 리스트는 중복 제거 후 병합
+                        existing = self.preferences[key]
+                        for item in value:
+                            if item not in existing:
+                                existing.append(item)
+                    else:
+                        self.preferences[key] = value
+                else:
+                    self.preferences[key] = value
+            
+            self.save()
+            logger.info(f"Settings imported from: {filepath}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to import settings: {e}")
+            return False
+

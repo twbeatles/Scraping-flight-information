@@ -5,6 +5,7 @@ Uses Playwright for scraping with manual fallback when auto-extraction fails.
 
 import time
 import os
+import sys
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any, Callable
 import logging
@@ -19,6 +20,41 @@ if not logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(handler)
+
+
+# === 사용자 정의 예외 클래스 ===
+
+class ScraperError(Exception):
+    """스크래퍼 기본 예외"""
+    pass
+
+class BrowserInitError(ScraperError):
+    """브라우저 초기화 실패"""
+    def __init__(self, message: str = "브라우저를 시작할 수 없습니다."):
+        self.message = message
+        super().__init__(self.message)
+
+class NetworkError(ScraperError):
+    """네트워크 연결 오류"""
+    def __init__(self, message: str = "네트워크 연결에 실패했습니다.", url: str = ""):
+        self.message = message
+        self.url = url
+        super().__init__(f"{self.message} (URL: {url})" if url else self.message)
+
+class DataExtractionError(ScraperError):
+    """데이터 추출 실패"""
+    def __init__(self, message: str = "항공편 데이터를 추출할 수 없습니다."):
+        self.message = message
+        super().__init__(self.message)
+
+
+# === 재시도 설정 ===
+MAX_RETRY_COUNT = 3
+RETRY_DELAY_SECONDS = 2
+PAGE_LOAD_TIMEOUT_MS = 60000
+DATA_WAIT_TIMEOUT_SECONDS = 30
+
+
 
 
 
@@ -66,7 +102,12 @@ class FlightResult:
 
 
 class PlaywrightScraper:
-    """Playwright 기반 스크래퍼 - 수동 모드 지원"""
+    """Playwright 기반 스크래퍼 - 수동 모드 지원
+    
+    컨텍스트 매니저로 사용 가능:
+        with PlaywrightScraper() as scraper:
+            results = scraper.search(...)
+    """
     
     # 국내선 항공사 목록 (중앙 관리)
     DOMESTIC_AIRLINES = [
@@ -78,10 +119,78 @@ class PlaywrightScraper:
         self.playwright = None
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
+        self.context = None
         self.manual_mode = False
         # 스크롤 추적용 인스턴스 변수 초기화
         self._no_scroll_count = 0
         self._no_new_count = 0
+        self._bottom_count = 0
+    
+    def __enter__(self):
+        """컨텍스트 매니저 진입"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """컨텍스트 매니저 종료 - 리소스 자동 정리"""
+        self.close()
+        return False  # 예외는 전파
+    
+    def _init_browser(self, log_func: Callable[[str], None] = None) -> None:
+        """브라우저 초기화 (Chrome > Edge > Chromium 순서 시도)
+        
+        Raises:
+            BrowserInitError: 모든 브라우저 시작에 실패할 경우
+        """
+        def log(msg):
+            if log_func:
+                log_func(msg)
+            logger.info(msg)
+        
+        log("🌐 Playwright 브라우저 시작 중...")
+        
+        try:
+            self.playwright = sync_playwright().start()
+        except Exception as e:
+            raise BrowserInitError(f"Playwright 초기화 실패: {e}")
+        
+        browser_args = [
+            '--disable-blink-features=AutomationControlled',
+            '--disable-dev-shm-usage',
+            '--no-sandbox'
+        ]
+        
+        browsers_to_try = [
+            ("Chrome", "chrome"),
+            ("Edge", "msedge"),
+            ("Chromium (내장)", None)
+        ]
+        
+        last_error = None
+        for browser_name, channel in browsers_to_try:
+            try:
+                log(f"  → {browser_name} 시도 중...")
+                launch_options = {
+                    "headless": False,
+                    "args": browser_args
+                }
+                if channel:
+                    launch_options["channel"] = channel
+                
+                self.browser = self.playwright.chromium.launch(**launch_options)
+                log(f"  ✅ {browser_name} 시작 성공")
+                return  # 성공시 반환
+            except Exception as e:
+                last_error = e
+                logger.debug(f"{browser_name} 시작 실패: {e}")
+                continue
+        
+        # 모든 브라우저 시작 실패
+        self.close()
+        raise BrowserInitError(
+            f"브라우저를 시작할 수 없습니다.\n"
+            f"Chrome, Edge, 또는 Chromium이 설치되어 있는지 확인하세요.\n"
+            f"마지막 오류: {last_error}"
+        )
     
     def search(self, origin: str, destination: str, 
                departure_date: str, return_date: Optional[str] = None,
@@ -94,6 +203,9 @@ class PlaywrightScraper:
         Args:
             cabin_class: "ECONOMY" | "BUSINESS" | "FIRST"
         """
+        # 성능 측정 시작
+        search_start_time = time.time()
+        
         def log(msg):
             if emit:
                 emit(msg)
@@ -113,46 +225,25 @@ class PlaywrightScraper:
             cabin = "ECONOMY"
         
         try:
-            log("Playwright 브라우저 시작 중...")
-            
-            self.playwright = sync_playwright().start()
-            
-            # 브라우저 시작 (시스템 브라우저 우선 사용)
-            try:
-                # 1순위: Chrome
-                self.browser = self.playwright.chromium.launch(
-                    headless=False,
-                    channel="chrome",
-                    args=['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
-                )
-            except Exception as e:
-                logger.debug(f"Chrome 시작 실패, Edge 시도: {e}")
-                try:
-                    # 2순위: Edge (Windows 기본)
-                    self.browser = self.playwright.chromium.launch(
-                        headless=False,
-                        channel="msedge",
-                        args=['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
-                    )
-                except Exception as e:
-                    logger.debug(f"Edge 시작 실패, 기본 Chromium 사용: {e}")
-                    # 3순위: Playwright 내장 (설치 필요)
-                    self.browser = self.playwright.chromium.launch(
-                        headless=False,
-                        args=['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
-                    )
+            # 브라우저 초기화 (새로운 헬퍼 메서드 사용)
+            self._init_browser(log)
             
             # 컨텍스트 생성 (쿠키/스토리지 저장)
-            profile_dir = os.path.join(os.getcwd(), "playwright_profile")
+            if getattr(sys, 'frozen', False):
+                 app_data = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'FlightBot')
+                 profile_dir = os.path.join(app_data, "playwright_profile")
+            else:
+                 profile_dir = os.path.join(os.getcwd(), "playwright_profile")
+            
             os.makedirs(profile_dir, exist_ok=True)
             
-            context = self.browser.new_context(
+            self.context = self.browser.new_context(
                 viewport={"width": 1400, "height": 900},
                 locale='ko-KR',
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             )
             
-            self.page = context.new_page()
+            self.page = self.context.new_page()
             
             # URL 구성 (좌석등급 반영)
             origin_city = config.CITY_CODES_MAP.get(origin.upper(), origin.upper())
@@ -373,6 +464,13 @@ class PlaywrightScraper:
             # 수동 모드가 아니면 브라우저 정리 (리소스 누수 방지)
             if not self.manual_mode:
                 self.close()
+            
+            # 성능 메트릭 로깅
+            elapsed_time = time.time() - search_start_time
+            result_count = len(results)
+            logger.info(f"📊 검색 완료 - 소요시간: {elapsed_time:.1f}초, 결과: {result_count}건")
+            if emit:
+                emit(f"📊 검색 완료 ({elapsed_time:.1f}초, {result_count}건)")
         
         return results
 
@@ -389,6 +487,7 @@ class PlaywrightScraper:
         # 스크롤 추적 변수 초기화
         self._no_scroll_count = 0
         self._no_new_count = 0
+        self._bottom_count = 0  # 최하단 도달 연속 횟수
         
         # Python 항공사 리스트를 JS 배열 문자열로 변환
         airlines_js = str(self.DOMESTIC_AIRLINES)
@@ -468,8 +567,8 @@ class PlaywrightScraper:
                     # else:
                         # logger.debug(f"중복 항목 무시: {key}")
                 
-                # 스크롤 다운 및 스크롤 가능 여부 확인
-                can_scroll = self.page.evaluate("""
+                # 스크롤 다운 및 스크롤 가능 여부 확인 (최하단 도달 감지 강화)
+                scroll_result = self.page.evaluate("""
                     () => {
                         const beforeScroll = window.scrollY;
                         const beforeHeight = document.body.scrollHeight;
@@ -478,11 +577,14 @@ class PlaywrightScraper:
                         const totalHeight = document.body.scrollHeight;
                         const currentScroll = window.scrollY + window.innerHeight;
                         
-                        if (currentScroll < totalHeight) {
+                        // 최하단 여부 먼저 체크 (허용 오차 5px)
+                        const isAtBottom = (totalHeight - currentScroll) <= 5;
+                        
+                        if (!isAtBottom) {
                             window.scrollBy(0, 500);  // 500px씩 더 세밀하게 스크롤
                         } else {
                             // 2. 만약 window 스크롤이 끝이라면 특정 컨테이너 스크롤 시도
-                             const containers = [
+                            const containers = [
                                 document.querySelector('div[scrollable="true"]'),
                                 document.querySelector('[class*="flightList"]'),
                                 document.querySelector('[class*="resultList"]'),
@@ -490,9 +592,15 @@ class PlaywrightScraper:
                                 document.querySelector('div[style*="overflow"]'),
                             ];
                             
+                            let containerScrolled = false;
                             for (const container of containers) {
                                 if (container && container.scrollHeight > container.clientHeight) {
-                                    container.scrollTop += 500;  // 500px씩 더 세밀하게
+                                    const containerAtBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) <= 5;
+                                    if (!containerAtBottom) {
+                                        container.scrollTop += 500;
+                                        containerScrolled = true;
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -502,17 +610,44 @@ class PlaywrightScraper:
                         const afterHeight = document.body.scrollHeight;
                         
                         // 스크롤 위치나 페이지 높이가 변했으면 아직 스크롤 가능
-                        return (afterScroll !== beforeScroll) || (afterHeight !== beforeHeight);
+                        const canScroll = (afterScroll !== beforeScroll) || (afterHeight !== beforeHeight);
+                        
+                        // 최종 최하단 체크 (스크롤 후)
+                        const finalTotalHeight = document.body.scrollHeight;
+                        const finalCurrentScroll = window.scrollY + window.innerHeight;
+                        const reachedBottom = (finalTotalHeight - finalCurrentScroll) <= 5;
+                        
+                        return {
+                            canScroll: canScroll,
+                            reachedBottom: reachedBottom && !canScroll
+                        };
                     }
                 """)
-                time.sleep(0.5)  # 데이터 로딩 시간 (최적화: 1.0초 → 0.5초)
+                time.sleep(0.5)  # 데이터 로딩 시간
+                
+                can_scroll = scroll_result.get('canScroll', False)
+                reached_bottom = scroll_result.get('reachedBottom', False)
+                
+                # 최하단 도달 + 새 데이터 없음: 3회 연속 시 종료 (레이지 로딩 완료 대기)
+                if reached_bottom and new_count == 0:
+                    bottom_count = getattr(self, '_bottom_count', 0) + 1
+                    self._bottom_count = bottom_count
+                    logger.debug(f"최하단 도달 체크: {bottom_count}/3회 (새 항목 없음)")
+                    if bottom_count >= 3:  # 3회 연속 최하단+새 데이터 없음 시 종료
+                        logger.info(f"✅ 스크롤 최하단 도달 확인: {len(all_flights)}개 수집 완료, 다음 단계로 진행")
+                        break
+                    # 추가 로딩 대기 (레이지 로딩 여유 시간)
+                    time.sleep(0.8)
+                    continue
+                else:
+                    self._bottom_count = 0  # 리셋
                 
                 # 스크롤이 더 이상 불가능하면 종료
                 if not can_scroll:
                     no_scroll_count = getattr(self, '_no_scroll_count', 0) + 1
                     self._no_scroll_count = no_scroll_count
-                    if no_scroll_count >= 2:  # 2회 연속 스크롤 불가 시 종료 (최적화: 3회 → 2회)
-                        logger.info(f"스크롤 끝 도달: 더 이상 스크롤할 수 없음")
+                    if no_scroll_count >= 3:  # 3회 연속 스크롤 불가 시 종료
+                        logger.info(f"스크롤 끝 도달: 더 이상 스크롤할 수 없음 ({len(all_flights)}개 수집)")
                         break
                 else:
                     self._no_scroll_count = 0
@@ -521,8 +656,8 @@ class PlaywrightScraper:
                 if new_count == 0:
                     no_new_count = getattr(self, '_no_new_count', 0) + 1
                     self._no_new_count = no_new_count
-                    if no_new_count >= 5:  # 5회 연속 새 항목 없으면 종료 (최적화: 10회 → 5회)
-                        logger.info(f"스크롤 조기 종료: {no_new_count}회 연속 새 항목 없음")
+                    if no_new_count >= 8:  # 8회 연속 새 항목 없으면 종료 (충분히 대기)
+                        logger.info(f"스크롤 조기 종료: {no_new_count}회 연속 새 항목 없음 ({len(all_flights)}개 수집)")
                         break
                 else:
                     self._no_new_count = 0
@@ -756,17 +891,37 @@ class PlaywrightScraper:
         return self._extract_prices()
     
     def close(self):
-        """브라우저 종료"""
+        """브라우저 및 리소스 정리
+        
+        리소스 정리 순서: page → context → browser → playwright
+        """
         try:
+            if self.page:
+                try:
+                    self.page.close()
+                except Exception:
+                    pass
+            if self.context:
+                try:
+                    self.context.close()
+                except Exception:
+                    pass
             if self.browser:
-                self.browser.close()
+                try:
+                    self.browser.close()
+                except Exception:
+                    pass
             if self.playwright:
-                self.playwright.stop()
+                try:
+                    self.playwright.stop()
+                except Exception:
+                    pass
         except Exception as e:
             logger.debug(f"브라우저 종료 중 예외 (무시됨): {e}")
         finally:
-            self.browser = None
             self.page = None
+            self.context = None
+            self.browser = None
             self.playwright = None
             self.manual_mode = False
     

@@ -5,6 +5,7 @@ SQLite 기반 즐겨찾기, 가격 히스토리, 검색 로그 관리
 
 import sqlite3
 import os
+import sys
 import json
 import logging
 from datetime import datetime, timedelta
@@ -69,8 +70,29 @@ class PriceAlert:
 class FlightDatabase:
     """항공권 데이터베이스 관리자"""
     
-    def __init__(self, db_path: str = "flight_data.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            # Determine appropriate path based on environment
+            if getattr(sys, 'frozen', False):
+                # Running as PyInstaller Bundle (EXE) -> Use AppData/Local
+                app_data = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'FlightBot')
+                os.makedirs(app_data, exist_ok=True)
+                self.db_path = os.path.join(app_data, "flight_data.db")
+            else:
+                # Running from source (Dev) -> Use current directory
+                self.db_path = "flight_data.db"
+        else:
+            self.db_path = db_path
+            
+        # Ensure directory exists for custom paths
+        db_dir = os.path.dirname(os.path.abspath(self.db_path))
+        if db_dir and not os.path.exists(db_dir):
+            try:
+                os.makedirs(db_dir, exist_ok=True)
+            except Exception as e:
+                logger.error(f"Failed to create DB directory: {e}")
+
+        logger.info(f"Database path: {self.db_path}")
         self._init_db()
     
     def _init_db(self):
