@@ -172,6 +172,14 @@ class PreferenceManager:
     def get_preferred_time(self) -> Dict[str, int]:
         return self.preferences.get("preferred_times", {"departure_start": 0, "departure_end": 24})
 
+    # --- Max Results ---
+    def set_max_results(self, limit: int):
+        self.preferences["max_results"] = limit
+        self.save()
+
+    def get_max_results(self) -> int:
+        return self.preferences.get("max_results", 500)
+
     # --- Theme ---
     def get_theme(self) -> str:
         """테마 설정 반환 ('dark' 또는 'light')"""

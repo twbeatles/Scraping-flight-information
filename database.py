@@ -383,6 +383,7 @@ class FlightDatabase:
                 "search_logs": log_count
             }
     
+    
     def cleanup_old_data(self, days: int = 90):
         """오래된 데이터 정리"""
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -392,6 +393,15 @@ class FlightDatabase:
             cursor.execute("DELETE FROM price_history WHERE recorded_at < ?", (cutoff,))
             cursor.execute("DELETE FROM search_logs WHERE searched_at < ?", (cutoff,))
             conn.commit()
+            
+    def optimize(self):
+        """데이터베이스 최적화 (VACUUM)"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("VACUUM")
+            logger.info("Database optimized (VACUUM completed)")
+        except Exception as e:
+            logger.error(f"Database optimization failed: {e}")
 
     # ===== 가격 알림 =====
     

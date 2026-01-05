@@ -1,3 +1,4 @@
+
 """
 Flight Scraper V2 - Playwright + Manual Mode
 Uses Playwright for scraping with manual fallback when auto-extraction fails.
@@ -12,6 +13,8 @@ import logging
 from playwright.sync_api import sync_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
 
 import config
+import scraper_config 
+from scraper_config import ScraperScripts
 
 # 로거 설정 (중복 핸들러 방지)
 logger = logging.getLogger("ScraperV2")
@@ -46,16 +49,6 @@ class DataExtractionError(ScraperError):
     def __init__(self, message: str = "항공편 데이터를 추출할 수 없습니다."):
         self.message = message
         super().__init__(self.message)
-
-
-# === 재시도 설정 ===
-MAX_RETRY_COUNT = 3
-RETRY_DELAY_SECONDS = 2
-PAGE_LOAD_TIMEOUT_MS = 60000
-DATA_WAIT_TIMEOUT_SECONDS = 30
-
-
-
 
 
 @dataclass
@@ -195,6 +188,7 @@ class PlaywrightScraper:
     def search(self, origin: str, destination: str, 
                departure_date: str, return_date: Optional[str] = None,
                adults: int = 1, cabin_class: str = "ECONOMY",
+               max_results: int = 500,
                emit: Callable[[str], None] = None) -> List[FlightResult]:
         """
         항공권 검색 (Playwright 사용, 실패시 수동 모드)
@@ -245,7 +239,7 @@ class PlaywrightScraper:
             
             self.page = self.context.new_page()
             
-            # URL 구성 (좌석등급 반영)
+            # URL 구성
             origin_city = config.CITY_CODES_MAP.get(origin.upper(), origin.upper())
             dest_city = config.CITY_CODES_MAP.get(destination.upper(), destination.upper())
             
@@ -261,7 +255,7 @@ class PlaywrightScraper:
             log(f"URL: {url}")
             
             try:
-                self.page.goto(url, wait_until='domcontentloaded', timeout=60000)
+                self.page.goto(url, wait_until='domcontentloaded', timeout=scraper_config.PAGE_LOAD_TIMEOUT_MS)
             except PlaywrightTimeoutError:
                 log("⚠️ 페이지 로딩 시간 초과 - 계속 진행합니다.")
 
@@ -299,22 +293,8 @@ class PlaywrightScraper:
                     # Step 2: 첫 번째 가는편 선택 (오는편 화면으로 전환)
                     log("🔄 2단계: 가는편 선택 → 오는편 화면 전환...")
                     airlines_js = str(self.DOMESTIC_AIRLINES)  # Python 리스트를 JS 배열로 변환
-                    js_click = f"""
-                    () => {{
-                        const airlines = {airlines_js};
-                        const buttons = document.querySelectorAll('button');
-                        for (const btn of buttons) {{
-                            const text = btn.textContent || '';
-                            if (/\\d{{2}}:\\d{{2}}\\s*-\\s*\\d{{2}}:\\d{{2}}/.test(text) && 
-                                /[0-9,]+\\s*원/.test(text) &&
-                                airlines.some(a => text.includes(a))) {{
-                                btn.click();
-                                return true;
-                            }}
-                        }}
-                        return false;
-                    }}
-                    """
+                    js_click = ScraperScripts.get_click_flight_script(airlines_js)
+                    
                     clicked = self.page.evaluate(js_click)
                     
                     if not clicked:
@@ -360,7 +340,7 @@ class PlaywrightScraper:
                     
                     # Step 4: 오는편 데이터 추출
                     log("📋 4단계: 오는편 목록 추출 중...")
-                    time.sleep(0.5)  # 데이터 안정화 (최적화: 1초 → 0.5초)
+                    time.sleep(0.5)  # 데이터 안정화
                     return_flights = self._extract_domestic_flights_data()
                     log(f"✅ 오는편 {len(return_flights)}개 발견")
                     
@@ -369,11 +349,11 @@ class PlaywrightScraper:
                     
                     # 다양한 오는편 옵션 제공 (전체 조합 후 최저가 필터링)
                     if outbound_flights and return_flights:
-                        # 성능 최적화: 가격순 정렬 후 상위 50개만 조합
+                        # 성능 최적화: 가격순 정렬 후 상위 100개만 조합 (검색 범위 확대)
                         outbound_flights.sort(key=lambda x: x['price'])
                         return_flights.sort(key=lambda x: x['price'])
-                        top_outbound = outbound_flights[:50]
-                        top_return = return_flights[:50]
+                        top_outbound = outbound_flights[:100]
+                        top_return = return_flights[:100]
                         
                         temp_results = []
                         for ob in top_outbound:
@@ -406,9 +386,9 @@ class PlaywrightScraper:
                                 seen.add(key)
                                 unique_results.append(r)
                                 
-                        # 가격순 정렬 후 상위 300개만 유지 (GUI 성능 보호)
+                        # 가격순 정렬 후 상위 max_results개만 유지 (GUI 성능 보호)
                         unique_results.sort(key=lambda x: x.price)
-                        results = unique_results[:300]
+                        results = unique_results[:max_results]
                         
                         log(f"✅ 최저가 기준 상위 {len(results)}개 조합 반환")
                     else:
@@ -433,7 +413,7 @@ class PlaywrightScraper:
             if found_data:
                 log("데이터 준비 완료! 추출 시작")
                 
-                # 페이지 안정화 대기 (최적화: 2초 → 1.5초)
+                # 페이지 안정화 대기
                 time.sleep(1.5)
                 
                 if is_domestic:
@@ -476,9 +456,7 @@ class PlaywrightScraper:
 
     
     def _extract_domestic_flights_data(self) -> list:
-        """국내선: 스크롤하며 현재 화면의 항공편 데이터 추출
-        Returns: list of dicts with airline, price, depTime, arrTime, stops
-        """
+        """국내선: 스크롤하며 현재 화면의 항공편 데이터 추출"""
         if not self.page:
             return []
         
@@ -495,64 +473,7 @@ class PlaywrightScraper:
         try:
             # 스크롤하며 수집 (최대 300회 - 스크롤 끝 도달 시 자동 중단)
             for scroll_i in range(300):
-                js_script = f"""
-                () => {{
-                    const results = [];
-                    const airlines = {airlines_js};
-                    
-                    const buttons = document.querySelectorAll('button');
-                    
-                    for (const btn of buttons) {{
-                        try {{
-                            const text = btn.textContent || '';
-                            
-                            // 시간 패턴 확인 (16:50 - 18:05)
-                            const timeMatch = text.match(/(\\d{{2}}:\\d{{2}})\\s*-\\s*(\\d{{2}}:\\d{{2}})/);
-                            if (!timeMatch) continue;
-                            
-                            // 가격 확인 - 개선된 정규식 (10,000원 ~ 9,999,999원)
-                            const priceMatches = text.match(/(\\d{{1,3}},\\d{{3}},?\\d{{0,3}})\\s*원/g);
-                            if (!priceMatches || priceMatches.length === 0) continue;
-                            
-                            // 첫 번째 가격만 사용 (가장 저렴한 가격이 먼저 표시됨)
-                            const firstPrice = priceMatches[0].replace(/[^\\d]/g, '');
-                            const price = parseInt(firstPrice);
-                            
-                            // 가격 범위 검증 (국내선: 1천원 ~ 1000만원)
-                            if (price < 1000 || price > 10000000) continue;
-                            
-                            // 광고 제외
-                            if (text.includes('이벤트') || text.includes('프로모션')) continue;
-                            
-                            // 항공사 찾기
-                            let airline = '기타';
-                            for (const a of airlines) {{
-                                if (text.includes(a)) {{
-                                    airline = a;
-                                    break;
-                                }}
-                            }}
-                            
-                            // 경유 확인
-                            let stops = 0;
-                            if (text.includes('경유')) {{
-                                stops = 1;
-                            }}
-                            
-                            results.push({{
-                                airline: airline,
-                                price: price,
-                                depTime: timeMatch[1],
-                                arrTime: timeMatch[2],
-                                stops: stops,
-                                key: airline + '_' + timeMatch[1] + '_' + timeMatch[2] + '_' + price
-                            }});
-                        }} catch (e) {{ }}
-                    }}
-                    
-                    return results;
-                }}
-                """
+                js_script = ScraperScripts.get_domestic_list_script(airlines_js)
                 
                 batch = self.page.evaluate(js_script)
                 
@@ -564,79 +485,24 @@ class PlaywrightScraper:
                     if key not in all_flights:
                         all_flights[key] = f
                         new_count += 1
-                    # else:
-                        # logger.debug(f"중복 항목 무시: {key}")
                 
-                # 스크롤 다운 및 스크롤 가능 여부 확인 (최하단 도달 감지 강화)
-                scroll_result = self.page.evaluate("""
-                    () => {
-                        const beforeScroll = window.scrollY;
-                        const beforeHeight = document.body.scrollHeight;
-                        
-                        // 1. 우선 window 스크롤 시도 (가장 일반적)
-                        const totalHeight = document.body.scrollHeight;
-                        const currentScroll = window.scrollY + window.innerHeight;
-                        
-                        // 최하단 여부 먼저 체크 (허용 오차 5px)
-                        const isAtBottom = (totalHeight - currentScroll) <= 5;
-                        
-                        if (!isAtBottom) {
-                            window.scrollBy(0, 500);  // 500px씩 더 세밀하게 스크롤
-                        } else {
-                            // 2. 만약 window 스크롤이 끝이라면 특정 컨테이너 스크롤 시도
-                            const containers = [
-                                document.querySelector('div[scrollable="true"]'),
-                                document.querySelector('[class*="flightList"]'),
-                                document.querySelector('[class*="resultList"]'),
-                                document.querySelector('.ReactVirtualizados'),
-                                document.querySelector('div[style*="overflow"]'),
-                            ];
-                            
-                            let containerScrolled = false;
-                            for (const container of containers) {
-                                if (container && container.scrollHeight > container.clientHeight) {
-                                    const containerAtBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) <= 5;
-                                    if (!containerAtBottom) {
-                                        container.scrollTop += 500;
-                                        containerScrolled = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // 스크롤 후 위치 변화 확인
-                        const afterScroll = window.scrollY;
-                        const afterHeight = document.body.scrollHeight;
-                        
-                        // 스크롤 위치나 페이지 높이가 변했으면 아직 스크롤 가능
-                        const canScroll = (afterScroll !== beforeScroll) || (afterHeight !== beforeHeight);
-                        
-                        // 최종 최하단 체크 (스크롤 후)
-                        const finalTotalHeight = document.body.scrollHeight;
-                        const finalCurrentScroll = window.scrollY + window.innerHeight;
-                        const reachedBottom = (finalTotalHeight - finalCurrentScroll) <= 5;
-                        
-                        return {
-                            canScroll: canScroll,
-                            reachedBottom: reachedBottom && !canScroll
-                        };
-                    }
-                """)
+                # 스크롤 다운 및 스크롤 가능 여부 확인 (ScraperScripts 활용)
+                scroll_script = ScraperScripts.get_scroll_check_script()
+                scroll_result = self.page.evaluate(scroll_script)
+                
                 time.sleep(0.5)  # 데이터 로딩 시간
                 
                 can_scroll = scroll_result.get('canScroll', False)
                 reached_bottom = scroll_result.get('reachedBottom', False)
                 
-                # 최하단 도달 + 새 데이터 없음: 3회 연속 시 종료 (레이지 로딩 완료 대기)
+                # 최하단 도달 + 새 데이터 없음 로직
                 if reached_bottom and new_count == 0:
                     bottom_count = getattr(self, '_bottom_count', 0) + 1
                     self._bottom_count = bottom_count
                     logger.debug(f"최하단 도달 체크: {bottom_count}/3회 (새 항목 없음)")
-                    if bottom_count >= 3:  # 3회 연속 최하단+새 데이터 없음 시 종료
+                    if bottom_count >= 3:
                         logger.info(f"✅ 스크롤 최하단 도달 확인: {len(all_flights)}개 수집 완료, 다음 단계로 진행")
                         break
-                    # 추가 로딩 대기 (레이지 로딩 여유 시간)
                     time.sleep(0.8)
                     continue
                 else:
@@ -646,7 +512,7 @@ class PlaywrightScraper:
                 if not can_scroll:
                     no_scroll_count = getattr(self, '_no_scroll_count', 0) + 1
                     self._no_scroll_count = no_scroll_count
-                    if no_scroll_count >= 3:  # 3회 연속 스크롤 불가 시 종료
+                    if no_scroll_count >= 3:
                         logger.info(f"스크롤 끝 도달: 더 이상 스크롤할 수 없음 ({len(all_flights)}개 수집)")
                         break
                 else:
@@ -656,7 +522,7 @@ class PlaywrightScraper:
                 if new_count == 0:
                     no_new_count = getattr(self, '_no_new_count', 0) + 1
                     self._no_new_count = no_new_count
-                    if no_new_count >= 8:  # 8회 연속 새 항목 없으면 종료 (충분히 대기)
+                    if no_new_count >= 8:  # 8회 연속 새 항목 없으면 종료
                         logger.info(f"스크롤 조기 종료: {no_new_count}회 연속 새 항목 없음 ({len(all_flights)}개 수집)")
                         break
                 else:
@@ -684,61 +550,7 @@ class PlaywrightScraper:
         airlines_js = str(self.DOMESTIC_AIRLINES)
         
         try:
-            js_script = f"""
-            () => {{
-                const results = [];
-                const airlines = {airlines_js};
-                
-                const allButtons = document.querySelectorAll('button');
-                
-                for (const btn of allButtons) {{
-                    try {{
-                        const text = btn.textContent || '';
-                        
-                        // 시간 패턴 확인 (16:50 - 18:05)
-                        const timeMatch = text.match(/(\\d{{2}}:\\d{{2}})\\s*-\\s*(\\d{{2}}:\\d{{2}})/);
-                        if (!timeMatch) continue;
-                        
-                        // 가격 확인 (28,900 원) - 개선된 정규식
-                        const priceMatch = text.match(/(\\d{{1,3}},\\d{{3}},?\\d{{0,3}})\\s*원/);
-                        if (!priceMatch) continue;
-                        
-                        // 항공사 찾기
-                        let airline = '기타';
-                        for (const a of airlines) {{
-                            if (text.includes(a)) {{
-                                airline = a;
-                                break;
-                            }}
-                        }}
-                        
-                        // 경유 확인
-                        let stops = 0;
-                        if (text.includes('경유')) {{
-                            const stopMatch = text.match(/(\\d)회\\s*경유/);
-                            if (stopMatch) stops = parseInt(stopMatch[1]);
-                            else stops = 1;
-                        }}
-                        
-                        const price = parseInt(priceMatch[1].replace(/,/g, ''));
-                        
-                        results.push({{
-                            airline: airline,
-                            price: price,
-                            depTime: timeMatch[1],
-                            arrTime: timeMatch[2],
-                            stops: stops,
-                            retDepTime: '',
-                            retArrTime: '',
-                            retStops: 0,
-                            isRoundTrip: false
-                        }});
-                    }} catch (e) {{ }}
-                }}
-                
-                return results;
-            }}
-            """
+            js_script = ScraperScripts.get_domestic_prices_script(airlines_js)
             
             extracted = self.page.evaluate(js_script)
             
@@ -773,7 +585,7 @@ class PlaywrightScraper:
         
         all_results_dict = {}  # 중복 제거를 위한 딕셔너리 (Key: unique_id)
         max_scrolls = 20
-        pause_time = 1.0 # 초
+        pause_time = scraper_config.SCROLL_PAUSE_TIME
         
         logger.info(f"📜 점진적 추출 시작 (최대 {max_scrolls}회 스크롤)...")
         
@@ -782,63 +594,7 @@ class PlaywrightScraper:
             
             for i in range(max_scrolls):
                 # 1. 현재 화면 데이터 추출
-                js_script = r"""
-                () => {
-                    const results = [];
-                    const cards = document.querySelectorAll('li[data-index]');
-                    
-                    for (const card of cards) {
-                        try {
-                            const allSpans = Array.from(card.querySelectorAll('span'));
-                            const priceEl = allSpans.find(el => /^[0-9,]+\s*원$/.test(el.textContent.trim()));
-                            if (!priceEl) continue;
-                            
-                            const price = parseInt(priceEl.textContent.replace(/[^0-9]/g, ''));
-                            
-                            const timeSpans = allSpans.filter(el => /^\d{2}:\d{2}$/.test(el.textContent.trim()));
-                            const times = timeSpans.map(el => el.textContent.trim());
-                            
-                            if (times.length < 2) continue;
-                            
-                            const logoImgs = card.querySelectorAll('img[alt$="로고"]');
-                            let airline = "기타";
-                            if (logoImgs.length > 0) {
-                                airline = logoImgs[0].alt.replace(' 로고', '');
-                            }
-                            
-                            const cardText = card.textContent;
-                            let stops = 0;
-                            let retStops = 0;
-                            
-                            const stopMatches = cardText.match(/(\d)회\s*경유/g);
-                            
-                            if (stopMatches) {
-                                stops = parseInt(stopMatches[0].replace(/[^0-9]/g, ''));
-                                retStops = (stopMatches.length > 1) ? parseInt(stopMatches[1].replace(/[^0-9]/g, '')) : stops;
-                            } else if (cardText.includes("직항")) {
-                                stops = 0; retStops = 0;
-                            } else {
-                                 stops = 1; retStops = 1;
-                            }
-
-                            const isRoundTrip = times.length >= 4;
-
-                            results.push({
-                                airline: airline,
-                                price: price,
-                                depTime: times[0],
-                                arrTime: times[1],
-                                stops: stops,
-                                retDepTime: isRoundTrip ? times[2] : '',
-                                retArrTime: isRoundTrip ? times[3] : '',
-                                retStops: isRoundTrip ? retStops : 0,
-                                isRoundTrip: isRoundTrip
-                            });
-                        } catch (e) { }
-                    }
-                    return results;
-                }
-                """
+                js_script = ScraperScripts.get_international_prices_script()
                 
                 step_results = self.page.evaluate(js_script)
                 
@@ -891,10 +647,7 @@ class PlaywrightScraper:
         return self._extract_prices()
     
     def close(self):
-        """브라우저 및 리소스 정리
-        
-        리소스 정리 순서: page → context → browser → playwright
-        """
+        """브라우저 및 리소스 정리"""
         try:
             if self.page:
                 try:
@@ -940,12 +693,9 @@ class FlightSearcher:
     def search(self, origin: str, destination: str, 
                departure_date: str, return_date: Optional[str] = None,
                adults: int = 1, cabin_class: str = "ECONOMY",
+               max_results: int = 500,
                progress_callback: Callable = None) -> List[FlightResult]:
-        """항공권 검색 진입점
-        
-        Args:
-            cabin_class: "ECONOMY" | "BUSINESS" | "FIRST"
-        """
+        """항공권 검색 진입점"""
         def emit(msg):
             if progress_callback:
                 progress_callback(msg)
@@ -957,7 +707,9 @@ class FlightSearcher:
         results = self.scraper.search(
             origin, destination, 
             departure_date, return_date, 
-            adults, cabin_class, emit
+            adults, cabin_class,
+            max_results, 
+            emit
         )
         
         # 가격순 정렬
@@ -997,10 +749,6 @@ class ParallelSearcher:
     """다중 검색을 병렬로 실행하는 검색 엔진"""
     
     def __init__(self, max_concurrent: int = 2):
-        """
-        Args:
-            max_concurrent: 동시 실행 최대 수 (권장: 2-3, 너무 높으면 차단 위험)
-        """
         self.max_concurrent = min(max_concurrent, 4)  # 최대 4개로 제한
         self.results = {}
         self._lock = None
@@ -1009,12 +757,7 @@ class ParallelSearcher:
                                      departure_date: str, return_date: Optional[str] = None,
                                      adults: int = 1, cabin_class: str = "ECONOMY",
                                      progress_callback: Callable = None) -> Dict[str, List[FlightResult]]:
-        """
-        여러 목적지를 병렬로 검색
-        
-        Returns:
-            {destination: [FlightResult, ...], ...}
-        """
+        """여러 목적지를 병렬로 검색"""
         import threading
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
@@ -1032,7 +775,7 @@ class ParallelSearcher:
                 
                 results = searcher.scraper.search(
                     origin, dest, departure_date, return_date, 
-                    adults, cabin_class, emit
+                    adults, cabin_class, max_results=500, emit=emit
                 )
                 return dest, results
             except Exception as e:
@@ -1069,12 +812,7 @@ class ParallelSearcher:
                           dates: List[str], return_offset: int = 0,
                           adults: int = 1, cabin_class: str = "ECONOMY",
                           progress_callback: Callable = None) -> Dict[str, tuple]:
-        """
-        여러 날짜를 병렬로 검색
-        
-        Returns:
-            {date: (min_price, airline), ...}
-        """
+        """여러 날짜를 병렬로 검색"""
         import threading
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from datetime import datetime, timedelta
@@ -1094,9 +832,10 @@ class ParallelSearcher:
             
             searcher = FlightSearcher()
             try:
+                # 조용히 실행
                 results = searcher.scraper.search(
                     origin, destination, dep_date, ret_date,
-                    adults, cabin_class, lambda msg: None  # 조용히 실행
+                    adults, cabin_class, max_results=100, emit=lambda msg: None
                 )
                 
                 if results:

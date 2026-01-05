@@ -3,6 +3,114 @@
     "search_history": [
         {
             "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 17:53"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 17:20"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 17:17"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 17:07"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 16:58"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 16:49"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 16:48"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 16:45"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 16:36"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 16:28"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 16:26"
+        },
+        {
+            "origin": "GMP",
+            "dest": "CJU",
+            "dep": "20260112",
+            "ret": "20260120",
+            "adults": 1,
+            "cabin_class": "ECONOMY",
+            "timestamp": "2026-01-05 16:18"
+        },
+        {
+            "origin": "GMP",
             "dest": "PUS",
             "dep": "20260109",
             "ret": "20260112",
@@ -65,112 +173,16 @@
             "ret": "20260112",
             "adults": 1,
             "timestamp": "2026-01-02 20:15"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 20:14"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 20:13"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 20:10"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 19:54"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 17:54"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 17:48"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 17:43"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 17:31"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 17:19"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 17:14"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 17:09"
-        },
-        {
-            "origin": "GMP",
-            "dest": "CJU",
-            "dep": "20260109",
-            "ret": "20260112",
-            "adults": 1,
-            "timestamp": "2026-01-02 17:04"
         }
     ],
     "last_search": {
         "origin": "GMP",
-        "dest": "PUS",
-        "dep": "20260109",
-        "ret": "20260112",
+        "dest": "CJU",
+        "dep": "20260112",
+        "ret": "20260120",
         "adults": 1,
         "cabin_class": "ECONOMY",
-        "timestamp": "2026-01-03 23:42"
+        "timestamp": "2026-01-05 17:53"
     },
     "preferred_times": {
         "departure_start": 12,
