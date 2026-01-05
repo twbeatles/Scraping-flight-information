@@ -9,6 +9,10 @@ import sys
 import os
 import webbrowser
 
+# HiDPI 지원 활성화 (Qt 초기화 전에 설정해야 함)
+os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+
 # Qt CSS 경고 억제 (Unknown property content 등)
 os.environ["QT_LOGGING_RULES"] = "qt.qpa.css.warning=false"
 
@@ -129,7 +133,7 @@ class SessionManager:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("✈️ Flight Bot v2.4 - Pro")
+        self.setWindowTitle("✈️ Flight Bot v2.5 - Pro")
         self.setMinimumSize(1280, 900)
         
         # 테마 초기화 - 저장된 설정에서 로드
@@ -154,6 +158,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'search_panel'):
             self.search_panel.restore_settings()
         self._setup_shortcuts()
+        
+        # 프로그램 시작 시 마지막 검색 결과 복원
+        QTimer.singleShot(500, self._restore_last_search)
 
     def _init_ui(self):
         # 전체 UI 스크롤 가능하도록 설정
@@ -161,13 +168,24 @@ class MainWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setStyleSheet("QScrollArea { border: none; background: #1a1a2e; }")
+        scroll.setStyleSheet("""
+            QScrollArea { 
+                border: none; 
+                background: transparent; 
+            }
+            QScrollArea > QWidget > QWidget { 
+                background: transparent; 
+            }
+        """)
         
         # 스크롤 내부 컨테이너
         container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        # HiDPI 환경에서 콘텐츠가 잘리지 않도록 최소 너비 설정
+        container.setMinimumWidth(1200)
         main_layout = QVBoxLayout(container)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(24, 24, 24, 24)
+        main_layout.setSpacing(18)
         
         # 1. Header
         header = QWidget()
@@ -177,7 +195,7 @@ class MainWindow(QMainWindow):
         v_title = QVBoxLayout()
         title = QLabel("✈️ 항공권 최저가 검색기")
         title.setObjectName("title")
-        subtitle = QLabel("Playwright 엔진 기반 실시간 항공권 비교 분석 v2.3")
+        subtitle = QLabel("Playwright 엔진 기반 실시간 항공권 비교 분석 v2.5")
         subtitle.setObjectName("subtitle")
         v_title.addWidget(title)
         v_title.addWidget(subtitle)
@@ -266,14 +284,20 @@ class MainWindow(QMainWindow):
         self.btn_toggle_search = QPushButton("▼ 검색 설정")
         self.btn_toggle_search.setStyleSheet("""
             QPushButton { 
-                background: transparent; 
-                color: #4cc9f0; 
-                font-weight: bold; 
+                background: rgba(34, 211, 238, 0.08); 
+                color: #22d3ee; 
+                font-weight: 600; 
                 text-align: left; 
-                padding: 5px;
-                border: none;
+                padding: 10px 16px;
+                border: 1px solid rgba(34, 211, 238, 0.15);
+                border-radius: 10px;
+                font-size: 14px;
             }
-            QPushButton:hover { color: #7dd3fc; }
+            QPushButton:hover { 
+                background: rgba(34, 211, 238, 0.15);
+                border: 1px solid rgba(34, 211, 238, 0.35);
+                color: #67e8f9; 
+            }
         """)
         self.btn_toggle_search.setCheckable(True)
         self.btn_toggle_search.setChecked(True)
@@ -286,27 +310,32 @@ class MainWindow(QMainWindow):
         self.search_panel.search_requested.connect(self._start_search)
         main_layout.addWidget(self.search_panel)
         
-        # 3. Filter & Progress
-        main_layout.addWidget(QLabel("필터 및 상태", objectName="section_title"))
-        filter_container = QWidget()
-        f_layout = QHBoxLayout(filter_container)
-        f_layout.setContentsMargins(0, 5, 0, 5)
-        
+        # 3. Filter Panel (별도 섹션)
+        main_layout.addWidget(QLabel("필터", objectName="section_title"))
         self.filter_panel = FilterPanel()
         self.filter_panel.filter_changed.connect(self._apply_filter)
-        f_layout.addWidget(self.filter_panel, 2)
+        main_layout.addWidget(self.filter_panel)
         
+        # 4. Progress Bar (별도 섹션, 크게 표시)
+        main_layout.addWidget(QLabel("검색 상태", objectName="section_title"))
         self.progress_bar = QProgressBar()
         self.progress_bar.setFormat("준비됨")
-        self.progress_bar.setMinimumHeight(30)
+        self.progress_bar.setMinimumHeight(42)
         self.progress_bar.setStyleSheet("""
-            QProgressBar { background: #16213e; border-radius: 6px; text-align: center; color: white; border: 1px solid #30475e; }
-            QProgressBar::chunk { background: #4cc9f0; border-radius: 6px; }
+            QProgressBar {
+                font-size: 14px;
+                font-weight: 600;
+                text-align: center;
+                border-radius: 8px;
+                padding: 2px;
+            }
+            QProgressBar::chunk {
+                border-radius: 6px;
+            }
         """)
-        f_layout.addWidget(self.progress_bar, 3)
-        main_layout.addWidget(filter_container)
+        main_layout.addWidget(self.progress_bar)
         
-        # 4. Content Area (Tabs) with Export Buttons
+        # 5. Content Area (Tabs) with Export Buttons
         result_header = QWidget()
         rh_layout = QHBoxLayout(result_header)
         rh_layout.setContentsMargins(0, 0, 0, 0)
@@ -407,6 +436,10 @@ class MainWindow(QMainWindow):
             if reply == QMessageBox.StandardButton.Yes:
                 # 새로운 cancel 메서드 사용 (브라우저 정리 포함)
                 self.worker.cancel()
+                # 스레드 안전 종료 대기 (최대 2초)
+                if not self.worker.wait(2000):
+                    self.worker.terminate()
+                    self.worker.wait(500)
                 self.search_panel.set_searching(False)
                 self.progress_bar.setRange(0, 100)
                 self.progress_bar.setValue(0)
@@ -755,6 +788,9 @@ class MainWindow(QMainWindow):
                     len(results),
                     results[0].price if results else None
                 )
+                
+                # 마지막 검색 결과를 DB에 저장 (프로그램 재시작 시 복원용)
+                self.db.save_last_search_results(self.current_search_params, results)
             
             best_price = results[0].price
             self.progress_bar.setFormat(f"✅ 검색 완료! 최저가: {best_price:,}원")
@@ -1078,6 +1114,96 @@ class MainWindow(QMainWindow):
                 self.log_viewer.append_log(f"📅 출발일 변경: {qdate.toString('yyyy-MM-dd')}")
         except Exception as e:
             logger.debug(f"Calendar date selection error: {e}")
+
+    def _restore_last_search(self):
+        """프로그램 시작 시 마지막 검색 결과 복원"""
+        try:
+            search_params, results, searched_at, hours_ago = self.db.get_last_search_results()
+            
+            if not results:
+                self.log_viewer.append_log("ℹ️ 이전 검색 기록이 없습니다.")
+                return
+            
+            # 검색 조건 복원
+            self.current_search_params = search_params
+            self.all_results = results
+            self.results = results
+            
+            # 테이블에 결과 표시
+            self.table.update_data(results)
+            
+            # 검색 패널에 조건 복원
+            try:
+                sp = self.search_panel
+                if search_params.get('origin'):
+                    idx = sp.cb_origin.findData(search_params['origin'])
+                    if idx >= 0:
+                        sp.cb_origin.setCurrentIndex(idx)
+                if search_params.get('dest'):
+                    idx = sp.cb_dest.findData(search_params['dest'])
+                    if idx >= 0:
+                        sp.cb_dest.setCurrentIndex(idx)
+                if search_params.get('dep'):
+                    dep_date = QDate.fromString(search_params['dep'], "yyyyMMdd")
+                    if dep_date.isValid():
+                        sp.date_dep.setDate(dep_date)
+                if search_params.get('ret'):
+                    ret_date = QDate.fromString(search_params['ret'], "yyyyMMdd")
+                    if ret_date.isValid():
+                        sp.date_ret.setDate(ret_date)
+                if search_params.get('adults'):
+                    sp.spin_adults.setValue(search_params['adults'])
+            except Exception as e:
+                logger.debug(f"검색 조건 복원 실패: {e}")
+            
+            # 로그 및 상태 표시
+            min_price = results[0].price if results else 0
+            origin = search_params.get('origin', '?')
+            dest = search_params.get('dest', '?')
+            
+            # 24시간 경과 여부 확인 및 경고
+            if hours_ago >= 24:
+                days_ago = int(hours_ago / 24)
+                warning_msg = (
+                    f"⚠️ 오래된 데이터 경고\n\n"
+                    f"마지막 검색: {searched_at}\n"
+                    f"({days_ago}일 {int(hours_ago % 24)}시간 전)\n\n"
+                    f"항공권 가격은 자주 변동됩니다.\n"
+                    f"정확한 가격을 위해 다시 검색하시겠습니까?"
+                )
+                reply = QMessageBox.question(
+                    self, "오래된 검색 결과",
+                    warning_msg,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                
+                if reply == QMessageBox.StandardButton.Yes:
+                    # 새로 검색 시작
+                    self.search_panel._on_search()
+                    return
+                else:
+                    # 오래된 데이터 사용
+                    self.progress_bar.setFormat(f"⚠️ {days_ago}일 전 데이터 | 최저가: {min_price:,}원")
+                    self.log_viewer.append_log(
+                        f"⚠️ 이전 검색 결과 복원 ({days_ago}일 전): "
+                        f"{origin}→{dest}, {len(results)}건, 최저가 {min_price:,}원"
+                    )
+            else:
+                # 24시간 이내 데이터
+                hours_text = f"{int(hours_ago)}시간 전" if hours_ago >= 1 else f"{int(hours_ago * 60)}분 전"
+                self.progress_bar.setFormat(f"📋 이전 검색 ({hours_text}) | 최저가: {min_price:,}원")
+                self.log_viewer.append_log(
+                    f"📋 이전 검색 결과 복원 ({hours_text}): "
+                    f"{origin}→{dest}, {len(results)}건, 최저가 {min_price:,}원"
+                )
+            
+            # 결과 탭으로 전환
+            self.tabs.setCurrentIndex(0)
+            self._apply_filter()
+            
+        except Exception as e:
+            logger.error(f"마지막 검색 결과 복원 실패: {e}")
+            self.log_viewer.append_log(f"ℹ️ 이전 검색 결과를 불러오지 못했습니다.")
 
     def closeEvent(self, event):
         """창 닫기 시 워커 스레드 및 리소스 정리"""

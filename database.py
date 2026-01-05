@@ -68,7 +68,9 @@ class PriceAlert:
 
 
 class FlightDatabase:
-    """항공권 데이터베이스 관리자"""
+    """항공권 데이터베이스 관리자 - 연결 재사용 최적화"""
+    
+    _local = None  # Thread-local storage
     
     def __init__(self, db_path: str = None):
         if db_path is None:
@@ -94,6 +96,23 @@ class FlightDatabase:
 
         logger.info(f"Database path: {self.db_path}")
         self._init_db()
+    
+    def _get_connection(self):
+        """Get or create thread-local connection for better performance"""
+        import threading
+        if FlightDatabase._local is None:
+            FlightDatabase._local = threading.local()
+        
+        if not hasattr(FlightDatabase._local, 'connections'):
+            FlightDatabase._local.connections = {}
+        
+        if self.db_path not in FlightDatabase._local.connections:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
+            conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes with reasonable safety
+            FlightDatabase._local.connections[self.db_path] = conn
+        
+        return FlightDatabase._local.connections[self.db_path]
     
     def _init_db(self):
         """데이터베이스 및 테이블 초기화"""
@@ -169,6 +188,41 @@ class FlightDatabase:
                 )
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_active ON price_alerts(is_active)")
+            
+            # 마지막 검색 결과 테이블 (프로그램 재시작 시 복원용)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS last_search_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    airline TEXT NOT NULL,
+                    price INTEGER NOT NULL,
+                    departure_time TEXT,
+                    arrival_time TEXT,
+                    stops INTEGER DEFAULT 0,
+                    source TEXT,
+                    return_departure_time TEXT,
+                    return_arrival_time TEXT,
+                    return_stops INTEGER DEFAULT 0,
+                    is_round_trip INTEGER DEFAULT 0,
+                    outbound_price INTEGER DEFAULT 0,
+                    return_price INTEGER DEFAULT 0,
+                    return_airline TEXT
+                )
+            """)
+            
+            # 마지막 검색 메타데이터 테이블
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS last_search_meta (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    origin TEXT,
+                    destination TEXT,
+                    departure_date TEXT,
+                    return_date TEXT,
+                    adults INTEGER DEFAULT 1,
+                    cabin_class TEXT DEFAULT 'ECONOMY',
+                    searched_at TEXT NOT NULL,
+                    result_count INTEGER DEFAULT 0
+                )
+            """)
             
             conn.commit()
     
@@ -488,6 +542,138 @@ class FlightDatabase:
             """, (1 if is_active else 0, alert_id))
             conn.commit()
             return cursor.rowcount > 0
+
+    # ===== 마지막 검색 결과 저장/복원 =====
+    
+    def save_last_search_results(self, search_params: Dict[str, Any], results: List[Any]):
+        """마지막 검색 결과를 DB에 저장 (프로그램 재시작 시 복원용)"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            
+            # 기존 결과 삭제
+            cursor.execute("DELETE FROM last_search_results")
+            cursor.execute("DELETE FROM last_search_meta")
+            
+            # 메타데이터 저장
+            cursor.execute("""
+                INSERT OR REPLACE INTO last_search_meta 
+                (id, origin, destination, departure_date, return_date, adults, cabin_class, searched_at, result_count)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                search_params.get('origin', ''),
+                search_params.get('dest', ''),
+                search_params.get('dep', ''),
+                search_params.get('ret'),
+                search_params.get('adults', 1),
+                search_params.get('cabin_class', 'ECONOMY'),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                len(results)
+            ))
+            
+            # 결과 저장 (최대 500개)
+            for flight in results[:500]:
+                cursor.execute("""
+                    INSERT INTO last_search_results 
+                    (airline, price, departure_time, arrival_time, stops, source,
+                     return_departure_time, return_arrival_time, return_stops,
+                     is_round_trip, outbound_price, return_price, return_airline)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    flight.airline,
+                    flight.price,
+                    flight.departure_time,
+                    flight.arrival_time,
+                    flight.stops,
+                    flight.source,
+                    getattr(flight, 'return_departure_time', ''),
+                    getattr(flight, 'return_arrival_time', ''),
+                    getattr(flight, 'return_stops', 0),
+                    1 if getattr(flight, 'is_round_trip', False) else 0,
+                    getattr(flight, 'outbound_price', 0),
+                    getattr(flight, 'return_price', 0),
+                    getattr(flight, 'return_airline', '')
+                ))
+            
+            conn.commit()
+            logger.info(f"마지막 검색 결과 저장: {len(results)}건")
+    
+    def get_last_search_results(self) -> tuple:
+        """저장된 마지막 검색 결과 복원
+        
+        Returns:
+            tuple: (search_params, results, searched_at, hours_ago)
+                - search_params: 검색 조건 딕셔너리
+                - results: FlightResult 객체 리스트
+                - searched_at: 검색 시간 문자열
+                - hours_ago: 검색 후 경과 시간 (시간 단위)
+        """
+        from scraper_v2 import FlightResult
+        
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # 메타데이터 조회
+            cursor.execute("SELECT * FROM last_search_meta WHERE id = 1")
+            meta_row = cursor.fetchone()
+            
+            if not meta_row:
+                return {}, [], "", 0
+            
+            meta = dict(meta_row)
+            search_params = {
+                'origin': meta.get('origin', ''),
+                'dest': meta.get('destination', ''),
+                'dep': meta.get('departure_date', ''),
+                'ret': meta.get('return_date'),
+                'adults': meta.get('adults', 1),
+                'cabin_class': meta.get('cabin_class', 'ECONOMY')
+            }
+            searched_at = meta.get('searched_at', '')
+            
+            # 경과 시간 계산
+            hours_ago = 0
+            if searched_at:
+                try:
+                    search_time = datetime.strptime(searched_at, "%Y-%m-%d %H:%M:%S")
+                    delta = datetime.now() - search_time
+                    hours_ago = delta.total_seconds() / 3600
+                except Exception:
+                    pass
+            
+            # 결과 조회
+            cursor.execute("SELECT * FROM last_search_results ORDER BY price ASC")
+            rows = cursor.fetchall()
+            
+            results = []
+            for row in rows:
+                r = dict(row)
+                flight = FlightResult(
+                    airline=r.get('airline', ''),
+                    price=r.get('price', 0),
+                    departure_time=r.get('departure_time', ''),
+                    arrival_time=r.get('arrival_time', ''),
+                    stops=r.get('stops', 0),
+                    source=r.get('source', 'Cached'),
+                    return_departure_time=r.get('return_departure_time', ''),
+                    return_arrival_time=r.get('return_arrival_time', ''),
+                    return_stops=r.get('return_stops', 0),
+                    is_round_trip=bool(r.get('is_round_trip', 0)),
+                    outbound_price=r.get('outbound_price', 0),
+                    return_price=r.get('return_price', 0),
+                    return_airline=r.get('return_airline', '')
+                )
+                results.append(flight)
+            
+            return search_params, results, searched_at, hours_ago
+    
+    def clear_last_search_results(self):
+        """저장된 마지막 검색 결과 삭제"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM last_search_results")
+            cursor.execute("DELETE FROM last_search_meta")
+            conn.commit()
 
 
 # 테스트

@@ -18,7 +18,7 @@ class SearchWorker(QThread):
     error = pyqtSignal(str)
     manual_mode_signal = pyqtSignal(object)  # active_searcher
 
-    def __init__(self, origin, destination, date, return_date, adults, cabin_class="ECONOMY", max_results=500):
+    def __init__(self, origin, destination, date, return_date, adults, cabin_class="ECONOMY", max_results=1000):
         super().__init__()
         self.origin = origin
         self.destination = destination
@@ -76,7 +76,7 @@ class MultiSearchWorker(QThread):
     all_finished = pyqtSignal(dict)  # {dest: [results]}
     error = pyqtSignal(str)
     
-    def __init__(self, origin, destinations, date, return_date, adults, max_results=500):
+    def __init__(self, origin, destinations, date, return_date, adults, max_results=1000):
         super().__init__()
         self.origin = origin
         self.destinations = destinations  # list of destination codes
@@ -90,6 +90,7 @@ class MultiSearchWorker(QThread):
         total = len(self.destinations)
         
         for i, dest in enumerate(self.destinations, 1):
+            searcher = None
             try:
                 self.progress.emit(f"🔍 [{i}/{total}] {dest} 검색 중...")
                 searcher = FlightSearcher()
@@ -100,10 +101,16 @@ class MultiSearchWorker(QThread):
                 )
                 all_results[dest] = results
                 self.single_finished.emit(dest, results)
-                searcher.close()
             except Exception as e:
                 self.progress.emit(f"⚠️ {dest} 검색 실패: {e}")
                 all_results[dest] = []
+            finally:
+                # 항상 브라우저 정리 보장
+                if searcher:
+                    try:
+                        searcher.close()
+                    except Exception:
+                        pass
         
         self.all_finished.emit(all_results)
 
@@ -114,7 +121,7 @@ class DateRangeWorker(QThread):
     date_result = pyqtSignal(str, int, str)  # date, min_price, airline
     all_finished = pyqtSignal(dict)  # {date: (price, airline)}
     
-    def __init__(self, origin, dest, dates, return_offset, adults, max_results=500):
+    def __init__(self, origin, dest, dates, return_offset, adults, max_results=1000):
         super().__init__()
         self.origin = origin
         self.dest = dest

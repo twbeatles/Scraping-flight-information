@@ -922,8 +922,8 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None, prefs=None):
         super().__init__(parent)
         self.prefs = prefs
-        self.setWindowTitle("설정 (Settings)")
-        self.setMinimumSize(500, 400)
+        self.setWindowTitle("⚙️ 설정 (Settings)")
+        self.setMinimumSize(600, 500)  # Increased size for better content display
         self.setStyleSheet(MODERN_THEME)
         self._init_ui()
         

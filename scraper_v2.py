@@ -141,10 +141,28 @@ class PlaywrightScraper:
         
         log("🌐 Playwright 브라우저 시작 중...")
         
+        # Playwright 드라이버 초기화
         try:
             self.playwright = sync_playwright().start()
+        except FileNotFoundError as e:
+            error_msg = (
+                "❌ Playwright 드라이버를 찾을 수 없습니다.\n\n"
+                "해결 방법:\n"
+                "1. 명령 프롬프트에서 실행: pip install playwright\n"
+                "2. 그 후 실행: playwright install\n\n"
+                f"상세 오류: {e}"
+            )
+            logger.error(error_msg)
+            raise BrowserInitError(error_msg)
         except Exception as e:
-            raise BrowserInitError(f"Playwright 초기화 실패: {e}")
+            error_msg = (
+                f"❌ Playwright 초기화에 실패했습니다.\n\n"
+                f"오류: {e}\n\n"
+                "해결 방법:\n"
+                "- playwright 패키지 재설치: pip install --upgrade playwright"
+            )
+            logger.error(error_msg)
+            raise BrowserInitError(error_msg)
         
         browser_args = [
             '--disable-blink-features=AutomationControlled',
@@ -159,6 +177,8 @@ class PlaywrightScraper:
         ]
         
         last_error = None
+        tried_browsers = []
+        
         for browser_name, channel in browsers_to_try:
             try:
                 log(f"  → {browser_name} 시도 중...")
@@ -174,21 +194,32 @@ class PlaywrightScraper:
                 return  # 성공시 반환
             except Exception as e:
                 last_error = e
+                tried_browsers.append(f"{browser_name}: {str(e)[:50]}")
                 logger.debug(f"{browser_name} 시작 실패: {e}")
                 continue
         
-        # 모든 브라우저 시작 실패
+        # 모든 브라우저 시작 실패 - 상세 안내 메시지
         self.close()
-        raise BrowserInitError(
-            f"브라우저를 시작할 수 없습니다.\n"
-            f"Chrome, Edge, 또는 Chromium이 설치되어 있는지 확인하세요.\n"
-            f"마지막 오류: {last_error}"
+        
+        error_details = "\n".join(f"  • {b}" for b in tried_browsers)
+        error_msg = (
+            "❌ 사용 가능한 브라우저를 찾을 수 없습니다.\n\n"
+            "📋 시도한 브라우저:\n"
+            f"{error_details}\n\n"
+            "💡 해결 방법 (택 1):\n"
+            "  1. Chrome 설치: https://www.google.com/chrome\n"
+            "  2. Edge 설치: https://www.microsoft.com/edge\n"
+            "  3. 또는 명령 프롬프트에서: playwright install chromium\n\n"
+            "※ Windows 10 이상에는 Edge가 기본 설치되어 있습니다.\n"
+            "   Edge가 있는데도 오류가 발생하면 Edge를 최신 버전으로 업데이트하세요."
         )
+        logger.error(error_msg)
+        raise BrowserInitError(error_msg)
     
     def search(self, origin: str, destination: str, 
                departure_date: str, return_date: Optional[str] = None,
                adults: int = 1, cabin_class: str = "ECONOMY",
-               max_results: int = 500,
+               max_results: int = 1000,
                emit: Callable[[str], None] = None) -> List[FlightResult]:
         """
         항공권 검색 (Playwright 사용, 실패시 수동 모드)
@@ -349,12 +380,13 @@ class PlaywrightScraper:
                     
                     # 다양한 오는편 옵션 제공 (전체 조합 후 최저가 필터링)
                     if outbound_flights and return_flights:
-                        # 성능 최적화: 가격순 정렬 후 상위 100개만 조합 (검색 범위 확대)
+                        # 가격순 정렬 후 상위 150개씩 조합 (최대 22,500개 조합)
                         outbound_flights.sort(key=lambda x: x['price'])
                         return_flights.sort(key=lambda x: x['price'])
-                        top_outbound = outbound_flights[:100]
-                        top_return = return_flights[:100]
+                        top_outbound = outbound_flights[:150]  # Increased for more options
+                        top_return = return_flights[:150]  # Increased for more options
                         
+                        log(f"⚡ 가는편 {len(top_outbound)}개 × 오는편 {len(top_return)}개 조합 생성 중...")
                         temp_results = []
                         for ob in top_outbound:
                             for ret in top_return:
@@ -386,7 +418,7 @@ class PlaywrightScraper:
                                 seen.add(key)
                                 unique_results.append(r)
                                 
-                        # 가격순 정렬 후 상위 max_results개만 유지 (GUI 성능 보호)
+                        # 가격순 정렬 후 상위 max_results개만 유지
                         unique_results.sort(key=lambda x: x.price)
                         results = unique_results[:max_results]
                         
@@ -486,11 +518,10 @@ class PlaywrightScraper:
                         all_flights[key] = f
                         new_count += 1
                 
-                # 스크롤 다운 및 스크롤 가능 여부 확인 (ScraperScripts 활용)
                 scroll_script = ScraperScripts.get_scroll_check_script()
                 scroll_result = self.page.evaluate(scroll_script)
                 
-                time.sleep(0.5)  # 데이터 로딩 시간
+                time.sleep(0.3)  # 데이터 로딩 시간 (최적화: 0.5 -> 0.3초)
                 
                 can_scroll = scroll_result.get('canScroll', False)
                 reached_bottom = scroll_result.get('reachedBottom', False)
@@ -503,7 +534,7 @@ class PlaywrightScraper:
                     if bottom_count >= 3:
                         logger.info(f"✅ 스크롤 최하단 도달 확인: {len(all_flights)}개 수집 완료, 다음 단계로 진행")
                         break
-                    time.sleep(0.8)
+                    time.sleep(0.5)  # 최적화: 0.8 -> 0.5초
                     continue
                 else:
                     self._bottom_count = 0  # 리셋
@@ -693,7 +724,7 @@ class FlightSearcher:
     def search(self, origin: str, destination: str, 
                departure_date: str, return_date: Optional[str] = None,
                adults: int = 1, cabin_class: str = "ECONOMY",
-               max_results: int = 500,
+               max_results: int = 1000,
                progress_callback: Callable = None) -> List[FlightResult]:
         """항공권 검색 진입점"""
         def emit(msg):

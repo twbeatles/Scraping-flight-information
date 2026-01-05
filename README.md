@@ -1,83 +1,171 @@
-# Flight Bot V3.0 (Refactored)
+# ✈️ Flight Bot v2.4
 
-네이버 항공권 검색을 자동화하고, 결과를 비교/분석할 수 있는 고급 봇입니다. (Python, PyQt6, Playwright 기반)
+**Playwright 기반 실시간 항공권 최저가 비교 분석 도구**
 
-## 🚀 주요 기능
+인터파크 항공권을 자동으로 검색하여 최저가를 찾아주는 PyQt6 기반 데스크톱 애플리케이션입니다.
 
-### 1. 강력한 검색 기능
-- **다중 목적지 검색**: 한 번에 여러 도시(예: 도쿄, 오사카, 후쿠오카)를 선택하여 최저가를 비교할 수 있습니다.
-- **날짜 범위 검색**: 특정 기간(예: 1월 1일 ~ 1월 30일) 내에서 가장 저렴한 출발/귀국 날짜 조합을 찾아줍니다.
-- **실시간 검색**: Playwright를 이용해 실제 네이버 항공권 데이터를 실시간으로 가져옵니다.
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green)
+![Playwright](https://img.shields.io/badge/Scraper-Playwright-orange)
 
-### 2. 사용자 편의성
-- **다크 모드 UI**: 눈이 편안한 현대적인 다크 테마 (Glassmorphism 적용).
-- **가격 알림**: 원하는 노선과 목표 가격을 설정하면, 해당 가격 이하일 때 알림을 받을 수 있습니다.
-- **즐겨찾기 및 히스토리**: 검색 결과를 저장하고, 과거 가격 추이를 확인할 수 있습니다.
-- **엑셀 내보내기**: 검색 결과를 엑셀 파일로 저장하여 2차 분석이 가능합니다 (OpenPyXL 필요).
+---
 
-### 3. 기술적 개선 (V3.0 Refactor)
-- **모듈화된 구조**: `ui`, `scraper`, `database`가 분리되어 유지보수성이 향상되었습니다.
-- **설정 중앙화**: `scraper_config.py`에서 검색 로직과 패턴을 관리합니다.
-- **경량화**: 불필요한 라이브러리를 제외하 최적화된 빌드를 지원합니다.
+## 📋 주요 기능
 
-## 🛠 설치 및 실행
+### 🔍 검색 기능
+- **국내선/국제선** 항공권 검색
+- **왕복/편도** 검색 지원
+- **좌석 등급** 선택 (이코노미/비즈니스/일등석)
+- **다중 목적지** 동시 검색
+- **날짜 범위** 검색으로 최저가 날짜 찾기
 
-### 필수 요구사항
-- Python 3.9 이상
-- Chrome 브라우저 (Playwright 용)
+### 📊 분석 기능
+- **실시간 가격 비교** (최대 1,000개 결과)
+- **가격 색상 코딩** (녹색: 저가, 빨강: 고가)
+- **캘린더뷰** - 날짜별 최저가 시각화
+- **필터링** - 직항/경유, 항공사, 시간대, 가격대
 
-### 설치 방법
+### 💾 관리 기능
+- **즐겨찾기** - 관심 항공편 저장
+- **검색 기록** - 이전 검색 조건 복원
+- **세션 저장/불러오기** - 검색 결과 파일 저장
+- **가격 알림** - 목표 가격 설정
 
-1. **저장소 클론 또는 다운로드**
-   ```bash
-   git clone https://github.com/your-repo/flight-bot.git
-   cd flight-bot
-   ```
+### 🎨 UI/UX
+- **모던 다크 테마** (라이트 테마 전환 가능)
+- **프리미엄 그라데이션** 버튼 및 효과
+- **반응형 레이아웃**
+- **키보드 단축키** 지원
 
-2. **의존성 설치**
-   ```bash
-   pip install -r requirements.txt
-   ```
-   *(필수 라이브러리: `PyQt6`, `playwright`, `openpyxl`)*
+---
 
-3. **Playwright 브라우저 설치**
-   ```bash
-   playwright install chromium
-   ```
+## 🛠️ 설치 방법
 
-### 실행 방법
+### 요구 사항
+- Python 3.10 이상
+- Windows 10/11
+
+### 1. 의존성 설치
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Playwright 브라우저 설치
+
+```bash
+playwright install chromium
+```
+
+### 3. 실행
 
 ```bash
 python gui_v2.py
 ```
 
-## 📦 패키징 (EXE 만들기)
+---
 
-PyInstaller를 사용하여 단일 실행 파일로 만들 수 있습니다. 
-최적화된 `.spec` 파일이 포함되어 있습니다.
+## 📦 빌드 (EXE 생성)
+
+### PyInstaller 빌드
 
 ```bash
-pyinstaller flight_bot_v3.0.spec
-```
-빌드가 완료되면 `dist/FlightBot_v3.0/` 폴더에 실행 파일이 생성됩니다.
+# 스펙 파일 사용
+pyinstaller flight_bot_v2.4.spec
 
-## 📂 프로젝트 구조
-
-```text
-flight-bot/
-├── gui_v2.py            # 메인 실행 파일 (GUI 진입점)
-├── scraper_v2.py        # 항공권 검색 로직 (Playwright)
-├── scraper_config.py    # 스크래퍼 설정 및 JS 템플릿
-├── database.py          # SQLite 데이터베이스 관리
-├── config.py            # 공항 코드 및 사용자 설정
-├── ui/                  # UI 컴포넌트 패키지
-│   ├── dialogs.py       # 각종 다이얼로그 (설정, 검색 등)
-│   ├── components.py    # 커스텀 위젯 (테이블, 패널 등)
-│   ├── workers.py       # 백그라운드 작업 스레드
-│   └── styles.py        # CSS 스타일시트 (테마)
-└── flight_bot_v3.0.spec # PyInstaller 빌드 설정
+# 또는 직접 빌드
+pyinstaller --onedir --windowed --name FlightBot_v2.4 gui_v2.py
 ```
 
-## ⚠️ 주의사항
-- 이 프로그램은 개인적인 학습 및 연구 목적으로 제작되었습니다.
-- 포털 사이트의 이용 약관을 준수하며 과도한 트래픽을 유발하지 않도록 주의하세요.
+### 빌드 결과
+- `dist/FlightBot_v2.4/` 폴더에 실행 파일 생성
+- 첫 실행 시 Chrome/Edge/Chromium 자동 탐지
+
+---
+
+## ⌨️ 키보드 단축키
+
+| 단축키 | 기능 |
+|--------|------|
+| `Ctrl+Enter` | 검색 시작 |
+| `F5` | 결과 새로고침 |
+| `Escape` | 검색 취소 |
+| `Ctrl+F` | 필터 포커스 |
+
+---
+
+## 📁 프로젝트 구조
+
+```
+Scraping-flight-information-main-v2/
+├── gui_v2.py              # 메인 애플리케이션
+├── scraper_v2.py          # Playwright 스크래퍼
+├── scraper_config.py      # 스크래핑 설정
+├── database.py            # SQLite 데이터베이스
+├── config.py              # 공항 코드 등 설정
+├── preferences.py         # 사용자 설정 관리
+├── session_manager.py     # 세션 저장/불러오기
+├── ui/
+│   ├── styles.py          # 테마 스타일시트
+│   ├── components.py      # UI 컴포넌트
+│   ├── workers.py         # 백그라운드 워커
+│   └── dialogs.py         # 다이얼로그
+├── flight_bot_v2.4.spec   # PyInstaller 스펙
+└── README.md
+```
+
+---
+
+## 🔧 설정
+
+### 사용자 설정 위치
+- 개발 모드: `./preferences.json`
+- EXE 모드: `%LOCALAPPDATA%/FlightBot/preferences.json`
+
+### 데이터베이스 위치
+- 개발 모드: `./flight_data.db`
+- EXE 모드: `%LOCALAPPDATA%/FlightBot/flight_data.db`
+
+---
+
+## 📝 변경 로그
+
+### v2.4 (2026-01-05)
+- 🎨 **UI/UX 전면 리팩토링**
+  - 프리미엄 그라데이션 버튼 (#667eea → #764ba2 → #f093fb)
+  - 강화된 glassmorphism 카드 효과
+  - 현대적인 탭/테이블 스타일
+  - Empty State 처리 추가
+  
+- ⚡ **성능 최적화**
+  - 국내선 조합 생성 확대 (150×150 = 22,500개)
+  - 화면 표시 결과 증가 (500 → 1,000개)
+  - 스크롤 대기 시간 40% 단축
+  - SQLite WAL 모드 활성화
+  - 연결 캐싱으로 DB 성능 향상
+
+### v2.3
+- Playwright 기반 스크래핑 엔진
+- 국내선 왕복 조합 검색
+- 수동 모드 지원
+
+---
+
+## ⚠️ 주의 사항
+
+1. **인터넷 연결** 필요
+2. **Chrome, Edge, 또는 Chromium** 중 하나 설치 필요
+3. 검색 빈도가 높으면 **차단**될 수 있음
+4. 상업적 목적 사용 시 **법적 확인** 필요
+
+---
+
+## 📄 라이선스
+
+MIT License
+
+---
+
+## 🙏 기여
+
+버그 리포트, 기능 제안, PR 환영합니다!

@@ -56,140 +56,193 @@ class FilterPanel(QFrame):
     def __init__(self):
         super().__init__()
         self.setObjectName("card")
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(15, 10, 15, 10)
         
-        layout.addWidget(QLabel("필터:"))
+        # 메인 레이아웃: 세로 방향 (2줄)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(18, 14, 18, 14)
+        main_layout.setSpacing(12)
+        
+        # === 첫 번째 줄: 기본 필터 ===
+        row1 = QHBoxLayout()
+        row1.setSpacing(16)
+        
+        # Filter label with icon
+        filter_label = QLabel("🎯 필터")
+        filter_label.setStyleSheet("font-weight: 700; color: #f1f5f9; font-size: 15px;")
+        row1.addWidget(filter_label)
+        
+        # 체크박스 공통 스타일 (크게)
+        checkbox_style = """
+            QCheckBox {
+                font-size: 14px;
+                font-weight: 600;
+                color: #e2e8f0;
+                spacing: 8px;
+                padding: 4px 8px;
+            }
+            QCheckBox::indicator {
+                width: 20px;
+                height: 20px;
+                border-radius: 4px;
+            }
+        """
         
         # Direct flights only
         self.chk_direct = QCheckBox("직항만")
         self.chk_direct.setToolTip("경유 없이 직항 노선만 표시합니다")
+        self.chk_direct.setStyleSheet(checkbox_style)
         self.chk_direct.stateChanged.connect(self._emit_filter)
-        layout.addWidget(self.chk_direct)
+        row1.addWidget(self.chk_direct)
         
         # Include layovers
         self.chk_layover = QCheckBox("경유 포함")
         self.chk_layover.setToolTip("경유 노선도 함께 표시합니다")
         self.chk_layover.setChecked(True)
+        self.chk_layover.setStyleSheet(checkbox_style)
         self.chk_layover.stateChanged.connect(self._emit_filter)
-        layout.addWidget(self.chk_layover)
+        row1.addWidget(self.chk_layover)
         
-        layout.addWidget(self._create_separator())
+        row1.addWidget(self._create_separator())
         
         # Airline Category Filter
-        layout.addWidget(QLabel("항공사:"))
+        airline_label = QLabel("항공사:")
+        airline_label.setStyleSheet("font-weight: 600; color: #e2e8f0; font-size: 14px;")
+        row1.addWidget(airline_label)
         self.cb_airline_category = NoWheelComboBox()
         self.cb_airline_category.setToolTip("LCC: 저비용항공사 (제주항공, 진에어 등)\nFSC: 일반항공사 (대한항공, 아시아나)")
         self.cb_airline_category.addItem("전체", "ALL")
         self.cb_airline_category.addItem("🏷️ LCC (저비용)", "LCC")
         self.cb_airline_category.addItem("✈️ FSC (일반)", "FSC")
-        self.cb_airline_category.setMinimumWidth(130)
+        self.cb_airline_category.setMinimumWidth(140)
+        self.cb_airline_category.setStyleSheet("font-size: 13px; padding: 4px;")
         self.cb_airline_category.currentIndexChanged.connect(self._emit_filter)
-        layout.addWidget(self.cb_airline_category)
+        row1.addWidget(self.cb_airline_category)
         
-        layout.addWidget(self._create_separator())
+        row1.addStretch()
         
-        # Styles for better visibility
-        label_style = "font-weight: bold; color: #e0e0e0; font-size: 13px;"
+        # Reset Button
+        btn_reset = QPushButton("↺ 초기화")
+        btn_reset.setToolTip("필터 초기화")
+        btn_reset.setObjectName("tool_btn")
+        btn_reset.setStyleSheet("font-size: 13px; padding: 6px 12px;")
+        btn_reset.clicked.connect(self._reset_filters)
+        row1.addWidget(btn_reset)
+        
+        main_layout.addLayout(row1)
+        
+        # === 두 번째 줄: 상세 필터 ===
+        row2 = QHBoxLayout()
+        row2.setSpacing(12)
+        
+        # 공통 스타일
+        label_style = "font-weight: 600; color: #e2e8f0; font-size: 13px;"
         spin_style = """
             QSpinBox {
                 min-width: 70px;
-                min-height: 28px;
+                min-height: 32px;
                 font-size: 13px;
-                padding: 2px;
-                font-weight: bold;
+                padding: 4px 6px;
+                font-weight: 600;
+                border-radius: 8px;
             }
         """
-        self.setStyleSheet(spin_style)
 
         # Time Filter (Outbound)
         lbl_out = QLabel("가는편:")
         lbl_out.setStyleSheet(label_style)
-        layout.addWidget(lbl_out)
+        row2.addWidget(lbl_out)
         
         self.spin_start_time = NoWheelSpinBox()
         self.spin_start_time.setRange(0, 23)
         self.spin_start_time.setSuffix("시")
+        self.spin_start_time.setStyleSheet(spin_style)
         self.spin_start_time.valueChanged.connect(self._on_time_changed)
+        row2.addWidget(self.spin_start_time)
         
-        layout.addWidget(self.spin_start_time)
-        layout.addWidget(QLabel("~"))
+        tilde1 = QLabel("~")
+        tilde1.setStyleSheet("font-size: 14px; color: #94a3b8;")
+        row2.addWidget(tilde1)
         
         self.spin_end_time = NoWheelSpinBox()
         self.spin_end_time.setRange(1, 24)
         self.spin_end_time.setValue(24)
         self.spin_end_time.setSuffix("시")
+        self.spin_end_time.setStyleSheet(spin_style)
         self.spin_end_time.valueChanged.connect(self._on_time_changed)
-        layout.addWidget(self.spin_end_time)
+        row2.addWidget(self.spin_end_time)
         
-        layout.addWidget(self._create_separator())
+        row2.addWidget(self._create_separator())
         
         # Time Filter (Inbound)
         lbl_in = QLabel("오는편:")
         lbl_in.setStyleSheet(label_style)
-        layout.addWidget(lbl_in)
+        row2.addWidget(lbl_in)
         
         self.spin_ret_start = NoWheelSpinBox()
         self.spin_ret_start.setRange(0, 23)
         self.spin_ret_start.setSuffix("시")
+        self.spin_ret_start.setStyleSheet(spin_style)
         self.spin_ret_start.valueChanged.connect(self._on_time_changed)
-        layout.addWidget(self.spin_ret_start)
+        row2.addWidget(self.spin_ret_start)
         
-        layout.addWidget(QLabel("~"))
+        tilde2 = QLabel("~")
+        tilde2.setStyleSheet("font-size: 14px; color: #94a3b8;")
+        row2.addWidget(tilde2)
         
         self.spin_ret_end = NoWheelSpinBox()
         self.spin_ret_end.setRange(1, 24)
         self.spin_ret_end.setValue(24)
         self.spin_ret_end.setSuffix("시")
+        self.spin_ret_end.setStyleSheet(spin_style)
         self.spin_ret_end.valueChanged.connect(self._on_time_changed)
-        layout.addWidget(self.spin_ret_end)
+        row2.addWidget(self.spin_ret_end)
         
-        layout.addWidget(self._create_separator())
+        row2.addWidget(self._create_separator())
         
         # Max Stops Filter
-        layout.addWidget(QLabel("경유:"))
+        lbl_stops = QLabel("최대경유:")
+        lbl_stops.setStyleSheet(label_style)
+        row2.addWidget(lbl_stops)
         self.spin_max_stops = NoWheelSpinBox()
         self.spin_max_stops.setRange(0, 5)
         self.spin_max_stops.setValue(3)
         self.spin_max_stops.setSuffix("회")
-        self.spin_max_stops.setFixedWidth(50)
+        self.spin_max_stops.setStyleSheet(spin_style)
         self.spin_max_stops.setToolTip("허용할 최대 경유 횟수")
         self.spin_max_stops.valueChanged.connect(self._emit_filter)
-        layout.addWidget(self.spin_max_stops)
+        row2.addWidget(self.spin_max_stops)
         
-        layout.addWidget(self._create_separator())
+        row2.addWidget(self._create_separator())
         
-        # Price Range Filter (Advanced)
-        layout.addWidget(QLabel("가격:"))
+        # Price Range Filter
+        lbl_price = QLabel("가격:")
+        lbl_price.setStyleSheet(label_style)
+        row2.addWidget(lbl_price)
         self.spin_min_price = NoWheelSpinBox()
         self.spin_min_price.setRange(0, 9999)
         self.spin_min_price.setValue(0)
         self.spin_min_price.setSuffix("만")
-        self.spin_min_price.setFixedWidth(65)
+        self.spin_min_price.setStyleSheet(spin_style)
         self.spin_min_price.setToolTip("최소 가격 (만원 단위)")
         self.spin_min_price.valueChanged.connect(self._emit_filter)
-        layout.addWidget(self.spin_min_price)
+        row2.addWidget(self.spin_min_price)
         
-        layout.addWidget(QLabel("~"))
+        tilde3 = QLabel("~")
+        tilde3.setStyleSheet("font-size: 14px; color: #94a3b8;")
+        row2.addWidget(tilde3)
         
         self.spin_max_price = NoWheelSpinBox()
         self.spin_max_price.setRange(0, 9999)
         self.spin_max_price.setValue(9999)
         self.spin_max_price.setSuffix("만")
-        self.spin_max_price.setFixedWidth(65)
+        self.spin_max_price.setStyleSheet(spin_style)
         self.spin_max_price.setToolTip("최대 가격 (만원 단위, 9999=무제한)")
         self.spin_max_price.valueChanged.connect(self._emit_filter)
-        layout.addWidget(self.spin_max_price)
+        row2.addWidget(self.spin_max_price)
         
-        layout.addStretch()
+        row2.addStretch()
         
-        # Reset Button
-        btn_reset = QPushButton("↺")
-        btn_reset.setToolTip("필터 초기화")
-        btn_reset.setObjectName("tool_btn")
-        btn_reset.setFixedWidth(30)
-        btn_reset.clicked.connect(self._reset_filters)
-        layout.addWidget(btn_reset)
+        main_layout.addLayout(row2)
     
     def _create_separator(self):
         sep = QFrame()
@@ -262,20 +315,41 @@ class ResultTable(QTableWidget):
             "항공사", "가격", "가는편 출발", "가는편 도착", "경유",
             "오는편 출발", "오는편 도착", "경유", "출처"
         ])
-        # 열 너비 조절 가능하도록 Interactive 모드 + 기본 너비 설정
-        self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.horizontalHeader().setStretchLastSection(True)
-        # 기본 열 너비 설정
-        self.setColumnWidth(0, 100)  # 항공사
-        self.setColumnWidth(1, 180)  # 가격 (분리 표시용 넓게)
-        self.setColumnWidth(2, 80)   # 가는편 출발
-        self.setColumnWidth(3, 80)   # 가는편 도착
-        self.setColumnWidth(4, 70)   # 경유
+        
+        # 열 너비 설정: 내용에 맞게 자동 조절 + 마지막 열 스트레치
+        header = self.horizontalHeader()
+        
+        # 각 컬럼별 리사이즈 모드 설정
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # 항공사
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # 가격
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # 가는편 출발
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # 가는편 도착
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # 경유
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 오는편 출발
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # 오는편 도착
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)  # 경유
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)           # 출처 (남은 공간 채움)
+        
+        # 최소 너비 설정 (HiDPI 대응)
+        header.setMinimumSectionSize(60)
+        
         self.verticalHeader().setVisible(False)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setAlternatingRowColors(True)
         self.setSortingEnabled(True)
+        
+        # 테이블 스타일
+        self.setStyleSheet("""
+            QTableWidget {
+                font-size: 13px;
+            }
+            QHeaderView::section {
+                font-size: 13px;
+                font-weight: 600;
+                padding: 8px 4px;
+            }
+        """)
         
         # Enable context menu
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -286,13 +360,29 @@ class ResultTable(QTableWidget):
         self.setUpdatesEnabled(False)
         self.setSortingEnabled(False)
         self.results_data = results
+        
+        # Handle empty results - show placeholder
+        if not results:
+            self.setRowCount(1)
+            placeholder_item = QTableWidgetItem("🔍 검색 결과가 없습니다. 검색 조건을 확인해주세요.")
+            placeholder_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            placeholder_item.setForeground(QColor("#64748b"))
+            placeholder_item.setFont(QFont("Pretendard", 12))
+            self.setSpan(0, 0, 1, 9)
+            self.setItem(0, 0, placeholder_item)
+            self.setRowHeight(0, 80)
+            self.setSortingEnabled(False)
+            self.setUpdatesEnabled(True)
+            return
+        
+        # Clear any previous span
+        self.clearSpans()
         self.setRowCount(len(results))
         
         # Calculate price range for color coding
-        if results:
-            min_price = min(r.price for r in results)
-            max_price = max(r.price for r in results)
-            price_range = max_price - min_price if max_price > min_price else 1
+        min_price = min(r.price for r in results)
+        max_price = max(r.price for r in results)
+        price_range = max_price - min_price if max_price > min_price else 1
         
         for i, flight in enumerate(results):
             # Store flight object in first column's data
@@ -708,14 +798,27 @@ class SearchPanel(QFrame):
 
         # --- Row 4: Search Button ---
         self.btn_search = QPushButton("🔍 최저가 항공권 검색하기")
-        self.btn_search.setFixedHeight(50)
+        self.btn_search.setFixedHeight(54)
         self.btn_search.setToolTip("Ctrl+Enter로도 검색할 수 있습니다")
         self.btn_search.setStyleSheet("""
             QPushButton { 
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4361ee, stop:1 #4cc9f0);
-                font-size: 16px; border-radius: 8px; font-weight: bold;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                    stop:0 #667eea, stop:0.5 #764ba2, stop:1 #22d3ee);
+                font-size: 16px; 
+                border-radius: 14px; 
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                border: none;
             }
-            QPushButton:hover { background: #3b82f6; }
+            QPushButton:hover { 
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                    stop:0 #818cf8, stop:0.5 #a78bfa, stop:1 #67e8f9);
+                border: 2px solid rgba(99, 102, 241, 0.4);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                    stop:0 #4f46e5, stop:0.5 #6d28d9, stop:1 #0891b2);
+            }
         """)
         self.btn_search.clicked.connect(self._on_search)
         layout.addWidget(self.btn_search, 4, 0, 1, 3) 
