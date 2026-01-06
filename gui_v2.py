@@ -456,13 +456,25 @@ class MainWindow(QMainWindow):
             dep = self.current_search_params.get('dep', '')
             ret = self.current_search_params.get('ret', '')
             
-            origin_city = config.CITY_CODES_MAP.get(origin, origin)
-            dest_city = config.CITY_CODES_MAP.get(dest, dest)
+            # CITY_CODES_MAP에 있으면 도시 코드(c:)로, 없으면 공항 코드(a:)로 처리
+            if origin in config.CITY_CODES_MAP:
+                origin_code = config.CITY_CODES_MAP[origin]
+                origin_prefix = "c"
+            else:
+                origin_code = origin
+                origin_prefix = "a"
+            
+            if dest in config.CITY_CODES_MAP:
+                dest_code = config.CITY_CODES_MAP[dest]
+                dest_prefix = "c"
+            else:
+                dest_code = dest
+                dest_prefix = "a"
             
             if ret:
-                url = f"https://travel.interpark.com/air/search/c:{origin_city}-c:{dest_city}-{dep}/c:{dest_city}-c:{origin_city}-{ret}"
+                url = f"https://travel.interpark.com/air/search/{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{dep}/{dest_prefix}:{dest_code}-{origin_prefix}:{origin_code}-{ret}"
             else:
-                url = f"https://travel.interpark.com/air/search/c:{origin_city}-c:{dest_city}-{dep}"
+                url = f"https://travel.interpark.com/air/search/{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{dep}"
             
             webbrowser.open(url)
             self.log_viewer.append_log(f"브라우저에서 예약 페이지 열기: {flight.airline}")

@@ -271,16 +271,31 @@ class PlaywrightScraper:
             self.page = self.context.new_page()
             
             # URL 구성
-            origin_city = config.CITY_CODES_MAP.get(origin.upper(), origin.upper())
-            dest_city = config.CITY_CODES_MAP.get(destination.upper(), destination.upper())
+            # CITY_CODES_MAP에 있으면 도시 코드(c:)로, 없으면 공항 코드(a:)로 처리
+            origin_upper = origin.upper()
+            dest_upper = destination.upper()
+            
+            if origin_upper in config.CITY_CODES_MAP:
+                origin_code = config.CITY_CODES_MAP[origin_upper]
+                origin_prefix = "c"
+            else:
+                origin_code = origin_upper
+                origin_prefix = "a"
+            
+            if dest_upper in config.CITY_CODES_MAP:
+                dest_code = config.CITY_CODES_MAP[dest_upper]
+                dest_prefix = "c"
+            else:
+                dest_code = dest_upper
+                dest_prefix = "a"
             
             if return_date:
-                url = f"https://travel.interpark.com/air/search/c:{origin_city}-c:{dest_city}-{departure_date}/c:{dest_city}-c:{origin_city}-{return_date}?cabin={cabin}&infant=0&child=0&adult={adults}"
+                url = f"https://travel.interpark.com/air/search/{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{departure_date}/{dest_prefix}:{dest_code}-{origin_prefix}:{origin_code}-{return_date}?cabin={cabin}&infant=0&child=0&adult={adults}"
             else:
-                url = f"https://travel.interpark.com/air/search/c:{origin_city}-c:{dest_city}-{departure_date}?cabin={cabin}&infant=0&child=0&adult={adults}"
+                url = f"https://travel.interpark.com/air/search/{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{departure_date}?cabin={cabin}&infant=0&child=0&adult={adults}"
             
             if is_domestic:
-                log(f"🇰🇷 국내선 검색 모드 ({origin_city} → {dest_city})")
+                log(f"🇰🇷 국내선 검색 모드 ({origin_code} → {dest_code})")
             else:
                 log(f"✈️ 국제선 검색 모드")
             log(f"URL: {url}")
