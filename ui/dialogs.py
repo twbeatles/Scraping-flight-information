@@ -358,14 +358,19 @@ class MultiDestDialog(QDialog):
         adult_layout.addStretch()
         layout.addLayout(adult_layout)
         
-        # Action Buttons
+        # Action Buttons (Cancel left, Action right - UX standard)
         action_layout = QHBoxLayout()
+        action_layout.addStretch()
+        
+        btn_cancel = QPushButton("❌ 취소")
+        btn_cancel.setObjectName("secondary_btn")
+        btn_cancel.clicked.connect(self.reject)
+        action_layout.addWidget(btn_cancel)
+        
         btn_search = QPushButton("🔍 다중 검색 시작")
         btn_search.clicked.connect(self._on_search)
-        btn_cancel = QPushButton("취소")
-        btn_cancel.clicked.connect(self.reject)
         action_layout.addWidget(btn_search)
-        action_layout.addWidget(btn_cancel)
+        
         layout.addLayout(action_layout)
     
     def _toggle_all(self, checked):

@@ -10,8 +10,8 @@ import os
 import webbrowser
 
 # HiDPI 지원 활성화 (Qt 초기화 전에 설정해야 함)
-os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
-os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+# os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+# os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
 # Qt CSS 경고 억제 (Unknown property content 등)
 os.environ["QT_LOGGING_RULES"] = "qt.qpa.css.warning=false"
@@ -35,11 +35,6 @@ import logging
 
 # 로거 설정
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logger.setLevel(logging.DEBUG)
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    logger.addHandler(handler)
 
 from scraper_v2 import FlightSearcher, FlightResult
 import config
@@ -69,18 +64,49 @@ from ui.dialogs import (
 # 기본 테마 (호환성)
 MODERN_THEME = DARK_THEME
 
+# === 상수 정의 ===
+MAX_PRICE_FILTER = 99_990_000  # 필터 최대값 (무제한 표시용)
+
 class SessionManager:
     """세션 저장/복원 관리자"""
     
     @staticmethod
+    def _safe_serialize(obj):
+        """객체를 JSON 직렬화 가능한 형태로 안전하게 변환"""
+        if hasattr(obj, 'to_dict'):
+            return obj.to_dict()
+        elif hasattr(obj, '__dict__'):
+            return {k: v for k, v in obj.__dict__.items() if not k.startswith('_')}
+        else:
+            # 기본 타입은 그대로 반환, 직렬화 불가능한 경우 문자열로 변환
+            try:
+                json.dumps(obj)
+                return obj
+            except (TypeError, ValueError):
+                return str(obj)
+    
+    @staticmethod
     def save_session(filepath: str, search_params: dict, results: list) -> bool:
-        """세션을 JSON 파일로 저장"""
+        """세션을 JSON 파일로 저장 (직렬화 검증 포함)"""
         try:
+            # 결과 데이터를 안전하게 직렬화
+            serialized_results = []
+            for r in results:
+                try:
+                    serialized = SessionManager._safe_serialize(r)
+                    # 직렬화 가능 여부 사전 검증
+                    json.dumps(serialized)
+                    serialized_results.append(serialized)
+                except (TypeError, ValueError) as e:
+                    logger.warning(f"결과 직렬화 실패, 건너뜀: {e}")
+                    continue
+            
             session_data = {
                 "saved_at": datetime.now().isoformat(),
                 "search_params": search_params,
-                "results": [r.to_dict() if hasattr(r, 'to_dict') else r for r in results]
+                "results": serialized_results
             }
+            
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(session_data, f, ensure_ascii=False, indent=2)
             return True
@@ -149,6 +175,7 @@ class MainWindow(QMainWindow):
         self.results = []
         self.all_results = []
         self.current_search_params = {}
+        self._cancelling = False  # 검색 취소 중복 방지 플래그
         
         # prefs는 이미 테마 로드 시 초기화됨
         self.db = FlightDatabase()
@@ -316,21 +343,26 @@ class MainWindow(QMainWindow):
         self.filter_panel.filter_changed.connect(self._apply_filter)
         main_layout.addWidget(self.filter_panel)
         
-        # 4. Progress Bar (별도 섹션, 크게 표시)
-        main_layout.addWidget(QLabel("검색 상태", objectName="section_title"))
+        # 4. Progress Bar (별도 섹션, 크게 표시 - Enhanced styling)
+        main_layout.addWidget(QLabel("🔄 검색 상태", objectName="section_title"))
         self.progress_bar = QProgressBar()
-        self.progress_bar.setFormat("준비됨")
-        self.progress_bar.setMinimumHeight(42)
+        self.progress_bar.setFormat("✨ 준비됨")
+        self.progress_bar.setMinimumHeight(48)
         self.progress_bar.setStyleSheet("""
             QProgressBar {
                 font-size: 14px;
-                font-weight: 600;
+                font-weight: 700;
                 text-align: center;
-                border-radius: 8px;
-                padding: 2px;
+                border-radius: 14px;
+                padding: 4px;
+                background: rgba(15, 52, 96, 0.6);
+                border: 1px solid rgba(34, 211, 238, 0.2);
+                color: #e2e8f0;
             }
             QProgressBar::chunk {
-                border-radius: 6px;
+                border-radius: 12px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                    stop:0 #06b6d4, stop:0.4 #667eea, stop:0.7 #a855f7, stop:1 #ec4899);
             }
         """)
         main_layout.addWidget(self.progress_bar)
@@ -429,22 +461,30 @@ class MainWindow(QMainWindow):
     def _on_escape(self):
         """Escape 키 처리 - 검색 취소 및 브라우저 정리"""
         if self.worker and self.worker.isRunning():
-            reply = QMessageBox.question(
-                self, "검색 취소", "현재 검색을 취소하시겠습니까?\n(브라우저가 안전하게 종료됩니다)",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                # 새로운 cancel 메서드 사용 (브라우저 정리 포함)
-                self.worker.cancel()
-                # 스레드 안전 종료 대기 (최대 2초)
-                if not self.worker.wait(2000):
-                    self.worker.terminate()
-                    self.worker.wait(500)
-                self.search_panel.set_searching(False)
-                self.progress_bar.setRange(0, 100)
-                self.progress_bar.setValue(0)
-                self.progress_bar.setFormat("검색 취소됨")
-                self.log_viewer.append_log("⚠️ 사용자가 검색을 취소했습니다. 브라우저가 정리되었습니다.")
+            # 중복 취소 방지
+            if self._cancelling:
+                return
+            self._cancelling = True
+            
+            try:
+                reply = QMessageBox.question(
+                    self, "검색 취소", "현재 검색을 취소하시겠습니까?\n(브라우저가 안전하게 종료됩니다)",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    # 새로운 cancel 메서드 사용 (브라우저 정리 포함)
+                    self.worker.cancel()
+                    # 스레드 안전 종료 대기 (최대 3초)
+                    if not self.worker.wait(3000):
+                        self.worker.terminate()
+                        self.worker.wait(1000)
+                    self.search_panel.set_searching(False)
+                    self.progress_bar.setRange(0, 100)
+                    self.progress_bar.setValue(0)
+                    self.progress_bar.setFormat("검색 취소됨")
+                    self.log_viewer.append_log("⚠️ 사용자가 검색을 취소했습니다. 브라우저가 정리되었습니다.")
+            finally:
+                self._cancelling = False
 
     def _on_table_double_click(self, row, col):
         """테이블 더블클릭 - 예약 페이지 열기"""
@@ -805,21 +845,21 @@ class MainWindow(QMainWindow):
                 self.db.save_last_search_results(self.current_search_params, results)
             
             best_price = results[0].price
-            self.progress_bar.setFormat(f"✅ 검색 완료! 최저가: {best_price:,}원")
-            self.log_viewer.append_log(f"검색 완료. {len(results)}건 발견.")
+            self.progress_bar.setFormat(f"✨ 검색 완료! 최저가: {best_price:,}원 🏆")
+            self.log_viewer.append_log(f"✅ 검색 완료. {len(results)}건 발견, 최저가: {best_price:,}원")
             self._apply_filter()
             self.tabs.setCurrentIndex(0)  # Switch to results
         else:
-            self.progress_bar.setFormat("검색 결과 없음")
-            self.log_viewer.append_log("검색 결과가 없습니다.")
+            self.progress_bar.setFormat("💭 검색 결과 없음")
+            self.log_viewer.append_log("⚠️ 검색 결과가 없습니다.")
             QMessageBox.information(self, "결과 없음", "항공권을 찾을 수 없습니다.")
 
     def _search_error(self, err_msg):
         self.search_panel.set_searching(False)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("오류 발생")
-        self.log_viewer.append_log(f"오류 발생: {err_msg}")
+        self.progress_bar.setFormat("❌ 오류 발생")
+        self.log_viewer.append_log(f"❌ 오류 발생: {err_msg}")
         QMessageBox.critical(self, "오류", f"검색 중 오류 발생:\n{err_msg}")
 
     def _activate_manual_mode(self, searcher):
@@ -845,14 +885,17 @@ class MainWindow(QMainWindow):
             results = self.active_searcher.extract_manual()
             if results:
                 self._search_finished(results)
-                self.active_searcher.close()
-                self.active_searcher = None
-                self.manual_frame.setVisible(False)
             else:
                 self.log_viewer.append_log("수동 추출 실패: 데이터 없음")
                 QMessageBox.warning(self, "실패", "데이터를 찾을 수 없습니다.")
         except Exception as e:
             QMessageBox.critical(self, "오류", str(e))
+        finally:
+            # 항상 정리
+            if self.active_searcher:
+                self.active_searcher.close()
+                self.active_searcher = None
+            self.manual_frame.setVisible(False)
 
     def _open_main_settings(self):
         dlg = SettingsDialog(self, self.prefs)
@@ -949,11 +992,12 @@ class MainWindow(QMainWindow):
             
             # 5. Price Range Filter (Advanced)
             min_price = filters.get("min_price", 0)
-            max_price = filters.get("max_price", 99990000)
+            max_price = filters.get("max_price", MAX_PRICE_FILTER)
             if f.price < min_price:
                 continue
-            if max_price < 99990000 and f.price > max_price:  # 9999만원 = 무제한
-                continue
+            if max_price < MAX_PRICE_FILTER:
+                if f.price > max_price:
+                    continue
                 
             filtered.append(f)
             
@@ -962,8 +1006,8 @@ class MainWindow(QMainWindow):
         # 상태 메시지에 가격 범위 표시
         price_msg = ""
         min_p = filters.get("min_price", 0)
-        max_p = filters.get("max_price", 99990000)
-        if min_p > 0 or max_p < 99990000:
+        max_p = filters.get("max_price", MAX_PRICE_FILTER)
+        if min_p > 0 or max_p < MAX_PRICE_FILTER:
             price_msg = f" | 가격: {min_p//10000}~{max_p//10000}만원"
         
         msg = f"필터링: {len(filtered)}/{len(self.all_results)} | 시간: {start_h}~{end_h}시 | 항공사: {airline_category}{price_msg}"
@@ -1223,8 +1267,11 @@ class MainWindow(QMainWindow):
         workers = [self.worker, self.multi_worker, self.date_worker]
         for worker in workers:
             if worker and worker.isRunning():
+                if hasattr(worker, 'cancel'):
+                    worker.cancel()
                 worker.requestInterruption()  # 안전한 중단 요청
-                if not worker.wait(1000):  # 1초 대기
+                if not worker.wait(3000):  # 3초 대기
+                    logger.warning("Worker 스레드가 응답하지 않습니다. 강제 종료합니다.")
                     worker.terminate()  # 응답 없으면 강제 종료
                     worker.wait(500)
         
@@ -1247,6 +1294,17 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    # 로깅 설정 (중앙 집중식)
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+
+    # HiDPI 설정
+    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+    os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+    
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     

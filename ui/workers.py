@@ -3,14 +3,18 @@
 Background Workers for Flight Bot
 """
 import logging
+import threading
 import traceback
 from datetime import datetime, timedelta
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from scraper_v2 import FlightSearcher
+from scraper_v2 import FlightSearcher, BrowserInitError, NetworkError
 
 # 로거 설정
 logger = logging.getLogger(__name__)
+
+# 상수 설정
+MAX_DATE_RANGE_SEARCHES = 30
 
 class SearchWorker(QThread):
     progress = pyqtSignal(str)
@@ -29,15 +33,25 @@ class SearchWorker(QThread):
         self.max_results = max_results
         self.searcher = FlightSearcher()
         self._cancelled = False
+        self._cancel_lock = threading.Lock()  # 취소 플래그 스레드 안전성
 
     def cancel(self):
-        """검색 취소 요청 및 브라우저 정리"""
-        self._cancelled = True
+        """스레드 안전한 검색 취소 요청 및 브라우저 정리"""
+        with self._cancel_lock:
+            if self._cancelled:  # 중복 취소 방지
+                return
+            self._cancelled = True
+        
         try:
             if self.searcher:
                 self.searcher.close()
         except Exception as e:
             logging.debug(f"검색 취소 중 오류 (무시됨): {e}")
+    
+    def is_cancelled(self) -> bool:
+        """스레드 안전하게 취소 상태 확인"""
+        with self._cancel_lock:
+            return self._cancelled
 
     def run(self):
         try:
@@ -48,7 +62,7 @@ class SearchWorker(QThread):
                 progress_callback=lambda msg: self.progress.emit(msg)
             )
             
-            if self._cancelled:
+            if self.is_cancelled():
                 self.progress.emit("검색이 취소되었습니다.")
                 return
             
@@ -56,13 +70,19 @@ class SearchWorker(QThread):
                 self.manual_mode_signal.emit(self.searcher)
             else:
                 self.finished.emit(results)
+        except BrowserInitError as e:
+            if not self.is_cancelled():
+                self.error.emit(f"브라우저 오류:\n{e.message}")
+        except NetworkError as e:
+            if not self.is_cancelled():
+                self.error.emit(f"네트워크 오류:\n{e.message}")
         except Exception as e:
-            if not self._cancelled:
+            if not self.is_cancelled():
                 traceback.print_exc()
                 self.error.emit(str(e))
         finally:
             # 항상 브라우저 정리 보장
-            if self._cancelled or not self.searcher.is_manual_mode():
+            if self.is_cancelled() or not self.searcher.is_manual_mode():
                 try:
                     self.searcher.close()
                 except Exception:
@@ -84,12 +104,25 @@ class MultiSearchWorker(QThread):
         self.return_date = return_date
         self.adults = adults
         self.max_results = max_results
+        self._cancelled = False
+        self._cancel_lock = threading.Lock()
+
+    def cancel(self):
+        with self._cancel_lock:
+            self._cancelled = True
+
+    def is_cancelled(self):
+        with self._cancel_lock:
+            return self._cancelled
     
     def run(self):
         all_results = {}
         total = len(self.destinations)
         
         for i, dest in enumerate(self.destinations, 1):
+            if self.is_cancelled():
+                break
+
             searcher = None
             try:
                 self.progress.emit(f"🔍 [{i}/{total}] {dest} 검색 중...")
@@ -129,19 +162,31 @@ class DateRangeWorker(QThread):
         self.return_offset = return_offset  # days after departure for return
         self.adults = adults
         self.max_results = max_results
+        self._cancelled = False
+        self._cancel_lock = threading.Lock()
+
+    def cancel(self):
+        with self._cancel_lock:
+            self._cancelled = True
+
+    def is_cancelled(self):
+        with self._cancel_lock:
+            return self._cancelled
     
     def run(self):
         all_results = {}
         total = len(self.dates)
         
         # 최대 검색 횟수 제한 (무한 루프 방지)
-        MAX_SEARCHES = 30
-        if total > MAX_SEARCHES:
-            self.progress.emit(f"⚠️ 최대 {MAX_SEARCHES}개 날짜만 검색합니다.")
-            self.dates = self.dates[:MAX_SEARCHES]
-            total = MAX_SEARCHES
+        if total > MAX_DATE_RANGE_SEARCHES:
+            self.progress.emit(f"⚠️ 최대 {MAX_DATE_RANGE_SEARCHES}개 날짜만 검색합니다.")
+            self.dates = self.dates[:MAX_DATE_RANGE_SEARCHES]
+            total = MAX_DATE_RANGE_SEARCHES
         
         for i, date in enumerate(self.dates, 1):
+            if self.is_cancelled():
+                break
+
             try:
                 self.progress.emit(f"📅 [{i}/{total}] {date} 검색 중...")
                 

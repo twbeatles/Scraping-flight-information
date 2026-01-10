@@ -1,4 +1,4 @@
-# ✈️ Flight Bot v2.4
+# ✈️ Flight Bot v2.5
 
 **Playwright 기반 실시간 항공권 최저가 비교 분석 도구**
 
@@ -71,14 +71,14 @@ python gui_v2.py
 
 ```bash
 # 스펙 파일 사용
-pyinstaller flight_bot_v2.4.spec
+pyinstaller flight_bot_v2.5.spec
 
 # 또는 직접 빌드
-pyinstaller --onedir --windowed --name FlightBot_v2.4 gui_v2.py
+pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 ```
 
 ### 빌드 결과
-- `dist/FlightBot_v2.4/` 폴더에 실행 파일 생성
+- `dist/FlightBot_v2.5.exe` 실행 파일 생성 (onefile 모드)
 - 첫 실행 시 Chrome/Edge/Chromium 자동 탐지
 
 ---
@@ -110,7 +110,7 @@ Scraping-flight-information-main-v2/
 │   ├── components.py      # UI 컴포넌트
 │   ├── workers.py         # 백그라운드 워커
 │   └── dialogs.py         # 다이얼로그
-├── flight_bot_v2.4.spec   # PyInstaller 스펙
+├── flight_bot_v2.5.spec   # PyInstaller 스펙
 └── README.md
 ```
 
@@ -129,6 +129,21 @@ Scraping-flight-information-main-v2/
 ---
 
 ## 📝 변경 로그
+
+### v2.5 (2026-01-10)
+- 🛡️ **안정성 및 리소스 관리 대폭 개선** (Critical Fixes)
+  - 검색 중단(Cancel) 요청 시 즉각 반응하도록 로직 개선
+  - 브라우저 종료 시 리소스 누수(좀비 프로세스) 원천 차단
+  - 수동 모드 종료 시 메모리 누수 수정
+  
+- 🔌 **구조적 개선**
+  - 데이터베이스 Multi-thread 안전성 확보 (Thread-Local Connection)
+  - 브라우저 초기화 오류 시 사용자 친화적 메시지 표시
+  - 로깅 시스템 통합 및 최적화
+  
+- 🐛 **버그 수정**
+  - 고가 항공권 필터링 로직 오류 수정
+  - 데이터 직렬화(to_dict) 누락 필드 보완
 
 ### v2.4 (2026-01-05)
 - 🎨 **UI/UX 전면 리팩토링**

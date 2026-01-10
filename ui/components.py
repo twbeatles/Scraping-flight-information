@@ -147,9 +147,9 @@ class FilterPanel(QFrame):
             }
         """
 
-        # Time Filter (Outbound)
-        lbl_out = QLabel("가는편:")
-        lbl_out.setStyleSheet(label_style)
+        # Time Filter (Outbound) with icon
+        lbl_out = QLabel("🛫 가는편:")
+        lbl_out.setStyleSheet("font-weight: 700; color: #22d3ee; font-size: 13px;")
         row2.addWidget(lbl_out)
         
         self.spin_start_time = NoWheelSpinBox()
@@ -173,9 +173,9 @@ class FilterPanel(QFrame):
         
         row2.addWidget(self._create_separator())
         
-        # Time Filter (Inbound)
-        lbl_in = QLabel("오는편:")
-        lbl_in.setStyleSheet(label_style)
+        # Time Filter (Inbound) with icon
+        lbl_in = QLabel("🛬 오는편:")
+        lbl_in.setStyleSheet("font-weight: 700; color: #a78bfa; font-size: 13px;")
         row2.addWidget(lbl_in)
         
         self.spin_ret_start = NoWheelSpinBox()
@@ -214,9 +214,9 @@ class FilterPanel(QFrame):
         
         row2.addWidget(self._create_separator())
         
-        # Price Range Filter
-        lbl_price = QLabel("가격:")
-        lbl_price.setStyleSheet(label_style)
+        # Price Range Filter with icon
+        lbl_price = QLabel("💰 가격:")
+        lbl_price.setStyleSheet("font-weight: 700; color: #4ade80; font-size: 13px;")
         row2.addWidget(lbl_price)
         self.spin_min_price = NoWheelSpinBox()
         self.spin_min_price.setRange(0, 9999)
@@ -399,7 +399,13 @@ class ResultTable(QTableWidget):
             
             # Price (Color-coded: green=cheap, red=expensive)
             # 국내선: 가는편/오는편 가격 분리 표시
-            if hasattr(flight, 'outbound_price') and flight.outbound_price > 0:
+            # Add best price badge for minimum price
+            if flight.price == min_price:
+                if hasattr(flight, 'outbound_price') and flight.outbound_price > 0:
+                    price_text = f"🏆 {flight.price:,}원 ({flight.outbound_price:,}+{flight.return_price:,})"
+                else:
+                    price_text = f"🏆 {flight.price:,}원"
+            elif hasattr(flight, 'outbound_price') and flight.outbound_price > 0:
                 price_text = f"{flight.price:,}원 ({flight.outbound_price:,}+{flight.return_price:,})"
             else:
                 price_text = f"{flight.price:,}원"
@@ -452,15 +458,16 @@ class ResultTable(QTableWidget):
             self.setItem(i, 8, QTableWidgetItem(flight.source))
             
             # Set row height
-            self.setRowHeight(i, 45)
+            self.setRowHeight(i, 48)
             
-            # 최저가 행 배경색 강조
+            # 최저가 행 배경색 강조 (더 눈에 띄게)
             if flight.price == min_price:
-                highlight_color = QColor("#22c55e20")  # 녹색 반투명
+                highlight_color = QColor(34, 197, 94, 40)  # 녹색 반투명 (#22c55e with alpha)
                 for col in range(self.columnCount()):
                     item = self.item(i, col)
                     if item:
                         item.setBackground(highlight_color)
+                        item.setFont(QFont("Pretendard", 11, QFont.Weight.Bold))
             
         self.setSortingEnabled(True)
         self.setUpdatesEnabled(True)  # 렌더링 다시 활성화

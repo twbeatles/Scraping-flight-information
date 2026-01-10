@@ -8,17 +8,14 @@ import os
 import sys
 import json
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
+from scraper_v2 import FlightResult
 
 # 로거 설정
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logger.setLevel(logging.DEBUG)
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    logger.addHandler(handler)
 
 
 @dataclass
@@ -70,7 +67,7 @@ class PriceAlert:
 class FlightDatabase:
     """항공권 데이터베이스 관리자 - 연결 재사용 최적화"""
     
-    _local = None  # Thread-local storage
+    _local = threading.local()  # Thread-local storage (클래스 레벨 초기화)
     
     def __init__(self, db_path: str = None):
         if db_path is None:
@@ -98,21 +95,30 @@ class FlightDatabase:
         self._init_db()
     
     def _get_connection(self):
-        """Get or create thread-local connection for better performance"""
-        import threading
-        if FlightDatabase._local is None:
-            FlightDatabase._local = threading.local()
-        
+        """Thread-safe connection management with proper initialization"""
         if not hasattr(FlightDatabase._local, 'connections'):
             FlightDatabase._local.connections = {}
         
-        if self.db_path not in FlightDatabase._local.connections:
+        conn = FlightDatabase._local.connections.get(self.db_path)
+        
+        # 연결이 없거나 닫혔을 경우 새로 생성
+        if conn is None:
             conn = sqlite3.connect(self.db_path, check_same_thread=False)
             conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
             conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes with reasonable safety
             FlightDatabase._local.connections[self.db_path] = conn
+        else:
+            # 연결 유효성 검사
+            try:
+                conn.execute("SELECT 1")
+            except sqlite3.ProgrammingError:
+                # 연결이 닫혔으면 재생성
+                conn = sqlite3.connect(self.db_path, check_same_thread=False)
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
+                FlightDatabase._local.connections[self.db_path] = conn
         
-        return FlightDatabase._local.connections[self.db_path]
+        return conn
     
     def _init_db(self):
         """데이터베이스 및 테이블 초기화"""
@@ -230,7 +236,7 @@ class FlightDatabase:
     
     def add_favorite(self, flight_data: Dict[str, Any], search_params: Dict[str, Any] = None) -> int:
         """즐겨찾기 추가"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO favorites 
@@ -256,7 +262,7 @@ class FlightDatabase:
     
     def get_favorites(self) -> List[FavoriteItem]:
         """모든 즐겨찾기 조회"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM favorites ORDER BY created_at DESC")
@@ -265,7 +271,7 @@ class FlightDatabase:
     
     def get_favorite_by_id(self, fav_id: int) -> Optional[FavoriteItem]:
         """ID로 즐겨찾기 조회"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM favorites WHERE id = ?", (fav_id,))
@@ -274,7 +280,7 @@ class FlightDatabase:
     
     def update_favorite_note(self, fav_id: int, note: str) -> bool:
         """즐겨찾기 메모 수정"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE favorites SET note = ? WHERE id = ?", (note, fav_id))
             conn.commit()
@@ -282,7 +288,7 @@ class FlightDatabase:
     
     def remove_favorite(self, fav_id: int) -> bool:
         """즐겨찾기 삭제"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM favorites WHERE id = ?", (fav_id,))
             conn.commit()
@@ -290,7 +296,7 @@ class FlightDatabase:
     
     def is_favorite(self, airline: str, price: int, departure_time: str, origin: str, dest: str) -> bool:
         """이미 즐겨찾기에 있는지 확인"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT COUNT(*) FROM favorites 
@@ -304,7 +310,7 @@ class FlightDatabase:
     def add_price_history(self, origin: str, dest: str, dep_date: str, 
                           price: int, airline: str = None):
         """가격 히스토리 추가"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO price_history 
@@ -337,7 +343,7 @@ class FlightDatabase:
         """노선별 가격 히스토리 조회"""
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""
@@ -383,7 +389,7 @@ class FlightDatabase:
                    return_date: str = None, adults: int = 1,
                    result_count: int = 0, min_price: int = None):
         """검색 로그 저장"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO search_logs 
@@ -399,7 +405,7 @@ class FlightDatabase:
     
     def get_popular_routes(self, limit: int = 10) -> List[Dict[str, Any]]:
         """인기 노선 조회 (검색 빈도 기준)"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT origin, destination, COUNT(*) as count,
@@ -419,7 +425,7 @@ class FlightDatabase:
     
     def get_stats(self) -> Dict[str, int]:
         """데이터베이스 통계"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             
             cursor.execute("SELECT COUNT(*) FROM favorites")
@@ -442,7 +448,7 @@ class FlightDatabase:
         """오래된 데이터 정리"""
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM price_history WHERE recorded_at < ?", (cutoff,))
             cursor.execute("DELETE FROM search_logs WHERE searched_at < ?", (cutoff,))
@@ -451,7 +457,7 @@ class FlightDatabase:
     def optimize(self):
         """데이터베이스 최적화 (VACUUM)"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 conn.execute("VACUUM")
             logger.info("Database optimized (VACUUM completed)")
         except Exception as e:
@@ -462,7 +468,7 @@ class FlightDatabase:
     def add_price_alert(self, origin: str, dest: str, dep_date: str, 
                         return_date: str, target_price: int) -> int:
         """가격 알림 추가"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO price_alerts 
@@ -477,7 +483,7 @@ class FlightDatabase:
     
     def get_active_alerts(self) -> List[PriceAlert]:
         """활성화된 가격 알림 조회"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""
@@ -490,7 +496,7 @@ class FlightDatabase:
     
     def get_all_alerts(self) -> List[PriceAlert]:
         """모든 가격 알림 조회"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM price_alerts ORDER BY created_at DESC")
@@ -499,7 +505,7 @@ class FlightDatabase:
     
     def update_alert_check(self, alert_id: int, current_price: int) -> bool:
         """알림 마지막 체크 시간 및 가격 업데이트"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE price_alerts 
@@ -515,7 +521,7 @@ class FlightDatabase:
     
     def mark_alert_triggered(self, alert_id: int) -> bool:
         """알림 발동 상태로 표시"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE price_alerts 
@@ -527,7 +533,7 @@ class FlightDatabase:
     
     def delete_alert(self, alert_id: int) -> bool:
         """가격 알림 삭제"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM price_alerts WHERE id = ?", (alert_id,))
             conn.commit()
@@ -535,7 +541,7 @@ class FlightDatabase:
     
     def toggle_alert_active(self, alert_id: int, is_active: bool) -> bool:
         """가격 알림 활성화/비활성화"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE price_alerts SET is_active = ? WHERE id = ?
@@ -547,7 +553,7 @@ class FlightDatabase:
     
     def save_last_search_results(self, search_params: Dict[str, Any], results: List[Any]):
         """마지막 검색 결과를 DB에 저장 (프로그램 재시작 시 복원용)"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             
             # 기존 결과 삭제
@@ -571,7 +577,12 @@ class FlightDatabase:
             ))
             
             # 결과 저장 (최대 500개)
-            for flight in results[:500]:
+            limit = 500
+            actual_count = min(len(results), limit)
+            if len(results) > limit:
+                logger.info(f"마지막 검색 결과 저장: {actual_count}/{len(results)}건 (제한)")
+            
+            for flight in results[:limit]:
                 cursor.execute("""
                     INSERT INTO last_search_results 
                     (airline, price, departure_time, arrival_time, stops, source,
@@ -602,14 +613,10 @@ class FlightDatabase:
         
         Returns:
             tuple: (search_params, results, searched_at, hours_ago)
-                - search_params: 검색 조건 딕셔너리
-                - results: FlightResult 객체 리스트
-                - searched_at: 검색 시간 문자열
-                - hours_ago: 검색 후 경과 시간 (시간 단위)
         """
-        from scraper_v2 import FlightResult
+        # FlightResult import is now global
         
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
@@ -669,7 +676,7 @@ class FlightDatabase:
     
     def clear_last_search_results(self):
         """저장된 마지막 검색 결과 삭제"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM last_search_results")
             cursor.execute("DELETE FROM last_search_meta")

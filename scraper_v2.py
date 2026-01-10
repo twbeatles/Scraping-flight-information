@@ -7,7 +7,7 @@ Uses Playwright for scraping with manual fallback when auto-extraction fails.
 import time
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import List, Optional, Dict, Any, Callable
 import logging
 from playwright.sync_api import sync_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
@@ -18,11 +18,6 @@ from scraper_config import ScraperScripts
 
 # 로거 설정 (중복 핸들러 방지)
 logger = logging.getLogger("ScraperV2")
-if not logger.handlers:
-    logger.setLevel(logging.INFO)
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    logger.addHandler(handler)
 
 
 # === 사용자 정의 예외 클래스 ===
@@ -76,22 +71,7 @@ class FlightResult:
 
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "airline": self.airline,
-            "price": self.price,
-            "currency": self.currency,
-            "departure_time": self.departure_time,
-            "arrival_time": self.arrival_time,
-            "duration": self.duration,
-            "stops": self.stops,
-            "flight_number": self.flight_number,
-            "source": self.source,
-            "return_departure_time": self.return_departure_time,
-            "return_arrival_time": self.return_arrival_time,
-            "return_stops": self.return_stops,
-            "is_round_trip": self.is_round_trip,
-            "return_airline": self.return_airline
-        }
+        return asdict(self)
 
 
 class PlaywrightScraper:
@@ -543,10 +523,9 @@ class PlaywrightScraper:
                 
                 # 최하단 도달 + 새 데이터 없음 로직
                 if reached_bottom and new_count == 0:
-                    bottom_count = getattr(self, '_bottom_count', 0) + 1
-                    self._bottom_count = bottom_count
-                    logger.debug(f"최하단 도달 체크: {bottom_count}/3회 (새 항목 없음)")
-                    if bottom_count >= 3:
+                    self._bottom_count += 1
+                    logger.debug(f"최하단 도달 체크: {self._bottom_count}/3회 (새 항목 없음)")
+                    if self._bottom_count >= 3:
                         logger.info(f"✅ 스크롤 최하단 도달 확인: {len(all_flights)}개 수집 완료, 다음 단계로 진행")
                         break
                     time.sleep(0.5)  # 최적화: 0.8 -> 0.5초
@@ -556,9 +535,8 @@ class PlaywrightScraper:
                 
                 # 스크롤이 더 이상 불가능하면 종료
                 if not can_scroll:
-                    no_scroll_count = getattr(self, '_no_scroll_count', 0) + 1
-                    self._no_scroll_count = no_scroll_count
-                    if no_scroll_count >= 3:
+                    self._no_scroll_count += 1
+                    if self._no_scroll_count >= 3:
                         logger.info(f"스크롤 끝 도달: 더 이상 스크롤할 수 없음 ({len(all_flights)}개 수집)")
                         break
                 else:
@@ -566,10 +544,9 @@ class PlaywrightScraper:
                 
                 # 새 항목 없으면 카운트 (lazy loading 대기)
                 if new_count == 0:
-                    no_new_count = getattr(self, '_no_new_count', 0) + 1
-                    self._no_new_count = no_new_count
-                    if no_new_count >= 8:  # 8회 연속 새 항목 없으면 종료
-                        logger.info(f"스크롤 조기 종료: {no_new_count}회 연속 새 항목 없음 ({len(all_flights)}개 수집)")
+                    self._no_new_count += 1
+                    if self._no_new_count >= 8:  # 8회 연속 새 항목 없으면 종료
+                        logger.info(f"스크롤 조기 종료: {self._no_new_count}회 연속 새 항목 없음 ({len(all_flights)}개 수집)")
                         break
                 else:
                     self._no_new_count = 0
@@ -694,35 +671,26 @@ class PlaywrightScraper:
     
     def close(self):
         """브라우저 및 리소스 정리"""
-        try:
-            if self.page:
+        resources = [
+            ('page', self.page),
+            ('context', self.context),
+            ('browser', self.browser),
+            ('playwright', self.playwright)
+        ]
+        
+        for name, resource in resources:
+            if resource:
                 try:
-                    self.page.close()
-                except Exception:
-                    pass
-            if self.context:
-                try:
-                    self.context.close()
-                except Exception:
-                    pass
-            if self.browser:
-                try:
-                    self.browser.close()
-                except Exception:
-                    pass
-            if self.playwright:
-                try:
-                    self.playwright.stop()
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.debug(f"브라우저 종료 중 예외 (무시됨): {e}")
-        finally:
-            self.page = None
-            self.context = None
-            self.browser = None
-            self.playwright = None
-            self.manual_mode = False
+                    if name == 'playwright':
+                        resource.stop()
+                    else:
+                        resource.close()
+                except Exception as e:
+                    logger.debug(f"{name} 정리 중 오류 (무시됨): {e}")
+                finally:
+                    setattr(self, name, None)
+        
+        self.manual_mode = False
     
     def is_manual_mode(self) -> bool:
         """수동 모드 여부 확인"""
