@@ -54,6 +54,13 @@ AIRLINE_CATEGORIES = {
 # 모든 알려진 항공사 목록 (필터용)
 ALL_AIRLINES = AIRLINE_CATEGORIES["LCC"] + AIRLINE_CATEGORIES["FSC"] + ["기타"]
 
+def validate_airport_code(code: str) -> bool:
+    """공항/도시 코드 유효성 검사 (3자리 영문)"""
+    if not code:
+        return False
+    normalized = code.strip().upper()
+    return len(normalized) == 3 and normalized.isalpha() and normalized.isascii()
+
 def get_airline_category(airline_name: str) -> str:
     """항공사 이름으로 카테고리 반환"""
     airline_name = airline_name.strip()

@@ -3,6 +3,8 @@
 Configuration and Scripts for Flight Scraper V2
 """
 
+import json
+
 # === 타임아웃 및 재시도 설정 ===
 MAX_RETRY_COUNT = 3
 RETRY_DELAY_SECONDS = 2
@@ -202,6 +204,101 @@ class ScraperScripts:
                         retStops: isRoundTrip ? retStops : 0,
                         isRoundTrip: isRoundTrip
                     }});
+                }} catch (e) {{ }}
+            }}
+            return results;
+        }}
+        """
+
+    @staticmethod
+    def get_click_flight_by_details_script(airline: str, dep_time: str, arr_time: str, price_text: str):
+        """특정 항공편(항공사/시간/가격) 클릭 JS"""
+        airline_js = json.dumps(airline or "")
+        dep_js = json.dumps(dep_time or "")
+        arr_js = json.dumps(arr_time or "")
+        price_js = json.dumps(price_text or "")
+        return f"""
+        () => {{
+            const airline = {airline_js};
+            const dep = {dep_js};
+            const arr = {arr_js};
+            const priceText = {price_js};
+            const buttons = document.querySelectorAll('button');
+            for (const btn of buttons) {{
+                const text = btn.textContent || '';
+                if (airline && !text.includes(airline)) continue;
+                if (dep && !text.includes(dep)) continue;
+                if (arr && !text.includes(arr)) continue;
+                if (priceText && !text.includes(priceText)) continue;
+                btn.click();
+                return true;
+            }}
+            return false;
+        }}
+        """
+
+    @staticmethod
+    def get_international_prices_fallback_script():
+        """국제선 가격 추출 보조 JS (구조 변경 대비)"""
+        return f"""
+        () => {{
+            const results = [];
+            const candidates = document.querySelectorAll(
+                'li[data-index], div[data-index], li[class*="result"], div[class*="result"], li[class*="ticket"], div[class*="ticket"]'
+            );
+
+            for (const card of candidates) {{
+                try {{
+                    const text = card.textContent || '';
+                    const priceMatch = text.match(/{REGEX_PRICE}/);
+                    if (!priceMatch) continue;
+                    const price = parseInt(priceMatch[1].replace(/[^0-9]/g, ''));
+
+                    const timeMatches = text.match(/{REGEX_TIME}/g) || [];
+                    const times = [];
+                    for (const t of timeMatches) {{
+                        const parts = t.match(/{REGEX_TIME}/);
+                        if (parts && parts.length >= 3) {{
+                            times.push(parts[1], parts[2]);
+                        }}
+                    }}
+                    if (times.length < 2) continue;
+
+                    let airline = "기타";
+                    const logoImgs = card.querySelectorAll('img[alt]');
+                    if (logoImgs.length > 0) {{
+                        airline = logoImgs[0].alt.replace(' 로고', '').trim();
+                    }}
+
+                    let stops = 0;
+                    let retStops = 0;
+                    const stopMatches = text.match(/{REGEX_STOPS}/g);
+                    if (stopMatches) {{
+                        stops = parseInt(stopMatches[0].replace(/[^0-9]/g, ''));
+                        retStops = (stopMatches.length > 1)
+                            ? parseInt(stopMatches[1].replace(/[^0-9]/g, ''))
+                            : stops;
+                    }} else if (text.includes("직항")) {{
+                        stops = 0;
+                        retStops = 0;
+                    }} else {{
+                        stops = 1;
+                        retStops = 1;
+                    }}
+
+                    const isRoundTrip = times.length >= 4;
+                    results.push({{
+                        airline: airline,
+                        price: price,
+                        depTime: times[0],
+                        arrTime: times[1],
+                        stops: stops,
+                        retDepTime: isRoundTrip ? times[2] : '',
+                        retArrTime: isRoundTrip ? times[3] : '',
+                        retStops: retStops,
+                        isRoundTrip: isRoundTrip
+                    }});
+                    if (results.length >= 300) break;
                 }} catch (e) {{ }}
             }}
             return results;

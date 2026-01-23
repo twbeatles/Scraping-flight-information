@@ -898,6 +898,9 @@ class SearchPanel(QFrame):
             code, ok = QInputDialog.getText(self, "공항 추가", "공항/도시 코드 (예: JFK):", text=code)
             if ok and code:
                 code = code.upper().strip()
+                if not config.validate_airport_code(code):
+                    QMessageBox.warning(self, "입력 오류", "공항/도시 코드는 3자리 영문이어야 합니다.")
+                    return
                 name, ok2 = QInputDialog.getText(self, "공항 추가", f"{code}의 한글 명칭:")
                 if ok2:
                     self.prefs.add_preset(code, name)
@@ -950,8 +953,10 @@ class SearchPanel(QFrame):
         # Save time preference
         self.prefs.set_preferred_time(self.spin_time_start.value(), self.spin_time_end.value())
         
-        origin_code = self.cb_origin.currentData() or self.cb_origin.currentText().split(' ')[0].strip()
-        dest_code = self.cb_dest.currentData() or self.cb_dest.currentText().split(' ')[0].strip()
+        origin_raw = self.cb_origin.currentData() or self.cb_origin.currentText().split(' ')[0].strip()
+        dest_raw = self.cb_dest.currentData() or self.cb_dest.currentText().split(' ')[0].strip()
+        origin_code = origin_raw.strip().upper()
+        dest_code = dest_raw.strip().upper()
         
         dep_date = self.date_dep.date()
         ret_date = self.date_ret.date() if self.rb_round.isChecked() else None
@@ -966,6 +971,14 @@ class SearchPanel(QFrame):
             QMessageBox.warning(self, "입력 오류", "출발지와 도착지를 선택하세요.")
             return
         
+        if not config.validate_airport_code(origin_code):
+            QMessageBox.warning(self, "입력 오류", "출발지 코드가 올바르지 않습니다.\n예: ICN, GMP, SEL")
+            return
+
+        if not config.validate_airport_code(dest_code):
+            QMessageBox.warning(self, "입력 오류", "도착지 코드가 올바르지 않습니다.\n예: NRT, HND, TYO")
+            return
+
         if origin_code == dest_code:
             QMessageBox.warning(self, "입력 오류", "출발지와 도착지가 같습니다.")
             return

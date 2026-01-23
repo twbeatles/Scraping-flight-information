@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-Flight Bot v2.7 - PyInstaller Build Spec (Optimized for Lightweight Build)
+Flight Bot v2.5 - PyInstaller Build Spec (Optimized for Lightweight Build)
 빌드: pyinstaller --clean flight_bot.spec
 """
 
@@ -106,28 +106,30 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
-    name='FlightBot_v2.7',
+    exclude_binaries=True,
+    name='FlightBot_v2.5_Folder',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,      # 심볼 제거 (경량화)
-    upx=True,        # UPX 압축 활성화
-    upx_exclude=[
-        'vcruntime140.dll',
-        'python*.dll',
-        'Qt6Core.dll',  # UPX 호환성 문제 방지
-    ],
-    runtime_tmpdir=None,
-    console=False,   # GUI 앱 - 콘솔 숨김
+    strip=True,
+    upx=False,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # icon='icon.ico',
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=True,
+    upx=False,
+    upx_exclude=[],
+    name='FlightBot_v2.5_Folder',
 )
 
 # ===== 빌드 가이드 =====

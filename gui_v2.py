@@ -417,13 +417,18 @@ class MainWindow(QMainWindow):
         self.manual_frame.setObjectName("card")
         self.manual_frame.setVisible(False)
         m_layout = QHBoxLayout(self.manual_frame)
-        m_layout.addWidget(QLabel("🖐️ <b>수동 모드 활성화됨</b> - 브라우저에서 결과를 확인하세요"))
+        self.manual_status_label = QLabel("🖐️ <b>수동 모드 활성화됨</b> - 브라우저에서 결과를 확인하세요")
+        m_layout.addWidget(self.manual_status_label)
         
         btn_extract = QPushButton("데이터 추출하기")
         btn_extract.setObjectName("manual_btn")
         btn_extract.clicked.connect(self._manual_extract)
+        btn_close_browser = QPushButton("브라우저 닫기")
+        btn_close_browser.setObjectName("secondary_btn")
+        btn_close_browser.clicked.connect(self._close_active_browser)
         m_layout.addStretch()
         m_layout.addWidget(btn_extract)
+        m_layout.addWidget(btn_close_browser)
         
         main_layout.addWidget(self.manual_frame)
         
@@ -767,6 +772,15 @@ class MainWindow(QMainWindow):
 
     # --- Standard Search ---
     def _start_search(self, origin, dest, dep, ret, adults, cabin_class="ECONOMY"):
+        if self.active_searcher:
+            reply = QMessageBox.question(
+                self,
+                "수동 모드 브라우저 유지",
+                "수동 모드 브라우저가 열려 있습니다.\n닫고 새 검색을 시작할까요?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._close_active_browser(confirm=False)
         # Save search params for later use
         self.current_search_params = {
             "origin": origin,
@@ -792,7 +806,10 @@ class MainWindow(QMainWindow):
         cabin_label = {"ECONOMY": "이코노미", "BUSINESS": "비즈니스", "FIRST": "일등석"}.get(cabin_class, "이코노미")
         self.progress_bar.setFormat(f"항공권 검색 중... ({cabin_label})")
         self.table.setRowCount(0)
-        self.manual_frame.setVisible(False)
+        manual_browser_open = self.active_searcher is not None
+        if manual_browser_open and hasattr(self, "manual_status_label"):
+            self.manual_status_label.setText("🖐️ <b>수동 모드 유지 중</b> - 브라우저 닫기 가능")
+        self.manual_frame.setVisible(manual_browser_open)
         self.log_viewer.clear()
         self.log_viewer.append_log(f"검색 프로세스 시작... (좌석등급: {cabin_label})")
         self.tabs.setCurrentIndex(2)  # Switch to logs
@@ -867,6 +884,8 @@ class MainWindow(QMainWindow):
         self.search_panel.set_searching(False)
         
         self.manual_frame.setVisible(True)
+        if hasattr(self, "manual_status_label"):
+            self.manual_status_label.setText("🖐️ <b>수동 모드 활성화됨</b> - 브라우저가 유지됩니다")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(50)
         self.progress_bar.setFormat("수동 모드 대기 중...")
@@ -891,10 +910,28 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "오류", str(e))
         finally:
-            # 항상 정리
-            if self.active_searcher:
-                self.active_searcher.close()
-                self.active_searcher = None
+            if hasattr(self, "manual_status_label"):
+                self.manual_status_label.setText("🖐️ <b>수동 모드 유지 중</b> - 필요 시 다시 추출 가능합니다")
+
+    def _close_active_browser(self, confirm: bool = True):
+        if not self.active_searcher:
+            return
+        if confirm:
+            reply = QMessageBox.question(
+                self,
+                "브라우저 닫기",
+                "수동 모드 브라우저를 닫으시겠습니까?\n(열려있는 페이지는 종료됩니다)",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            self.active_searcher.close()
+            self.log_viewer.append_log("✅ 수동 모드 브라우저를 닫았습니다.")
+        except Exception as e:
+            logger.debug(f"Failed to close manual browser: {e}")
+        finally:
+            self.active_searcher = None
             self.manual_frame.setVisible(False)
 
     def _open_main_settings(self):

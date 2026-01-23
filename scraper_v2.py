@@ -94,6 +94,7 @@ class PlaywrightScraper:
         self.page: Optional[Page] = None
         self.context = None
         self.manual_mode = False
+        self._last_is_domestic = False
         # 스크롤 추적용 인스턴스 변수 초기화
         self._no_scroll_count = 0
         self._no_new_count = 0
@@ -108,7 +109,7 @@ class PlaywrightScraper:
         self.close()
         return False  # 예외는 전파
     
-    def _init_browser(self, log_func: Callable[[str], None] = None) -> None:
+    def _init_browser(self, log_func: Callable[[str], None] = None, user_data_dir: Optional[str] = None) -> None:
         """브라우저 초기화 (Chrome > Edge > Chromium 순서 시도)
         
         Raises:
@@ -168,9 +169,21 @@ class PlaywrightScraper:
                 }
                 if channel:
                     launch_options["channel"] = channel
-                
-                self.browser = self.playwright.chromium.launch(**launch_options)
-                log(f"  ✅ {browser_name} 시작 성공")
+
+                if user_data_dir:
+                    context_options = {
+                        **launch_options,
+                        "viewport": {"width": 1400, "height": 900},
+                        "locale": "ko-KR",
+                        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    }
+                    self.context = self.playwright.chromium.launch_persistent_context(
+                        user_data_dir, **context_options
+                    )
+                    log(f"  ✅ {browser_name} 시작 성공 (Persistent Context)")
+                else:
+                    self.browser = self.playwright.chromium.launch(**launch_options)
+                    log(f"  ✅ {browser_name} 시작 성공")
                 return  # 성공시 반환
             except Exception as e:
                 last_error = e
@@ -195,6 +208,31 @@ class PlaywrightScraper:
         )
         logger.error(error_msg)
         raise BrowserInitError(error_msg)
+
+    def _wait_for_results(self, is_domestic: bool, log_func: Callable[[str], None]) -> bool:
+        if not self.page:
+            return False
+        timeout_ms = int(scraper_config.DATA_WAIT_TIMEOUT_SECONDS * 1000)
+        if is_domestic:
+            selectors = [
+                "button:has-text(\"원\")",
+                "text=/\\d{1,3}(,\\d{3})+\\s*원/"
+            ]
+        else:
+            selectors = [
+                "li[data-index]",
+                "text=/\\d{1,3}(,\\d{3})+\\s*원/"
+            ]
+        per_timeout = max(1000, timeout_ms // max(len(selectors), 1))
+        for selector in selectors:
+            try:
+                self.page.wait_for_selector(selector, timeout=per_timeout)
+                return True
+            except PlaywrightTimeoutError:
+                if log_func:
+                    log_func(f"⚠️ 결과 대기 실패: {selector}")
+                continue
+        return False
     
     def search(self, origin: str, destination: str, 
                departure_date: str, return_date: Optional[str] = None,
@@ -223,6 +261,7 @@ class PlaywrightScraper:
         origin_domestic = origin.upper() in domestic_airports or config.CITY_CODES_MAP.get(origin.upper(), origin.upper()) in domestic_airports
         dest_domestic = destination.upper() in domestic_airports or config.CITY_CODES_MAP.get(destination.upper(), destination.upper()) in domestic_airports
         is_domestic = origin_domestic and dest_domestic
+        self._last_is_domestic = is_domestic
         
         # 좌석등급 선택 (기본: ECONOMY)
         cabin = cabin_class.upper() if cabin_class else "ECONOMY"
@@ -230,9 +269,6 @@ class PlaywrightScraper:
             cabin = "ECONOMY"
         
         try:
-            # 브라우저 초기화 (새로운 헬퍼 메서드 사용)
-            self._init_browser(log)
-            
             # 컨텍스트 생성 (쿠키/스토리지 저장)
             if getattr(sys, 'frozen', False):
                  app_data = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'FlightBot')
@@ -241,12 +277,16 @@ class PlaywrightScraper:
                  profile_dir = os.path.join(os.getcwd(), "playwright_profile")
             
             os.makedirs(profile_dir, exist_ok=True)
+
+            # 브라우저 초기화 (Persistent Context 포함)
+            self._init_browser(log, profile_dir)
             
-            self.context = self.browser.new_context(
-                viewport={"width": 1400, "height": 900},
-                locale='ko-KR',
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            )
+            if self.context is None:
+                self.context = self.browser.new_context(
+                    viewport={"width": 1400, "height": 900},
+                    locale='ko-KR',
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                )
             
             self.page = self.context.new_page()
             
@@ -284,22 +324,14 @@ class PlaywrightScraper:
                 self.page.goto(url, wait_until='domcontentloaded', timeout=scraper_config.PAGE_LOAD_TIMEOUT_MS)
             except PlaywrightTimeoutError:
                 log("⚠️ 페이지 로딩 시간 초과 - 계속 진행합니다.")
+            except Exception as e:
+                raise NetworkError("페이지 로딩 실패", url) from e
 
             # 결과 로딩 대기
             log("결과 로딩 대기 중...")
-            
-            # 30초 동안 가격 정보가 나타날 때까지 대기
-            found_data = False
-            for i in range(10):
-                # 가격 요소 확인 (휴리스틱)
-                count = self.page.locator("text=원").count()
-                
-                if count >= 10:
-                    found_data = True
-                    break
-                
-                log(f"데이터 대기 중... ({i*3}/30초)")
-                time.sleep(3)
+            found_data = self._wait_for_results(is_domestic, log)
+            if not found_data:
+                log("데이터가 충분히 로드되지 않았을 수 있습니다.")
             
             # 국내선 왕복의 경우: 가는편 데이터 먼저 추출 → 클릭 → 오는편 추출 → 병합
             if is_domestic and return_date and found_data:
@@ -316,12 +348,21 @@ class PlaywrightScraper:
                         self.manual_mode = True
                         return results
                     
-                    # Step 2: 첫 번째 가는편 선택 (오는편 화면으로 전환)
+                    # Step 2: 가는편 선택 (오는편 화면으로 전환)
                     log("🔄 2단계: 가는편 선택 → 오는편 화면 전환...")
                     airlines_js = str(self.DOMESTIC_AIRLINES)  # Python 리스트를 JS 배열로 변환
-                    js_click = ScraperScripts.get_click_flight_script(airlines_js)
-                    
+                    best_outbound = min(outbound_flights, key=lambda x: x.get('price', float('inf')))
+                    price_text = f"{best_outbound.get('price', 0):,}원" if best_outbound.get('price') else ""
+                    js_click = ScraperScripts.get_click_flight_by_details_script(
+                        best_outbound.get('airline', ''),
+                        best_outbound.get('depTime', ''),
+                        best_outbound.get('arrTime', ''),
+                        price_text
+                    )
                     clicked = self.page.evaluate(js_click)
+                    if not clicked:
+                        js_click = ScraperScripts.get_click_flight_script(airlines_js)
+                        clicked = self.page.evaluate(js_click)
                     
                     if not clicked:
                         log("⚠️ 가는편 선택 실패 - 가는편만 반환")
@@ -340,9 +381,10 @@ class PlaywrightScraper:
                     # Step 3: 오는편 로딩 대기
                     log("🕐 3단계: 오는편 로딩 대기...")
                     
-                    # 동적 대기: 오는편 화면 확인 (최대 15초)
+                    # 동적 대기: 오는편 화면 확인 (최대 DATA_WAIT_TIMEOUT_SECONDS)
                     return_ready = False
-                    for j in range(15):
+                    max_wait = max(5, int(scraper_config.DATA_WAIT_TIMEOUT_SECONDS))
+                    for j in range(max_wait):
                         page_text = self.page.content()
                         # 오는편 텍스트와 가격 정보가 모두 있는지 확인
                         if "오는편" in page_text and self.page.locator("text=원").count() >= 5:
@@ -374,6 +416,16 @@ class PlaywrightScraper:
                     log("🔗 5단계: 가는편/오는편 결합 중...")
                     
                     # 다양한 오는편 옵션 제공 (전체 조합 후 최저가 필터링)
+                    # 값이 비정상인 항목 제거
+                    outbound_flights = [
+                        f for f in outbound_flights
+                        if f.get('price', 0) > 0 and f.get('depTime') and f.get('arrTime')
+                    ]
+                    return_flights = [
+                        f for f in return_flights
+                        if f.get('price', 0) > 0 and f.get('depTime') and f.get('arrTime')
+                    ]
+
                     if outbound_flights and return_flights:
                         # 가격순 정렬 후 상위 150개씩 조합 (최대 22,500개 조합)
                         outbound_flights.sort(key=lambda x: x['price'])
@@ -451,16 +503,24 @@ class PlaywrightScraper:
                 else:
                     # 국제선: 기존 추출 로직
                     results = self._extract_prices()
+
+                if not results:
+                    raise DataExtractionError("자동 추출 결과가 없습니다.")
             else:
                 log("데이터가 충분히 로드되지 않았을 수 있습니다.")
-
-            if results:
-                log(f"✅ 자동 추출 성공: {len(results)}개")
-            else:
-                log("⚠️ 자동 추출 실패 또는 결과 없음 - 수동 모드로 전환")
                 self.manual_mode = True
 
+            if results:
+                results.sort(key=lambda x: x.price if x.price > 0 else float('inf'))
+                if isinstance(max_results, int) and max_results > 0 and len(results) > max_results:
+                    log(f"⚠️ 결과 {len(results)}개 중 상위 {max_results}개만 유지합니다.")
+                    results = results[:max_results]
+                log(f"✅ 자동 추출 성공: {len(results)}개")
+
                 
+        except DataExtractionError as e:
+            log(f"⚠️ {e} - 수동 모드로 전환")
+            self.manual_mode = True
         except Exception as e:
             logger.error(f"Playwright error: {e}", exc_info=True)
             if emit:
@@ -576,13 +636,22 @@ class PlaywrightScraper:
             js_script = ScraperScripts.get_domestic_prices_script(airlines_js)
             
             extracted = self.page.evaluate(js_script)
-            
+            seen = set()
             for item in extracted:
+                price = item.get('price', 0)
+                dep_time = item.get('depTime', '')
+                arr_time = item.get('arrTime', '')
+                if price <= 0 or not dep_time or not arr_time:
+                    continue
+                key = f"{item.get('airline', 'Unknown')}_{dep_time}_{arr_time}_{price}"
+                if key in seen:
+                    continue
+                seen.add(key)
                 flight = FlightResult(
                     airline=item.get('airline', 'Unknown'),
-                    price=item.get('price', 0),
-                    departure_time=item.get('depTime', ''),
-                    arrival_time=item.get('arrTime', ''),
+                    price=price,
+                    departure_time=dep_time,
+                    arrival_time=arr_time,
                     stops=item.get('stops', 0),
                     source="Interpark (국내선)",
                     return_departure_time='',
@@ -597,6 +666,7 @@ class PlaywrightScraper:
         except Exception as e:
             logger.error(f"Domestic extraction error: {e}", exc_info=True)
         
+        results.sort(key=lambda x: x.price if x.price > 0 else float('inf'))
         return results
 
     
@@ -620,6 +690,12 @@ class PlaywrightScraper:
                 js_script = ScraperScripts.get_international_prices_script()
                 
                 step_results = self.page.evaluate(js_script)
+                if not step_results and i == 0:
+                    fallback_script = ScraperScripts.get_international_prices_fallback_script()
+                    fallback_results = self.page.evaluate(fallback_script)
+                    if fallback_results:
+                        logger.info("국제선 보조 스크립트로 추출 시도")
+                        step_results = fallback_results
                 
                 # 결과 병합
                 current_count = 0
@@ -648,6 +724,13 @@ class PlaywrightScraper:
         
         # 딕셔너리를 리스트로 변환
         results = []
+        if not all_results_dict:
+            fallback_script = ScraperScripts.get_international_prices_fallback_script()
+            fallback_results = self.page.evaluate(fallback_script)
+            if fallback_results:
+                for item in fallback_results:
+                    unique_key = f"{item.get('price', 0)}-{item.get('depTime', '')}-{item.get('airline', '')}"
+                    all_results_dict[unique_key] = item
         for item in all_results_dict.values():
              flight = FlightResult(
                 airline=item.get('airline', 'Unknown'),
@@ -667,6 +750,8 @@ class PlaywrightScraper:
     
     def extract_from_current_page(self) -> List[FlightResult]:
         """수동 모드: 현재 페이지에서 데이터 추출 (사용자가 호출)"""
+        if self._last_is_domestic:
+            return self._extract_domestic_prices()
         return self._extract_prices()
     
     def close(self):
