@@ -111,8 +111,8 @@ class FlightDatabase:
             # 연결 유효성 검사
             try:
                 conn.execute("SELECT 1")
-            except sqlite3.ProgrammingError:
-                # 연결이 닫혔으면 재생성
+            except (sqlite3.ProgrammingError, sqlite3.OperationalError):
+                # 연결이 닫혔거나 손상됐으면 재생성
                 conn = sqlite3.connect(self.db_path, check_same_thread=False)
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA synchronous=NORMAL")

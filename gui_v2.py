@@ -860,6 +860,9 @@ class MainWindow(QMainWindow):
                 
                 # 마지막 검색 결과를 DB에 저장 (프로그램 재시작 시 복원용)
                 self.db.save_last_search_results(self.current_search_params, results)
+                
+                # 가격 알림 체크
+                self._check_price_alerts(results)
             
             best_price = results[0].price
             self.progress_bar.setFormat(f"✨ 검색 완료! 최저가: {best_price:,}원 🏆")
@@ -870,6 +873,45 @@ class MainWindow(QMainWindow):
             self.progress_bar.setFormat("💭 검색 결과 없음")
             self.log_viewer.append_log("⚠️ 검색 결과가 없습니다.")
             QMessageBox.information(self, "결과 없음", "항공권을 찾을 수 없습니다.")
+    
+    def _check_price_alerts(self, results):
+        """검색 완료 후 활성 가격 알림 체크"""
+        if not results or not self.current_search_params:
+            return
+        
+        try:
+            alerts = self.db.get_active_alerts()
+            origin = self.current_search_params.get('origin', '').upper()
+            dest = self.current_search_params.get('dest', '').upper()
+            dep = self.current_search_params.get('dep', '')
+            min_price = results[0].price if results else 0
+            
+            for alert in alerts:
+                # 노선 및 날짜 일치 확인
+                if alert.origin.upper() != origin or alert.destination.upper() != dest:
+                    continue
+                if alert.departure_date and alert.departure_date != dep:
+                    continue
+                
+                # 알림 마지막 체크 시간 및 가격 업데이트
+                self.db.update_alert_check(alert.id, min_price)
+                
+                # 목표 가격 이하인 경우 알림 발생
+                if min_price <= alert.target_price:
+                    self.db.mark_alert_triggered(alert.id)
+                    self.log_viewer.append_log(
+                        f"🔔 가격 알림 발동! {origin}→{dest} 최저가 {min_price:,}원 "
+                        f"(목표: {alert.target_price:,}원 이하)"
+                    )
+                    QMessageBox.information(
+                        self, "🔔 가격 알림",
+                        f"목표 가격에 도달했습니다!\n\n"
+                        f"노선: {origin} → {dest}\n"
+                        f"최저가: {min_price:,}원\n"
+                        f"목표 가격: {alert.target_price:,}원 이하"
+                    )
+        except Exception as e:
+            logger.debug(f"가격 알림 체크 중 오류 (무시됨): {e}")
 
     def _search_error(self, err_msg):
         self.search_panel.set_searching(False)

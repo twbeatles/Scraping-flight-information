@@ -251,24 +251,36 @@ class FilterPanel(QFrame):
         return sep
     
     def _on_time_changed(self):
-        """시간 변경 시 유효성 검사 후 시그널 발생"""
+        """시간 변경 시 유효성 검사 후 시그널 발생
+        
+        무한 재귀 방지를 위해 값 변경 시 시그널을 일시적으로 차단합니다.
+        """
         # 가는편
         start = self.spin_start_time.value()
         end = self.spin_end_time.value()
         if start >= end:
             if self.sender() == self.spin_start_time:
-                self.spin_end_time.setValue(start + 1)
+                # 무한 재귀 방지: 시그널 차단 후 값 변경
+                self.spin_end_time.blockSignals(True)
+                self.spin_end_time.setValue(min(start + 1, 24))
+                self.spin_end_time.blockSignals(False)
             else:
-                self.spin_start_time.setValue(end - 1)
+                self.spin_start_time.blockSignals(True)
+                self.spin_start_time.setValue(max(end - 1, 0))
+                self.spin_start_time.blockSignals(False)
         
         # 오는편
         r_start = self.spin_ret_start.value()
         r_end = self.spin_ret_end.value()
         if r_start >= r_end:
             if self.sender() == self.spin_ret_start:
-                self.spin_ret_end.setValue(r_start + 1)
+                self.spin_ret_end.blockSignals(True)
+                self.spin_ret_end.setValue(min(r_start + 1, 24))
+                self.spin_ret_end.blockSignals(False)
             else:
-                self.spin_ret_start.setValue(r_end - 1)
+                self.spin_ret_start.blockSignals(True)
+                self.spin_ret_start.setValue(max(r_end - 1, 0))
+                self.spin_ret_start.blockSignals(False)
                 
         self._emit_filter()
 
@@ -277,6 +289,17 @@ class FilterPanel(QFrame):
         self.filter_changed.emit(filters)
 
     def _reset_filters(self):
+        """필터 초기화 - 시그널 차단으로 다중 emit 방지"""
+        # 모든 필터 위젯의 시그널 차단
+        widgets = [
+            self.chk_direct, self.chk_layover, self.cb_airline_category,
+            self.spin_max_stops, self.spin_start_time, self.spin_end_time,
+            self.spin_ret_start, self.spin_ret_end, self.spin_min_price, self.spin_max_price
+        ]
+        for w in widgets:
+            w.blockSignals(True)
+        
+        # 값 초기화
         self.chk_direct.setChecked(False)
         self.chk_layover.setChecked(True)
         self.cb_airline_category.setCurrentIndex(0)  # ALL
@@ -287,6 +310,13 @@ class FilterPanel(QFrame):
         self.spin_ret_end.setValue(24)
         self.spin_min_price.setValue(0)
         self.spin_max_price.setValue(9999)
+        
+        # 시그널 재활성화
+        for w in widgets:
+            w.blockSignals(False)
+        
+        # 마지막에 한 번만 emit
+        self._emit_filter()
 
     def get_current_filters(self):
         return {
