@@ -463,33 +463,72 @@ class MainWindow(QMainWindow):
         shortcut_filter = QShortcut(QKeySequence("Ctrl+F"), self)
         shortcut_filter.activated.connect(lambda: self.filter_panel.cb_airline_category.setFocus())
 
+    def _get_running_workers(self):
+        """현재 실행 중인 워커 목록 반환"""
+        running_workers = []
+        if self.worker and self.worker.isRunning():
+            running_workers.append(("일반 검색", self.worker))
+        if self.multi_worker and self.multi_worker.isRunning():
+            running_workers.append(("다중 목적지 검색", self.multi_worker))
+        if self.date_worker and self.date_worker.isRunning():
+            running_workers.append(("날짜 범위 검색", self.date_worker))
+        return running_workers
+
+    def _ensure_no_running_search(self):
+        """새 검색 시작 전 동시 실행 여부 확인"""
+        running_workers = self._get_running_workers()
+        if not running_workers:
+            return True
+
+        running_names = ", ".join(name for name, _ in running_workers)
+        QMessageBox.warning(
+            self,
+            "검색 진행 중",
+            f"이미 검색이 진행 중입니다: {running_names}\n\n"
+            "Esc로 현재 검색을 취소하거나 완료 후 다시 시도해주세요."
+        )
+        return False
+
     def _on_escape(self):
         """Escape 키 처리 - 검색 취소 및 브라우저 정리"""
-        if self.worker and self.worker.isRunning():
-            # 중복 취소 방지
-            if self._cancelling:
+        running_workers = self._get_running_workers()
+
+        if not running_workers:
+            if self.active_searcher:
+                self._close_active_browser(confirm=True)
+            return
+
+        # 중복 취소 방지
+        if self._cancelling:
+            return
+        self._cancelling = True
+
+        try:
+            reply = QMessageBox.question(
+                self, "검색 취소", "진행 중인 검색 작업을 취소하시겠습니까?\n(브라우저가 안전하게 종료됩니다)",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
                 return
-            self._cancelling = True
-            
-            try:
-                reply = QMessageBox.question(
-                    self, "검색 취소", "현재 검색을 취소하시겠습니까?\n(브라우저가 안전하게 종료됩니다)",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                )
-                if reply == QMessageBox.StandardButton.Yes:
-                    # 새로운 cancel 메서드 사용 (브라우저 정리 포함)
-                    self.worker.cancel()
-                    # 스레드 안전 종료 대기 (최대 3초)
-                    if not self.worker.wait(3000):
-                        self.worker.terminate()
-                        self.worker.wait(1000)
-                    self.search_panel.set_searching(False)
-                    self.progress_bar.setRange(0, 100)
-                    self.progress_bar.setValue(0)
-                    self.progress_bar.setFormat("검색 취소됨")
-                    self.log_viewer.append_log("⚠️ 사용자가 검색을 취소했습니다. 브라우저가 정리되었습니다.")
-            finally:
-                self._cancelling = False
+
+            for worker_name, worker in running_workers:
+                if hasattr(worker, 'cancel'):
+                    worker.cancel()
+                worker.requestInterruption()
+                if not worker.wait(5000):
+                    self.log_viewer.append_log(f"⚠️ {worker_name} 종료 지연 - 추가 대기 중")
+                    if not worker.wait(2000):
+                        worker.terminate()
+                        worker.wait(500)
+                self.log_viewer.append_log(f"⚠️ {worker_name} 취소 요청 완료")
+
+            self.search_panel.set_searching(False)
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(0)
+            self.progress_bar.setFormat("검색 취소됨")
+            self.log_viewer.append_log("⚠️ 사용자가 검색을 취소했습니다. 브라우저가 정리되었습니다.")
+        finally:
+            self._cancelling = False
 
     def _on_table_double_click(self, row, col):
         """테이블 더블클릭 - 예약 페이지 열기"""
@@ -712,6 +751,19 @@ class MainWindow(QMainWindow):
         dialog.exec()
     
     def _start_multi_search(self, origin, destinations, dep, ret, adults):
+        if not self._ensure_no_running_search():
+            return
+
+        if self.active_searcher:
+            reply = QMessageBox.question(
+                self,
+                "수동 모드 브라우저 유지",
+                "수동 모드 브라우저가 열려 있습니다.\n닫고 다중 검색을 시작할까요?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._close_active_browser(confirm=False)
+
         self.log_viewer.clear()
         self.log_viewer.append_log(f"🌍 다중 목적지 검색 시작: {', '.join(destinations)}")
         
@@ -722,8 +774,18 @@ class MainWindow(QMainWindow):
         max_results = self.prefs.get_max_results()
         self.multi_worker = MultiSearchWorker(origin, destinations, dep, ret, adults, max_results)
         self.multi_worker.progress.connect(self._update_progress)
+        self.multi_worker.single_finished.connect(self._on_multi_single_finished)
         self.multi_worker.all_finished.connect(self._multi_search_finished)
         self.multi_worker.start()
+
+    def _on_multi_single_finished(self, dest, results):
+        if results:
+            best = min(results, key=lambda x: x.price)
+            self.log_viewer.append_log(
+                f"📌 [{dest}] 중간 결과: {len(results)}건, 최저가 {best.price:,}원 ({best.airline})"
+            )
+        else:
+            self.log_viewer.append_log(f"📌 [{dest}] 중간 결과: 검색 결과 없음")
     
     def _multi_search_finished(self, results):
         self.progress_bar.setRange(0, 100)
@@ -743,6 +805,19 @@ class MainWindow(QMainWindow):
         dialog.exec()
     
     def _start_date_search(self, origin, dest, dates, duration, adults):
+        if not self._ensure_no_running_search():
+            return
+
+        if self.active_searcher:
+            reply = QMessageBox.question(
+                self,
+                "수동 모드 브라우저 유지",
+                "수동 모드 브라우저가 열려 있습니다.\n닫고 날짜 범위 검색을 시작할까요?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._close_active_browser(confirm=False)
+
         self.log_viewer.clear()
         self.log_viewer.append_log(f"📅 날짜 범위 검색 시작: {dates[0]} ~ {dates[-1]}")
         
@@ -753,8 +828,12 @@ class MainWindow(QMainWindow):
         max_results = self.prefs.get_max_results()
         self.date_worker = DateRangeWorker(origin, dest, dates, duration, adults, max_results)
         self.date_worker.progress.connect(self._update_progress)
+        self.date_worker.date_result.connect(self._on_date_range_result)
         self.date_worker.all_finished.connect(self._date_search_finished)
         self.date_worker.start()
+
+    def _on_date_range_result(self, date, min_price, airline):
+        self.log_viewer.append_log(f"📌 [{date}] 중간 결과: {min_price:,}원 ({airline})")
     
     def _date_search_finished(self, results):
         self.progress_bar.setRange(0, 100)
@@ -772,6 +851,9 @@ class MainWindow(QMainWindow):
 
     # --- Standard Search ---
     def _start_search(self, origin, dest, dep, ret, adults, cabin_class="ECONOMY"):
+        if not self._ensure_no_running_search():
+            return
+
         if self.active_searcher:
             reply = QMessageBox.question(
                 self,
@@ -919,7 +1001,28 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("❌ 오류 발생")
         self.log_viewer.append_log(f"❌ 오류 발생: {err_msg}")
-        QMessageBox.critical(self, "오류", f"검색 중 오류 발생:\n{err_msg}")
+
+        msg_lower = err_msg.lower()
+        if "브라우저 오류" in err_msg or "browser" in msg_lower or "playwright" in msg_lower:
+            QMessageBox.critical(
+                self,
+                "브라우저 오류",
+                "브라우저를 시작할 수 없습니다.\n\n"
+                "해결 방법:\n"
+                "1. Chrome 또는 Edge 설치\n"
+                "2. 또는: playwright install chromium\n\n"
+                f"상세 오류:\n{err_msg}"
+            )
+        elif "네트워크 오류" in err_msg or "network" in msg_lower:
+            QMessageBox.critical(
+                self,
+                "네트워크 오류",
+                "네트워크 연결에 실패했습니다.\n"
+                "인터넷 연결 상태를 확인한 뒤 다시 시도해주세요.\n\n"
+                f"상세 오류:\n{err_msg}"
+            )
+        else:
+            QMessageBox.critical(self, "오류", f"검색 중 오류 발생:\n{err_msg}")
 
     def _activate_manual_mode(self, searcher):
         self.active_searcher = searcher
@@ -1349,7 +1452,10 @@ class MainWindow(QMainWindow):
                 if hasattr(worker, 'cancel'):
                     worker.cancel()
                 worker.requestInterruption()  # 안전한 중단 요청
-                if not worker.wait(3000):  # 3초 대기
+                if not worker.wait(5000):
+                    logger.warning("Worker 스레드 종료 지연 - 추가 대기 시도")
+                    if worker.wait(2000):
+                        continue
                     logger.warning("Worker 스레드가 응답하지 않습니다. 강제 종료합니다.")
                     worker.terminate()  # 응답 없으면 강제 종료
                     worker.wait(500)

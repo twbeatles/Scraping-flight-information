@@ -51,7 +51,7 @@ class SearchWorker(QThread):
     def is_cancelled(self) -> bool:
         """스레드 안전하게 취소 상태 확인"""
         with self._cancel_lock:
-            return self._cancelled
+            return self._cancelled or self.isInterruptionRequested()
 
     def run(self):
         try:
@@ -106,14 +106,25 @@ class MultiSearchWorker(QThread):
         self.max_results = max_results
         self._cancelled = False
         self._cancel_lock = threading.Lock()
+        self._active_searcher = None
 
     def cancel(self):
+        active_searcher = None
         with self._cancel_lock:
+            if self._cancelled:
+                return
             self._cancelled = True
+            active_searcher = self._active_searcher
+
+        if active_searcher:
+            try:
+                active_searcher.close()
+            except Exception as e:
+                logger.debug(f"다중 검색 취소 중 브라우저 정리 오류 (무시됨): {e}")
 
     def is_cancelled(self):
         with self._cancel_lock:
-            return self._cancelled
+            return self._cancelled or self.isInterruptionRequested()
     
     def run(self):
         all_results = {}
@@ -127,6 +138,12 @@ class MultiSearchWorker(QThread):
             try:
                 self.progress.emit(f"🔍 [{i}/{total}] {dest} 검색 중...")
                 searcher = FlightSearcher()
+                with self._cancel_lock:
+                    self._active_searcher = searcher
+
+                if self.is_cancelled():
+                    break
+
                 results = searcher.search(
                     self.origin, dest, self.date, self.return_date, self.adults,
                     max_results=self.max_results,
@@ -144,7 +161,14 @@ class MultiSearchWorker(QThread):
                         searcher.close()
                     except Exception:
                         pass
-        
+                with self._cancel_lock:
+                    if self._active_searcher is searcher:
+                        self._active_searcher = None
+
+        if self.is_cancelled():
+            self.progress.emit(f"⚠️ 다중 검색이 취소되었습니다. ({len(all_results)}/{total} 완료)")
+            return
+
         self.all_finished.emit(all_results)
 
 
@@ -164,14 +188,25 @@ class DateRangeWorker(QThread):
         self.max_results = max_results
         self._cancelled = False
         self._cancel_lock = threading.Lock()
+        self._active_searcher = None
 
     def cancel(self):
+        active_searcher = None
         with self._cancel_lock:
+            if self._cancelled:
+                return
             self._cancelled = True
+            active_searcher = self._active_searcher
+
+        if active_searcher:
+            try:
+                active_searcher.close()
+            except Exception as e:
+                logger.debug(f"날짜 검색 취소 중 브라우저 정리 오류 (무시됨): {e}")
 
     def is_cancelled(self):
         with self._cancel_lock:
-            return self._cancelled
+            return self._cancelled or self.isInterruptionRequested()
     
     def run(self):
         all_results = {}
@@ -195,6 +230,11 @@ class DateRangeWorker(QThread):
                 ret_date = (dep_dt + timedelta(days=self.return_offset)).strftime("%Y%m%d") if self.return_offset else None
                 
                 searcher = FlightSearcher()
+                with self._cancel_lock:
+                    self._active_searcher = searcher
+
+                if self.is_cancelled():
+                    break
                 
                 try:
                     results = searcher.search(
@@ -207,7 +247,6 @@ class DateRangeWorker(QThread):
                     if searcher.is_manual_mode():
                         self.progress.emit(f"⏭️ {date} - 수동 모드 전환됨, 건너뜁니다")
                         all_results[date] = (0, "수동모드")
-                        searcher.close()
                         continue
                     
                     if results:
@@ -223,12 +262,19 @@ class DateRangeWorker(QThread):
                     # 항상 브라우저 닫기
                     try:
                         searcher.close()
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"날짜 검색 브라우저 정리 오류 (무시됨): {e}")
+                    with self._cancel_lock:
+                        if self._active_searcher is searcher:
+                            self._active_searcher = None
                     
             except Exception as e:
                 self.progress.emit(f"⚠️ {date} 검색 실패: {e}")
                 all_results[date] = (0, "Error")
         
+        if self.is_cancelled():
+            self.progress.emit(f"⚠️ 날짜 범위 검색이 취소되었습니다. ({len(all_results)}개 날짜 분석됨)")
+            return
+
         self.progress.emit(f"🏁 검색 완료! 총 {len(all_results)}개 날짜 분석됨")
         self.all_finished.emit(all_results)
