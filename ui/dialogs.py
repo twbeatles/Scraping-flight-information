@@ -27,6 +27,25 @@ from ui.components import NoWheelSpinBox, NoWheelComboBox, NoWheelDateEdit
 
 logger = logging.getLogger(__name__)
 
+# --- Validation Helpers ---
+
+def _validate_route_and_dates(parent, origin: str, dest: str, dep_date: QDate, ret_date: QDate = None) -> bool:
+    """공통 노선/날짜 검증"""
+    if origin == dest:
+        QMessageBox.warning(parent, "입력 오류", "출발지와 도착지가 같습니다.")
+        return False
+
+    today = QDate.currentDate()
+    if dep_date < today:
+        QMessageBox.warning(parent, "날짜 오류", "출발일이 오늘보다 이전입니다.")
+        return False
+
+    if ret_date and ret_date < dep_date:
+        QMessageBox.warning(parent, "날짜 오류", "귀국일이 출발일보다 이전입니다.")
+        return False
+
+    return True
+
 # --- Calendar View Dialog ---
 
 class CalendarViewDialog(QDialog):
@@ -385,8 +404,18 @@ class MultiDestDialog(QDialog):
             return
         
         origin = self.cb_origin.currentData()
-        dep = self.date_dep.date().toString("yyyyMMdd")
-        ret = self.date_ret.date().toString("yyyyMMdd")
+        dep_date = self.date_dep.date()
+        ret_date = self.date_ret.date()
+
+        if origin in selected:
+            QMessageBox.warning(self, "선택 오류", "출발지는 도착지 목록에 포함할 수 없습니다.")
+            return
+
+        if not _validate_route_and_dates(self, origin, selected[0], dep_date, ret_date):
+            return
+
+        dep = dep_date.toString("yyyyMMdd")
+        ret = ret_date.toString("yyyyMMdd")
         adults = self.spin_adults.value()
         
         self.search_requested.emit(origin, selected, dep, ret, adults)
@@ -487,31 +516,45 @@ class DateRangeDialog(QDialog):
     def _on_search(self):
         start = self.date_start.date()
         end = self.date_end.date()
+        today = QDate.currentDate()
+        origin = self.cb_origin.currentData()
+        dest = self.cb_dest.currentData()
+        duration = self.spin_duration.value()
+        adults = self.spin_adults.value()
         
-        if start >= end:
-            QMessageBox.warning(self, "날짜 오류", "종료 날짜는 시작 날짜 이후여야 합니다.")
+        if origin == dest:
+            QMessageBox.warning(self, "입력 오류", "출발지와 도착지가 같습니다.")
             return
-        
-        # Generate date list
+
+        if start < today:
+            QMessageBox.warning(self, "날짜 오류", "시작 날짜가 오늘보다 이전입니다.")
+            return
+
+        if end < start:
+            QMessageBox.warning(self, "날짜 오류", "종료 날짜는 시작 날짜와 같거나 이후여야 합니다.")
+            return
+
+        if duration > 0:
+            max_return = end.addDays(duration)
+            if max_return < today:
+                QMessageBox.warning(self, "날짜 오류", "여행 기간을 포함한 귀국일이 오늘보다 이전입니다.")
+                return
+
+        # Generate date list (start == end 허용)
         dates = []
         current = start
         while current <= end:
             dates.append(current.toString("yyyyMMdd"))
             current = current.addDays(1)
-        
+
         if len(dates) > 14:
             reply = QMessageBox.question(
-                self, "확인", 
+                self, "확인",
                 f"{len(dates)}일을 검색합니다. 시간이 오래 걸릴 수 있습니다.\\n계속하시겠습니까?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if reply != QMessageBox.StandardButton.Yes:
                 return
-        
-        origin = self.cb_origin.currentData()
-        dest = self.cb_dest.currentData()
-        duration = self.spin_duration.value()
-        adults = self.spin_adults.value()
         
         self.search_requested.emit(origin, dest, dates, duration, adults)
         self.accept()
@@ -770,20 +813,26 @@ class PriceAlertDialog(QDialog):
         self.date_ret.setCalendarPopup(True)
         self.date_ret.setDate(QDate.currentDate().addDays(10))
         new_layout.addWidget(self.date_ret, 1, 3)
+
+        # 편도 알림
+        self.chk_oneway = QCheckBox("편도 알림")
+        self.chk_oneway.setToolTip("체크하면 귀국일 없이 편도 노선만 기준으로 알림을 설정합니다.")
+        self.chk_oneway.toggled.connect(self._toggle_alert_oneway)
+        new_layout.addWidget(self.chk_oneway, 2, 0, 1, 2)
         
         # 목표 가격
-        new_layout.addWidget(QLabel("목표 가격:"), 2, 0)
+        new_layout.addWidget(QLabel("목표 가격:"), 3, 0)
         self.spin_target = QSpinBox()
         self.spin_target.setRange(10000, 10000000)
         self.spin_target.setSingleStep(10000)
         self.spin_target.setValue(300000)
         self.spin_target.setSuffix(" 원")
-        new_layout.addWidget(self.spin_target, 2, 1)
+        new_layout.addWidget(self.spin_target, 3, 1)
         
         # 추가 버튼
         btn_add = QPushButton("🔔 알림 추가")
         btn_add.clicked.connect(self._add_alert)
-        new_layout.addWidget(btn_add, 2, 2, 1, 2)
+        new_layout.addWidget(btn_add, 3, 2, 1, 2)
         
         layout.addWidget(grp_new)
         
@@ -819,19 +868,24 @@ class PriceAlertDialog(QDialog):
         btn_layout.addWidget(btn_close)
         
         layout.addLayout(btn_layout)
+
+    def _toggle_alert_oneway(self, checked: bool):
+        self.date_ret.setEnabled(not checked)
     
     def _add_alert(self):
         """새 알림 추가"""
         origin = self.cb_origin.currentData()
         dest = self.cb_dest.currentData()
-        dep = self.date_dep.date().toString("yyyyMMdd")
-        ret = self.date_ret.date().toString("yyyyMMdd")
+        dep_date = self.date_dep.date()
+        ret_date = None if self.chk_oneway.isChecked() else self.date_ret.date()
         target = self.spin_target.value()
-        
-        if origin == dest:
-            QMessageBox.warning(self, "오류", "출발지와 도착지가 같습니다.")
+
+        if not _validate_route_and_dates(self, origin, dest, dep_date, ret_date):
             return
-        
+
+        dep = dep_date.toString("yyyyMMdd")
+        ret = ret_date.toString("yyyyMMdd") if ret_date else None
+
         try:
             alert_id = self.db.add_price_alert(origin, dest, dep, ret, target)
             QMessageBox.information(self, "완료", f"가격 알림이 추가되었습니다. (ID: {alert_id})")
@@ -978,7 +1032,7 @@ class SettingsDialog(QDialog):
         self.spin_limit.setSingleStep(50)
         self.spin_limit.setValue(self.prefs.get_max_results())
         self.spin_limit.setSuffix(" 개")
-        self.spin_limit.setToolTip("한 번의 검색에서 표시할 최대 결과 수 (기본: 500)")
+        self.spin_limit.setToolTip("한 번의 검색에서 표시할 최대 결과 수 (기본: 1000)")
         
         gl_layout.addWidget(QLabel("최대 표시 개수:"))
         gl_layout.addWidget(self.spin_limit)

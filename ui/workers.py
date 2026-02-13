@@ -222,6 +222,7 @@ class DateRangeWorker(QThread):
             if self.is_cancelled():
                 break
 
+            searcher = None
             try:
                 self.progress.emit(f"📅 [{i}/{total}] {date} 검색 중...")
                 
@@ -233,33 +234,38 @@ class DateRangeWorker(QThread):
                 with self._cancel_lock:
                     self._active_searcher = searcher
 
+                # searcher 생성 직후 취소되더라도 finally에서 정리되도록 continue 사용
                 if self.is_cancelled():
-                    break
+                    continue
+
+                results = searcher.search(
+                    self.origin, self.dest, date, ret_date, self.adults,
+                    max_results=self.max_results,
+                    progress_callback=lambda msg: self.progress.emit(msg)
+                )
                 
-                try:
-                    results = searcher.search(
-                        self.origin, self.dest, date, ret_date, self.adults,
-                        max_results=self.max_results,
-                        progress_callback=lambda msg: self.progress.emit(msg)
-                    )
+                # 수동 모드 전환 시 건너뛰기
+                if searcher.is_manual_mode():
+                    self.progress.emit(f"⏭️ {date} - 수동 모드 전환됨, 건너뜁니다")
+                    all_results[date] = (0, "수동모드")
+                    continue
+                
+                if results:
+                    min_price = min(r.price for r in results)
+                    min_airline = next(r.airline for r in results if r.price == min_price)
+                    all_results[date] = (min_price, min_airline)
+                    self.date_result.emit(date, min_price, min_airline)
+                    self.progress.emit(f"✅ {date}: {min_price:,}원 ({min_airline})")
+                else:
+                    all_results[date] = (0, "N/A")
+                    self.progress.emit(f"⚠️ {date}: 결과 없음")
                     
-                    # 수동 모드 전환 시 건너뛰기
-                    if searcher.is_manual_mode():
-                        self.progress.emit(f"⏭️ {date} - 수동 모드 전환됨, 건너뜁니다")
-                        all_results[date] = (0, "수동모드")
-                        continue
-                    
-                    if results:
-                        min_price = min(r.price for r in results)
-                        min_airline = next(r.airline for r in results if r.price == min_price)
-                        all_results[date] = (min_price, min_airline)
-                        self.date_result.emit(date, min_price, min_airline)
-                        self.progress.emit(f"✅ {date}: {min_price:,}원 ({min_airline})")
-                    else:
-                        all_results[date] = (0, "N/A")
-                        self.progress.emit(f"⚠️ {date}: 결과 없음")
-                finally:
-                    # 항상 브라우저 닫기
+            except Exception as e:
+                self.progress.emit(f"⚠️ {date} 검색 실패: {e}")
+                all_results[date] = (0, "Error")
+            finally:
+                # 항상 브라우저 닫기
+                if searcher:
                     try:
                         searcher.close()
                     except Exception as e:
@@ -267,10 +273,6 @@ class DateRangeWorker(QThread):
                     with self._cancel_lock:
                         if self._active_searcher is searcher:
                             self._active_searcher = None
-                    
-            except Exception as e:
-                self.progress.emit(f"⚠️ {date} 검색 실패: {e}")
-                all_results[date] = (0, "Error")
         
         if self.is_cancelled():
             self.progress.emit(f"⚠️ 날짜 범위 검색이 취소되었습니다. ({len(all_results)}개 날짜 분석됨)")

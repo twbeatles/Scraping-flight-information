@@ -96,6 +96,8 @@ venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
+> `openpyxl`(Excel 입출력)과 `pytest`(테스트)는 `requirements.txt`에 포함되어 함께 설치됩니다.
+
 ### 4단계: Playwright 브라우저 설치
 
 ```bash
@@ -202,6 +204,7 @@ python gui_v2.py
 2. **➕ 새 알림 추가** 섹션에서:
    - 출발지/도착지 선택
    - 여행 날짜 설정
+   - 필요 시 **편도 알림** 체크 (귀국일 없이 감시)
    - **목표 가격** 입력 (예: 300,000원)
 3. **🔔 알림 추가** 클릭
 4. 다음 검색 시 목표 가격 이하 발견 시 알림
@@ -455,6 +458,9 @@ pip install -r requirements.txt
 
 # 코드 실행 (디버그 모드)
 python gui_v2.py
+
+# 테스트 실행
+pytest -q
 ```
 
 ---

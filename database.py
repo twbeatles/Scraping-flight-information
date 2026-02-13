@@ -576,8 +576,8 @@ class FlightDatabase:
                 len(results)
             ))
             
-            # 결과 저장 (최대 500개)
-            limit = 500
+            # 결과 저장 (최대 1000개)
+            limit = 1000
             actual_count = min(len(results), limit)
             if len(results) > limit:
                 logger.info(f"마지막 검색 결과 저장: {actual_count}/{len(results)}건 (제한)")
@@ -606,7 +606,7 @@ class FlightDatabase:
                 ))
             
             conn.commit()
-            logger.info(f"마지막 검색 결과 저장: {len(results)}건")
+            logger.info(f"마지막 검색 결과 저장: {actual_count}/{len(results)}건")
     
     def get_last_search_results(self) -> tuple:
         """저장된 마지막 검색 결과 복원

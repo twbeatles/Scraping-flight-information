@@ -700,8 +700,12 @@ class PlaywrightScraper:
                 # 결과 병합
                 current_count = 0
                 for item in step_results:
-                    # 고유 키 생성: 가격-출발시간-항공사
-                    unique_key = f"{item['price']}-{item['depTime']}-{item['airline']}"
+                    # 고유 키 생성: 편별 핵심 정보 전체를 포함해 과도한 dedup 방지
+                    unique_key = (
+                        f"{item.get('airline', '')}|{item.get('price', 0)}|"
+                        f"{item.get('depTime', '')}|{item.get('arrTime', '')}|{item.get('stops', 0)}|"
+                        f"{item.get('retDepTime', '')}|{item.get('retArrTime', '')}|{item.get('retStops', 0)}"
+                    )
                     if unique_key not in all_results_dict:
                         all_results_dict[unique_key] = item
                         current_count += 1
@@ -729,7 +733,11 @@ class PlaywrightScraper:
             fallback_results = self.page.evaluate(fallback_script)
             if fallback_results:
                 for item in fallback_results:
-                    unique_key = f"{item.get('price', 0)}-{item.get('depTime', '')}-{item.get('airline', '')}"
+                    unique_key = (
+                        f"{item.get('airline', '')}|{item.get('price', 0)}|"
+                        f"{item.get('depTime', '')}|{item.get('arrTime', '')}|{item.get('stops', 0)}|"
+                        f"{item.get('retDepTime', '')}|{item.get('retArrTime', '')}|{item.get('retStops', 0)}"
+                    )
                     all_results_dict[unique_key] = item
         for item in all_results_dict.values():
              flight = FlightResult(

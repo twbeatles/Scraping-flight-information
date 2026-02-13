@@ -749,20 +749,31 @@ class MainWindow(QMainWindow):
         dialog = MultiDestDialog(self, self.prefs)
         dialog.search_requested.connect(self._start_multi_search)
         dialog.exec()
+
+    def _guard_manual_browser_for_new_search(self, action_name: str) -> bool:
+        """수동 모드 브라우저가 열려 있을 때 새 검색 진행 여부를 확인"""
+        if not self.active_searcher:
+            return True
+
+        reply = QMessageBox.question(
+            self,
+            "수동 모드 브라우저 유지",
+            f"수동 모드 브라우저가 열려 있습니다.\n닫고 {action_name}을(를) 시작할까요?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._close_active_browser(confirm=False)
+            return True
+
+        self.log_viewer.append_log(f"ℹ️ {action_name} 취소: 수동 모드 브라우저를 유지했습니다.")
+        return False
     
     def _start_multi_search(self, origin, destinations, dep, ret, adults):
         if not self._ensure_no_running_search():
             return
 
-        if self.active_searcher:
-            reply = QMessageBox.question(
-                self,
-                "수동 모드 브라우저 유지",
-                "수동 모드 브라우저가 열려 있습니다.\n닫고 다중 검색을 시작할까요?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                self._close_active_browser(confirm=False)
+        if not self._guard_manual_browser_for_new_search("다중 검색"):
+            return
 
         self.log_viewer.clear()
         self.log_viewer.append_log(f"🌍 다중 목적지 검색 시작: {', '.join(destinations)}")
@@ -808,15 +819,8 @@ class MainWindow(QMainWindow):
         if not self._ensure_no_running_search():
             return
 
-        if self.active_searcher:
-            reply = QMessageBox.question(
-                self,
-                "수동 모드 브라우저 유지",
-                "수동 모드 브라우저가 열려 있습니다.\n닫고 날짜 범위 검색을 시작할까요?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                self._close_active_browser(confirm=False)
+        if not self._guard_manual_browser_for_new_search("날짜 범위 검색"):
+            return
 
         self.log_viewer.clear()
         self.log_viewer.append_log(f"📅 날짜 범위 검색 시작: {dates[0]} ~ {dates[-1]}")
@@ -854,15 +858,8 @@ class MainWindow(QMainWindow):
         if not self._ensure_no_running_search():
             return
 
-        if self.active_searcher:
-            reply = QMessageBox.question(
-                self,
-                "수동 모드 브라우저 유지",
-                "수동 모드 브라우저가 열려 있습니다.\n닫고 새 검색을 시작할까요?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                self._close_active_browser(confirm=False)
+        if not self._guard_manual_browser_for_new_search("새 검색"):
+            return
         # Save search params for later use
         self.current_search_params = {
             "origin": origin,
@@ -966,6 +963,7 @@ class MainWindow(QMainWindow):
             origin = self.current_search_params.get('origin', '').upper()
             dest = self.current_search_params.get('dest', '').upper()
             dep = self.current_search_params.get('dep', '')
+            ret = self.current_search_params.get('ret')
             min_price = results[0].price if results else 0
             
             for alert in alerts:
@@ -973,6 +971,9 @@ class MainWindow(QMainWindow):
                 if alert.origin.upper() != origin or alert.destination.upper() != dest:
                     continue
                 if alert.departure_date and alert.departure_date != dep:
+                    continue
+                alert_ret = alert.return_date if alert.return_date else None
+                if alert_ret and alert_ret != ret:
                     continue
                 
                 # 알림 마지막 체크 시간 및 가격 업데이트
@@ -1223,6 +1224,52 @@ class MainWindow(QMainWindow):
             list_item.setData(Qt.ItemDataRole.UserRole, item)
             self.list_history.addItem(list_item)
 
+    def _restore_search_panel_from_params(self, params: dict):
+        """검색 파라미터를 검색 패널 UI에 복원"""
+        if not params:
+            return
+
+        sp = self.search_panel
+
+        origin = params.get('origin')
+        if origin:
+            idx = sp.cb_origin.findData(origin)
+            if idx >= 0:
+                sp.cb_origin.setCurrentIndex(idx)
+
+        dest = params.get('dest')
+        if dest:
+            idx = sp.cb_dest.findData(dest)
+            if idx >= 0:
+                sp.cb_dest.setCurrentIndex(idx)
+
+        dep = params.get('dep')
+        if dep:
+            dep_date = QDate.fromString(dep, "yyyyMMdd")
+            if dep_date.isValid():
+                sp.date_dep.setDate(dep_date)
+
+        ret = params.get('ret')
+        if ret:
+            sp.rb_round.setChecked(True)
+            sp._toggle_return_date()
+            ret_date = QDate.fromString(ret, "yyyyMMdd")
+            if ret_date.isValid():
+                sp.date_ret.setDate(ret_date)
+        else:
+            sp.rb_oneway.setChecked(True)
+            sp._toggle_return_date()
+
+        adults = params.get('adults')
+        if adults:
+            sp.spin_adults.setValue(int(adults))
+
+        cabin = params.get('cabin_class')
+        if cabin:
+            idx = sp.cb_cabin_class.findData(cabin)
+            if idx >= 0:
+                sp.cb_cabin_class.setCurrentIndex(idx)
+
     def restore_search_from_history(self, item):
         data = item.data(Qt.ItemDataRole.UserRole)
         if not data:
@@ -1308,15 +1355,7 @@ class MainWindow(QMainWindow):
         # 검색 조건 복원
         if params:
             try:
-                sp = self.search_panel
-                if 'origin' in params:
-                    idx = sp.cb_origin.findData(params['origin'])
-                    if idx >= 0:
-                        sp.cb_origin.setCurrentIndex(idx)
-                if 'dest' in params:
-                    idx = sp.cb_dest.findData(params['dest'])
-                    if idx >= 0:
-                        sp.cb_dest.setCurrentIndex(idx)
+                self._restore_search_panel_from_params(params)
             except Exception as e:
                 logger.debug(f"Failed to restore session params: {e}")
         
@@ -1372,25 +1411,7 @@ class MainWindow(QMainWindow):
             
             # 검색 패널에 조건 복원
             try:
-                sp = self.search_panel
-                if search_params.get('origin'):
-                    idx = sp.cb_origin.findData(search_params['origin'])
-                    if idx >= 0:
-                        sp.cb_origin.setCurrentIndex(idx)
-                if search_params.get('dest'):
-                    idx = sp.cb_dest.findData(search_params['dest'])
-                    if idx >= 0:
-                        sp.cb_dest.setCurrentIndex(idx)
-                if search_params.get('dep'):
-                    dep_date = QDate.fromString(search_params['dep'], "yyyyMMdd")
-                    if dep_date.isValid():
-                        sp.date_dep.setDate(dep_date)
-                if search_params.get('ret'):
-                    ret_date = QDate.fromString(search_params['ret'], "yyyyMMdd")
-                    if ret_date.isValid():
-                        sp.date_ret.setDate(ret_date)
-                if search_params.get('adults'):
-                    sp.spin_adults.setValue(search_params['adults'])
+                self._restore_search_panel_from_params(search_params)
             except Exception as e:
                 logger.debug(f"검색 조건 복원 실패: {e}")
             

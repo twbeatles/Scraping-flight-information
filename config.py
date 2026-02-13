@@ -185,7 +185,7 @@ class PreferenceManager:
         self.save()
 
     def get_max_results(self) -> int:
-        return self.preferences.get("max_results", 500)
+        return self.preferences.get("max_results", 1000)
 
     # --- Theme ---
     def get_theme(self) -> str:
