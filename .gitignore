@@ -1,0 +1,25 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Test/cache artifacts
+.pytest_cache/
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+
+# Playwright browser profile/cache
+playwright_profile/
+
+# Local runtime data
+*.log
+*.tmp
+*.bak
+*.shm
+*.wal
+
+# IDE
+.vscode/
+.idea/
