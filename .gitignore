@@ -9,6 +9,11 @@ __pycache__/
 build/
 dist/
 *.spec.bak
+build_log.txt
+build_log_simple.txt
+
+# Local backup sources
+backup/
 
 # Playwright browser profile/cache
 playwright_profile/
