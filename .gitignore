@@ -24,6 +24,9 @@ playwright_profile/
 *.bak
 *.shm
 *.wal
+*.db
+*.db-*
+*.json
 
 # IDE
 .vscode/
