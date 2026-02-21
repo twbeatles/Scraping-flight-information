@@ -323,20 +323,38 @@ class FlightDatabase:
             conn.commit()
     
     def add_price_history_batch(self, origin: str, dest: str, dep_date: str, 
-                                results: List[Dict[str, Any]]):
-        """검색 결과 일괄 저장 (최저가만)"""
+                                results: List[Any]):
+        """검색 결과 일괄 저장 (최저가 1건만 기록)"""
         if not results:
             return
-        
-        # 최저가만 저장
-        min_price = min(r.get('price', float('inf')) for r in results)
-        min_item = next((r for r in results if r.get('price') == min_price), None)
-        
-        if min_item:
-            self.add_price_history(
-                origin, dest, dep_date,
-                min_price, min_item.get('airline')
-            )
+
+        min_price = None
+        min_airline = None
+
+        for item in results:
+            if isinstance(item, dict):
+                price = item.get("price")
+                airline = item.get("airline")
+            else:
+                price = getattr(item, "price", None)
+                airline = getattr(item, "airline", None)
+
+            try:
+                price_int = int(price)
+            except (TypeError, ValueError):
+                continue
+
+            if price_int <= 0:
+                continue
+
+            if min_price is None or price_int < min_price:
+                min_price = price_int
+                min_airline = airline
+
+        if min_price is None:
+            return
+
+        self.add_price_history(origin, dest, dep_date, min_price, min_airline)
     
     def get_price_history(self, origin: str, dest: str, 
                           days: int = 30) -> List[PriceHistoryItem]:

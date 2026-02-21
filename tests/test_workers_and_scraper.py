@@ -3,8 +3,8 @@ import time
 from datetime import datetime, timedelta
 
 import scraper_config
-from scraper_v2 import PlaywrightScraper
-from ui.workers import DateRangeWorker, MultiSearchWorker
+from scraper_v2 import PlaywrightScraper, FlightSearcher, FlightResult, ManualModeActivationError
+from ui.workers import DateRangeWorker, MultiSearchWorker, SearchWorker
 
 
 def test_date_range_worker_closes_searcher_when_cancelled_after_init(monkeypatch):
@@ -127,6 +127,45 @@ def test_domestic_topk_combination_matches_naive_ordering():
     assert combined_keys == naive
 
 
+def test_enter_manual_mode_reinitializes_when_session_missing(monkeypatch):
+    scraper = PlaywrightScraper()
+    scraper.page = None
+    scraper.context = None
+    scraper.browser = None
+
+    calls = {"init": 0, "goto": 0}
+
+    class _FakePage:
+        def goto(self, *args, **kwargs):
+            calls["goto"] += 1
+
+    class _FakeContext:
+        def new_page(self):
+            return _FakePage()
+
+    def _fake_init_browser(*args, **kwargs):
+        calls["init"] += 1
+        scraper.context = _FakeContext()
+        scraper.browser = object()
+
+    monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
+    monkeypatch.setattr(scraper, "_wait_for_results", lambda *args, **kwargs: True)
+    monkeypatch.setattr(scraper, "close", lambda: None)
+
+    entered = scraper._enter_manual_mode(
+        url="https://example.com/search",
+        profile_dir="playwright_profile",
+        is_domestic=False,
+        log_func=lambda _msg: None,
+        reopen_visible=False,
+    )
+
+    assert entered is True
+    assert scraper.manual_mode is True
+    assert calls["init"] == 1
+    assert calls["goto"] == 1
+
+
 def test_multi_search_worker_runs_with_parallelism(monkeypatch):
     lock = threading.Lock()
     state = {"active": 0, "max_active": 0}
@@ -164,3 +203,126 @@ def test_multi_search_worker_runs_with_parallelism(monkeypatch):
 
     assert len(captured) == 4
     assert state["max_active"] >= 2
+
+
+def test_flight_searcher_uses_cache_for_same_query(monkeypatch):
+    monkeypatch.setattr(scraper_config, "ENABLE_SEARCH_CACHE", True)
+    FlightSearcher.clear_cache()
+
+    class _FakeScraper:
+        def __init__(self):
+            self.calls = 0
+
+        def search(self, *args, **kwargs):
+            self.calls += 1
+            return [FlightResult(airline="CacheAir", price=150000, departure_time="10:00", arrival_time="12:00")]
+
+        def close(self):
+            return None
+
+        def is_manual_mode(self):
+            return False
+
+    searcher = FlightSearcher()
+    fake_scraper = _FakeScraper()
+    searcher.scraper = fake_scraper
+    dep = (datetime.now() + timedelta(days=7)).strftime("%Y%m%d")
+
+    first = searcher.search("ICN", "NRT", dep, None, 1, "ECONOMY", max_results=20, progress_callback=None)
+    second = searcher.search("ICN", "NRT", dep, None, 1, "ECONOMY", max_results=20, progress_callback=None)
+
+    assert first and second
+    assert fake_scraper.calls == 1
+    assert second[0].price == first[0].price
+
+    FlightSearcher.clear_cache()
+
+
+def test_flight_searcher_cache_expires_after_ttl(monkeypatch):
+    monkeypatch.setattr(scraper_config, "ENABLE_SEARCH_CACHE", True)
+    monkeypatch.setattr(scraper_config, "SEARCH_CACHE_TTL_SECONDS", 1)
+    FlightSearcher.clear_cache()
+
+    class _FakeScraper:
+        def __init__(self):
+            self.calls = 0
+
+        def search(self, *args, **kwargs):
+            self.calls += 1
+            return [
+                FlightResult(
+                    airline="CacheAir",
+                    price=120000 + self.calls,
+                    departure_time="09:00",
+                    arrival_time="11:00",
+                )
+            ]
+
+        def close(self):
+            return None
+
+        def is_manual_mode(self):
+            return False
+
+    searcher = FlightSearcher()
+    fake_scraper = _FakeScraper()
+    searcher.scraper = fake_scraper
+    dep = (datetime.now() + timedelta(days=8)).strftime("%Y%m%d")
+
+    first = searcher.search("ICN", "NRT", dep, None, 1, "ECONOMY", max_results=20, progress_callback=None)
+
+    with FlightSearcher._cache_lock:
+        for key, (saved_at, payload) in list(FlightSearcher._search_cache.items()):
+            FlightSearcher._search_cache[key] = (saved_at - 5, payload)
+
+    second = searcher.search("ICN", "NRT", dep, None, 1, "ECONOMY", max_results=20, progress_callback=None)
+
+    assert first and second
+    assert fake_scraper.calls == 2
+    assert second[0].price != first[0].price
+
+    FlightSearcher.clear_cache()
+
+
+def test_search_worker_passes_force_refresh(monkeypatch):
+    calls = {"force_refresh": None}
+
+    class _FakeSearcher:
+        def search(self, *args, **kwargs):
+            calls["force_refresh"] = kwargs.get("force_refresh")
+            return []
+
+        def close(self):
+            return None
+
+        def is_manual_mode(self):
+            return False
+
+    monkeypatch.setattr("ui.workers.FlightSearcher", _FakeSearcher)
+
+    worker = SearchWorker("ICN", "NRT", "20260301", None, 1, max_results=10, force_refresh=True)
+    worker.run()
+
+    assert calls["force_refresh"] is True
+
+
+def test_search_worker_emits_error_on_manual_mode_activation_failure(monkeypatch):
+    class _FakeSearcher:
+        def search(self, *args, **kwargs):
+            raise ManualModeActivationError("테스트 수동 전환 실패")
+
+        def close(self):
+            return None
+
+        def is_manual_mode(self):
+            return False
+
+    monkeypatch.setattr("ui.workers.FlightSearcher", _FakeSearcher)
+
+    worker = SearchWorker("ICN", "NRT", "20260301", None, 1, max_results=10)
+    errors = []
+    worker.error.connect(lambda msg: errors.append(msg))
+    worker.run()
+
+    assert errors
+    assert "수동 모드 전환 실패" in errors[0]

@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from scraper_v2 import FlightSearcher, BrowserInitError, NetworkError
+from scraper_v2 import FlightSearcher, BrowserInitError, NetworkError, ManualModeActivationError
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -24,7 +24,17 @@ class SearchWorker(QThread):
     error = pyqtSignal(str)
     manual_mode_signal = pyqtSignal(object)  # active_searcher
 
-    def __init__(self, origin, destination, date, return_date, adults, cabin_class="ECONOMY", max_results=1000):
+    def __init__(
+        self,
+        origin,
+        destination,
+        date,
+        return_date,
+        adults,
+        cabin_class="ECONOMY",
+        max_results=1000,
+        force_refresh=False,
+    ):
         super().__init__()
         self.origin = origin
         self.destination = destination
@@ -33,6 +43,7 @@ class SearchWorker(QThread):
         self.adults = adults
         self.cabin_class = cabin_class
         self.max_results = max_results
+        self.force_refresh = force_refresh
         self.searcher = FlightSearcher()
         self._cancelled = False
         self._cancel_lock = threading.Lock()  # 취소 플래그 스레드 안전성
@@ -61,7 +72,8 @@ class SearchWorker(QThread):
                 self.origin, self.destination, self.date, 
                 self.return_date, self.adults, self.cabin_class,
                 max_results=self.max_results,
-                progress_callback=lambda msg: self.progress.emit(msg)
+                progress_callback=lambda msg: self.progress.emit(msg),
+                force_refresh=self.force_refresh,
             )
             
             if self.is_cancelled():
@@ -78,6 +90,9 @@ class SearchWorker(QThread):
         except NetworkError as e:
             if not self.is_cancelled():
                 self.error.emit(f"네트워크 오류:\n{e.message}")
+        except ManualModeActivationError as e:
+            if not self.is_cancelled():
+                self.error.emit(f"수동 모드 전환 실패:\n{e.message}")
         except Exception as e:
             if not self.is_cancelled():
                 traceback.print_exc()

@@ -70,7 +70,7 @@ Scraping-flight-information-main-v2/
 - 즐겨찾기 관리
 - 검색 결과 필터링 및 정렬
 - CSV/Excel 내보내기
-- 키보드 단축키 (Ctrl+Enter: 검색, F5: 새로고침, Escape: 취소)
+- 키보드 단축키 (Ctrl+Enter: 검색, Ctrl+Shift+Enter: 강제 재조회, F5: 새로고침, Escape: 취소)
 
 **중요 상수:**
 ```python
@@ -213,6 +213,12 @@ RETRY_DELAY_SECONDS = 2          # 재시도 간 대기 (초)
 PAGE_LOAD_TIMEOUT_MS = 60000     # 페이지 로딩 타임아웃 (60초)
 DATA_WAIT_TIMEOUT_SECONDS = 30   # 데이터 로딩 대기 (30초)
 SCROLL_PAUSE_TIME = 1.0          # 스크롤 간 대기 (1초)
+AUTO_SEARCH_HEADLESS = True      # 자동 검색 기본 headless
+AUTO_BLOCK_RESOURCE_TYPES = ("image", "media", "font")
+ENABLE_SEARCH_CACHE = True       # 동일 조건 검색 캐시
+SEARCH_CACHE_TTL_SECONDS = 180   # 3분 TTL
+SEARCH_CACHE_MAX_ENTRIES = 64    # LRU 최대 엔트리
+PROGRESS_LOG_DEDUP_WINDOW_MS = 300
 ```
 
 **정규식 패턴:**
@@ -367,8 +373,8 @@ def get_airline_category(airline: str) -> str:
 ```python
 class PreferenceManager:
     def __init__(self, filepath: str = None):
-        # EXE 모드: %LOCALAPPDATA%/FlightBot/preferences.json
-        # 개발 모드: ./preferences.json
+        # EXE 모드: %LOCALAPPDATA%/FlightBot/user_preferences.json
+        # 개발 모드: ./user_preferences.json
     
     # 설정 관리
     def save(self) -> None
@@ -524,6 +530,12 @@ else:
 class SearchPanel(QFrame):
     search_requested = pyqtSignal(str, str, str, str, int, str)
     # origin, dest, dep, ret, adults, cabin_class
+
+    def _on_force_refresh_search(self) -> None:
+        """캐시를 무시하는 one-shot 강제 재조회 요청"""
+
+    def consume_force_refresh(self) -> bool:
+        """강제 재조회 플래그를 반환하고 즉시 초기화"""
     
     def set_searching(self, is_searching: bool) -> None:
         """버튼 상태 토글"""
@@ -561,7 +573,7 @@ class SearchWorker(QThread):
     error = pyqtSignal(str)           # 오류 메시지
     manual_mode_signal = pyqtSignal(object)  # 수동 모드 전환
     
-    def __init__(self, origin, dest, dep, ret, adults, cabin_class, max_results):
+    def __init__(self, origin, dest, dep, ret, adults, cabin_class, max_results, force_refresh=False):
         self._cancelled = False
         self._cancel_lock = threading.Lock()
     
@@ -637,6 +649,9 @@ except NetworkError as e:
 except DataExtractionError as e:
     # 수동 모드 전환
     self._activate_manual_mode(searcher)
+except ManualModeActivationError as e:
+    # 자동 실패 후 수동 모드 전환 자체가 실패한 경우
+    QMessageBox.critical(self, "수동 모드 오류", str(e))
 finally:
     if not manual_mode:
         searcher.close()
@@ -684,6 +699,10 @@ AIRPORTS["NEW"] = "새공항"
 | 항목 | 현재 값 | 위치 | 설명 |
 |------|---------|------|------|
 | 스크롤 대기 | 1.0초 | scraper_config.py | 값 줄이면 빠르지만 불안정 |
+| 자동 검색 모드 | Headless | scraper_config.py | 자동 추출 실패 시 visible 수동 모드로 재오픈 |
+| 리소스 차단 | image/media/font | scraper_config.py | 자동(headless)에서만 차단해 로딩 시간 단축 |
+| 검색 캐시 TTL | 180초 | scraper_config.py | 동일 조건 반복 검색 속도 향상 |
+| 진행 로그 디듀프 | 300ms | scraper_config.py | 동일 메시지 연속 출력 억제로 UI 렌더링 비용 절감 |
 | 국내선 조합 수 | 150×150 | scraper_v2.py | 조합 수 줄이면 일부 결과 누락 |
 | 최대 결과 수 | 1,000개 | gui_v2.py | 메모리 사용량에 영향 |
 | DB WAL 모드 | 활성화 | database.py | 동시 읽기 성능 향상 |
@@ -707,8 +726,12 @@ logger.error("오류 발생", exc_info=True)
 
 **메인 로깅 설정 (`gui_v2.py`):**
 ```python
+def resolve_log_level() -> int:
+    level_name = os.environ.get("FLIGHTBOT_LOG_LEVEL", "INFO").upper().strip()
+    return getattr(logging, level_name, logging.INFO)
+
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=resolve_log_level(),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
@@ -726,4 +749,4 @@ logging.basicConfig(
 ---
 
 *이 문서는 Flight Bot v2.5 코드베이스를 기반으로 작성되었습니다.*
-*마지막 업데이트: 2026-01-15*
+*마지막 업데이트: 2026-02-21*

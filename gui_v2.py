@@ -181,6 +181,8 @@ class MainWindow(QMainWindow):
         self._pending_filter = None
         self._last_filter_log_msg = ""
         self._last_filter_log_ts = 0.0
+        self._last_progress_msg = ""
+        self._last_progress_ts = 0.0
         self._filter_apply_timer = QTimer(self)
         self._filter_apply_timer.setSingleShot(True)
         self._filter_apply_timer.timeout.connect(self._run_scheduled_filter_apply)
@@ -445,7 +447,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(scroll)
         
         # Status Bar
-        self.statusBar().showMessage("준비 완료 | Ctrl+Enter: 검색, F5: 새로고침, Esc: 취소")
+        self.statusBar().showMessage("준비 완료 | Ctrl+Enter: 검색, Ctrl+Shift+Enter: 강제 재조회, F5: 새로고침, Esc: 취소")
 
     def _toggle_search_panel(self):
         """검색 패널 접기/펼치기 토글"""
@@ -458,6 +460,10 @@ class MainWindow(QMainWindow):
         # Ctrl+Enter: Start search
         shortcut_search = QShortcut(QKeySequence("Ctrl+Return"), self)
         shortcut_search.activated.connect(self.search_panel._on_search)
+
+        # Ctrl+Shift+Enter: Force refresh (cache bypass)
+        shortcut_force_search = QShortcut(QKeySequence("Ctrl+Shift+Return"), self)
+        shortcut_force_search.activated.connect(self._start_force_refresh_search)
         
         # F5: Refresh (reapply filter)
         shortcut_refresh = QShortcut(QKeySequence("F5"), self)
@@ -470,6 +476,12 @@ class MainWindow(QMainWindow):
         # Ctrl+F: Focus on filter
         shortcut_filter = QShortcut(QKeySequence("Ctrl+F"), self)
         shortcut_filter.activated.connect(lambda: self.filter_panel.cb_airline_category.setFocus())
+
+    def _start_force_refresh_search(self):
+        """캐시를 우회한 강제 재조회 단축키 처리"""
+        if not hasattr(self, "search_panel"):
+            return
+        self.search_panel._on_force_refresh_search()
 
     def _schedule_filter_apply(self, filters):
         """연속 필터 이벤트를 디바운스로 합쳐 마지막 변경만 적용."""
@@ -883,12 +895,16 @@ class MainWindow(QMainWindow):
         self.log_viewer.append_log(f"✅ 날짜 범위 검색 완료: {len(results)}일 (캘린더뷰 사용 가능)")
 
     # --- Standard Search ---
-    def _start_search(self, origin, dest, dep, ret, adults, cabin_class="ECONOMY"):
+    def _start_search(self, origin, dest, dep, ret, adults, cabin_class="ECONOMY", force_refresh=False):
         if not self._ensure_no_running_search():
             return
 
         if not self._guard_manual_browser_for_new_search("새 검색"):
             return
+
+        if hasattr(self, "search_panel") and hasattr(self.search_panel, "consume_force_refresh"):
+            force_refresh = bool(force_refresh or self.search_panel.consume_force_refresh())
+
         # Save search params for later use
         self.current_search_params = {
             "origin": origin,
@@ -920,11 +936,16 @@ class MainWindow(QMainWindow):
         self.manual_frame.setVisible(manual_browser_open)
         self.log_viewer.clear()
         self.log_viewer.append_log(f"검색 프로세스 시작... (좌석등급: {cabin_label})")
+        if force_refresh:
+            self.statusBar().showMessage("🔄 캐시 무시 재조회 실행 중...")
+            self.log_viewer.append_log("🔄 강제 재조회: 캐시를 무시하고 새로 검색합니다.")
         self.tabs.setCurrentIndex(2)  # Switch to logs
         
         # Start Worker
         max_results = self.prefs.get_max_results()
-        self.worker = SearchWorker(origin, dest, dep, ret, adults, cabin_class, max_results)
+        self.worker = SearchWorker(
+            origin, dest, dep, ret, adults, cabin_class, max_results, force_refresh=force_refresh
+        )
         self.worker.progress.connect(self._update_progress)
         self.worker.finished.connect(self._search_finished)
         self.worker.error.connect(self._search_error)
@@ -934,6 +955,14 @@ class MainWindow(QMainWindow):
     def _update_progress(self, msg):
         self.statusBar().showMessage(msg)
         self.progress_bar.setFormat(msg)
+        now = time.monotonic()
+        dedup_window = max(
+            0, int(getattr(scraper_config, "PROGRESS_LOG_DEDUP_WINDOW_MS", 300))
+        ) / 1000.0
+        if msg == self._last_progress_msg and (now - self._last_progress_ts) < dedup_window:
+            return
+        self._last_progress_msg = msg
+        self._last_progress_ts = now
         self.log_viewer.append_log(msg)
 
     def _search_finished(self, results):
@@ -951,7 +980,7 @@ class MainWindow(QMainWindow):
                     self.current_search_params.get('origin', ''),
                     self.current_search_params.get('dest', ''),
                     self.current_search_params.get('dep', ''),
-                    [{'price': r.price, 'airline': r.airline} for r in results]
+                    results,
                 )
                 
                 # Log search
@@ -979,6 +1008,8 @@ class MainWindow(QMainWindow):
         else:
             self.progress_bar.setFormat("💭 검색 결과 없음")
             self.log_viewer.append_log("⚠️ 검색 결과가 없습니다.")
+            self.table.update_data([])
+            self.tabs.setCurrentIndex(0)
             QMessageBox.information(self, "결과 없음", "항공권을 찾을 수 없습니다.")
     
     def _check_price_alerts(self, results):
@@ -1511,8 +1542,9 @@ class MainWindow(QMainWindow):
 
 def main():
     # 로깅 설정 (중앙 집중식)
+    log_level = resolve_log_level()
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=log_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[logging.StreamHandler(sys.stdout)]
     )
@@ -1527,6 +1559,11 @@ def main():
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
+
+
+def resolve_log_level() -> int:
+    level_name = os.environ.get("FLIGHTBOT_LOG_LEVEL", "INFO").upper().strip()
+    return getattr(logging, level_name, logging.INFO)
 
 if __name__ == "__main__":
     main()

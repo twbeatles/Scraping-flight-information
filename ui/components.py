@@ -665,6 +665,8 @@ class LogViewer(QTextEdit):
         super().__init__()
         self.setObjectName("log_view")
         self.setReadOnly(True)
+        self.setUndoRedoEnabled(False)
+        self.document().setMaximumBlockCount(1000)
         self.setPlaceholderText("검색 로그가 여기에 표시됩니다...")
     
     @pyqtSlot(str)
@@ -680,6 +682,7 @@ class SearchPanel(QFrame):
     def __init__(self, prefs):
         super().__init__()
         self.prefs = prefs
+        self._force_refresh_requested = False
         self.setObjectName("card")
         self._init_ui()
 
@@ -866,7 +869,20 @@ class SearchPanel(QFrame):
             }
         """)
         self.btn_search.clicked.connect(self._on_search)
-        layout.addWidget(self.btn_search, 4, 0, 1, 3) 
+
+        self.btn_force_refresh = QPushButton("🔄 강제 재조회")
+        self.btn_force_refresh.setObjectName("tool_btn")
+        self.btn_force_refresh.setFixedHeight(54)
+        self.btn_force_refresh.setToolTip("캐시를 무시하고 다시 조회합니다 (Ctrl+Shift+Enter)")
+        self.btn_force_refresh.clicked.connect(self._on_force_refresh_search)
+
+        action_row = QWidget()
+        action_layout = QHBoxLayout(action_row)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(10)
+        action_layout.addWidget(self.btn_search, 3)
+        action_layout.addWidget(self.btn_force_refresh, 1)
+        layout.addWidget(action_row, 4, 0, 1, 3)
         
         # Load previous preferred time if any
         pt = self.prefs.get_preferred_time()
@@ -1006,37 +1022,52 @@ class SearchPanel(QFrame):
         
         # 입력 유효성 검사
         if not origin_code or not dest_code:
+            self._force_refresh_requested = False
             QMessageBox.warning(self, "입력 오류", "출발지와 도착지를 선택하세요.")
             return
         
         if not config.validate_airport_code(origin_code):
+            self._force_refresh_requested = False
             QMessageBox.warning(self, "입력 오류", "출발지 코드가 올바르지 않습니다.\n예: ICN, GMP, SEL")
             return
 
         if not config.validate_airport_code(dest_code):
+            self._force_refresh_requested = False
             QMessageBox.warning(self, "입력 오류", "도착지 코드가 올바르지 않습니다.\n예: NRT, HND, TYO")
             return
 
         if origin_code == dest_code:
+            self._force_refresh_requested = False
             QMessageBox.warning(self, "입력 오류", "출발지와 도착지가 같습니다.")
             return
         
         # 날짜 유효성 검사
         today = QDate.currentDate()
         if dep_date < today:
+            self._force_refresh_requested = False
             QMessageBox.warning(self, "날짜 오류", "출발일이 오늘보다 이전입니다.")
             return
         
         if ret_date and ret_date < dep_date:
+            self._force_refresh_requested = False
             QMessageBox.warning(self, "날짜 오류", "귀국일이 출발일보다 이전입니다.")
             return
 
         self.search_requested.emit(origin_code, dest_code, dep, ret, adults, cabin_class)
 
+    def _on_force_refresh_search(self):
+        self._force_refresh_requested = True
+        self._on_search()
+
+    def consume_force_refresh(self) -> bool:
+        requested = self._force_refresh_requested
+        self._force_refresh_requested = False
+        return requested
 
     def set_searching(self, searching):
         self.btn_search.setText("⏳ 검색 중..." if searching else "🔍 최저가 검색 시작")
         self.btn_search.setEnabled(not searching)
+        self.btn_force_refresh.setEnabled(not searching)
         self.cb_origin.setEnabled(not searching)
         self.cb_dest.setEnabled(not searching)
     

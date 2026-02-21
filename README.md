@@ -28,9 +28,9 @@
 
 ---
 
-## � 주요 기능
+## 🌟 주요 기능
 
-### �🔍 검색 기능
+### 🔍 검색 기능
 - **국내선/국제선** 항공권 검색
 - **왕복/편도** 검색 지원
 - **좌석 등급** 선택 (이코노미/비즈니스/일등석)
@@ -114,7 +114,7 @@ python gui_v2.py
 
 ---
 
-## � 사용 방법
+## 📝 사용 방법
 
 ### 기본 검색
 
@@ -131,6 +131,7 @@ python gui_v2.py
 6. **인원 설정**: 성인 인원 수 입력 (1-9명)
 7. **좌석 등급 선택**: 이코노미/비즈니스/일등석
 8. **🔍 검색 버튼 클릭** 또는 `Ctrl+Enter`
+9. 캐시를 무시한 즉시 재검색이 필요하면 **🔄 강제 재조회** 버튼 또는 `Ctrl+Shift+Enter`
 
 ### 검색 결과 활용
 
@@ -287,9 +288,9 @@ Scraping-flight-information-main-v2/
 
 ### 사용자 설정 파일
 
-| 모드 | preferences.json 위치 | flight_data.db 위치 |
+| 모드 | user_preferences.json 위치 | flight_data.db 위치 |
 |------|----------------------|---------------------|
-| 개발 | `./preferences.json` | `./flight_data.db` |
+| 개발 | `./user_preferences.json` | `./flight_data.db` |
 | EXE | `%LOCALAPPDATA%/FlightBot/` | `%LOCALAPPDATA%/FlightBot/` |
 
 ### 설정 가능 항목
@@ -300,6 +301,15 @@ Scraping-flight-information-main-v2/
 - **선호 출발 시간**: 기본 필터 시간대 설정
 - **프리셋 관리**: 자주 사용하는 공항 코드 추가
 - **테마**: 다크/라이트 모드 전환
+
+### 성능 정책 (기본값)
+
+- 자동 검색은 **Headless 모드**로 실행되어 UI 오버헤드를 줄입니다.
+- 자동 추출 실패 시 동일 URL을 **가시 브라우저(수동 모드)** 로 재오픈합니다.
+- 동일 검색 조건은 **3분 TTL 메모리 캐시**를 사용해 반복 검색 속도를 단축합니다.
+- 강제 재조회(버튼/`Ctrl+Shift+Enter`)는 캐시를 우회해 즉시 새 데이터를 조회합니다.
+- 진행 로그는 동일 메시지 연속 출력 시 디듀프되어 로그 뷰 렌더링 비용을 줄입니다.
+- 기본 로그 레벨은 `INFO`이며, `FLIGHTBOT_LOG_LEVEL` 환경변수로 `DEBUG/INFO/WARNING/ERROR/CRITICAL` 오버라이드가 가능합니다.
 
 ### 프리셋 공항 추가
 
@@ -367,6 +377,7 @@ playwright install chromium
 - 네트워크 상태 확인
 - 결과 수 제한 (설정에서 조정)
 - 날짜 범위 검색 시 범위 축소
+- 동일 조건 재검색은 3분 내 캐시가 사용되므로, 완전 재조회가 필요하면 **강제 재조회 버튼** 또는 `Ctrl+Shift+Enter` 사용
 
 ### 프로그램이 응답 없음
 
@@ -388,6 +399,8 @@ playwright install chromium
   - 데이터베이스 Multi-thread 안전성 확보 (Thread-Local Connection)
   - 브라우저 초기화 오류 시 사용자 친화적 메시지 표시
   - 로깅 시스템 통합 및 최적화
+  - 자동 검색 Headless + 자동 실패 시 수동 모드 브라우저 재오픈 플로우 추가
+  - 동일 조건 검색 3분 TTL 캐시(LRU) 추가
   
 - 🐛 **버그 수정**
   - 고가 항공권 필터링 로직 오류 수정

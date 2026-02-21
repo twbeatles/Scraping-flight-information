@@ -420,7 +420,26 @@ RETRY_DELAY_SECONDS = 2          # 재시도 대기 (초)
 PAGE_LOAD_TIMEOUT_MS = 60000     # 페이지 로딩 (60초)
 DATA_WAIT_TIMEOUT_SECONDS = 30   # 데이터 대기 (30초)
 SCROLL_PAUSE_TIME = 1.0          # 스크롤 대기 (1초)
+AUTO_SEARCH_HEADLESS = True      # 자동 검색 기본 headless
+AUTO_BLOCK_RESOURCE_TYPES = ("image", "media", "font")
+ENABLE_SEARCH_CACHE = True       # 동일 조건 검색 캐시
+SEARCH_CACHE_TTL_SECONDS = 180   # 3분 TTL
+SEARCH_CACHE_MAX_ENTRIES = 64    # LRU 최대 엔트리
+PROGRESS_LOG_DEDUP_WINDOW_MS = 300
 ```
+
+### 로그 정책 (gui_v2.py)
+
+```python
+# 기본값은 INFO, 환경변수로 오버라이드 가능
+os.environ["FLIGHTBOT_LOG_LEVEL"]  # DEBUG/INFO/WARNING/ERROR/CRITICAL
+```
+
+### 캐시 우회 UX (SearchPanel/MainWindow)
+
+- `🔄 강제 재조회` 버튼: one-shot `force_refresh=True`로 검색 실행
+- 단축키: `Ctrl+Shift+Enter` (캐시 무시 재조회)
+- 기본 검색(`Ctrl+Enter`)은 캐시 사용 경로 유지
 
 ### 국내선 공항 코드
 
@@ -443,9 +462,9 @@ cabin_labels = {
 
 ### 파일 저장 위치
 
-| 모드 | preferences.json | flight_data.db |
+| 모드 | user_preferences.json | flight_data.db |
 |------|------------------|----------------|
-| 개발 | `./preferences.json` | `./flight_data.db` |
+| 개발 | `./user_preferences.json` | `./flight_data.db` |
 | EXE | `%LOCALAPPDATA%/FlightBot/` | `%LOCALAPPDATA%/FlightBot/` |
 
 ### 필터 상수 (gui_v2.py)
@@ -555,6 +574,10 @@ class NetworkError(ScraperError):
 class DataExtractionError(ScraperError):
     """데이터 추출 실패"""
     pass
+
+class ManualModeActivationError(ScraperError):
+    """자동 실패 후 수동 모드 전환 자체가 실패"""
+    pass
 ```
 
 ### 예외 처리 패턴
@@ -593,7 +616,11 @@ def _search_error(self, err_msg: str):
     self.log_viewer.append_log(f"❌ 오류: {err_msg}")
     
     # 사용자 친화적 메시지
-    if "browser" in err_msg.lower():
+    if "수동 모드 전환 실패" in err_msg:
+        QMessageBox.critical(self, "수동 모드 오류",
+            "자동 검색 실패 후 수동 모드 전환에 실패했습니다.\n"
+            "브라우저 설치/권한 상태를 확인한 뒤 다시 시도하세요.")
+    elif "browser" in err_msg.lower():
         QMessageBox.critical(self, "브라우저 오류",
             "브라우저를 시작할 수 없습니다.\n\n"
             "해결 방법:\n"
@@ -671,6 +698,9 @@ pyinstaller --clean flight_bot.spec
 | 항목 | 현재 값 | 위치 | 조정 가이드 |
 |------|---------|------|-------------|
 | 스크롤 대기 | 1.0초 | scraper_config.py | 0.5~1.5초 범위 권장 |
+| 자동 검색 모드 | Headless | scraper_config.py | 자동 실패 시 visible 수동 모드로 전환 |
+| 요청 차단 | image/media/font | scraper_config.py | 자동(headless)에서만 차단 권장 |
+| 검색 캐시 TTL | 180초 | scraper_config.py | 신선도/속도 균형값, 필요 시 축소 |
 | 데이터 로딩 대기 | 3초 × 10회 | scraper_v2.py | 네트워크 상태에 따라 조정 |
 | 오는편 화면 대기 | 1초 × 15회 | scraper_v2.py | 줄이면 실패율 증가 |
 | 국내선 조합 수 | 150×150 | scraper_v2.py | 메모리와 결과 사이 트레이드오프 |
@@ -1001,7 +1031,8 @@ def search(
     adults: int = 1,
     cabin_class: str = "ECONOMY",
     max_results: int = 1000,
-    emit: Callable[[str], None] = None
+    emit: Callable[[str], None] = None,
+    force_refresh: bool = False
 ) -> List[FlightResult]:
     ...
 ```
@@ -1021,6 +1052,7 @@ def search(self, ...) -> List[FlightResult]:
         cabin_class: 좌석 등급 ("ECONOMY", "BUSINESS", "FIRST")
         max_results: 최대 결과 수
         emit: 진행 상황 콜백 함수
+        force_refresh: True면 캐시를 우회하고 강제 재조회
     
     Returns:
         가격순 정렬된 FlightResult 리스트
@@ -1029,6 +1061,7 @@ def search(self, ...) -> List[FlightResult]:
         BrowserInitError: 브라우저 시작 실패
         NetworkError: 네트워크 연결 실패
         DataExtractionError: 데이터 추출 실패
+        ManualModeActivationError: 수동 모드 전환 실패
     
     Example:
         >>> searcher = FlightSearcher()
@@ -1097,4 +1130,4 @@ from ui.components import FilterPanel, ResultTable
 ---
 
 *이 문서는 Flight Bot v2.5 코드베이스를 기반으로 작성되었습니다.*
-*마지막 업데이트: 2026-01-15*
+*마지막 업데이트: 2026-02-21*

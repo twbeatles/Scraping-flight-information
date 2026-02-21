@@ -8,6 +8,8 @@ import time
 import os
 import sys
 import heapq
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass, asdict
 from typing import List, Optional, Dict, Any, Callable
 import logging
@@ -43,6 +45,13 @@ class NetworkError(ScraperError):
 class DataExtractionError(ScraperError):
     """데이터 추출 실패"""
     def __init__(self, message: str = "항공편 데이터를 추출할 수 없습니다."):
+        self.message = message
+        super().__init__(self.message)
+
+
+class ManualModeActivationError(ScraperError):
+    """자동 추출 실패 후 수동 모드 활성화까지 실패"""
+    def __init__(self, message: str = "수동 모드로 전환하지 못했습니다."):
         self.message = message
         super().__init__(self.message)
 
@@ -110,7 +119,13 @@ class PlaywrightScraper:
         self.close()
         return False  # 예외는 전파
     
-    def _init_browser(self, log_func: Callable[[str], None] = None, user_data_dir: Optional[str] = None) -> None:
+    def _init_browser(
+        self,
+        log_func: Callable[[str], None] = None,
+        user_data_dir: Optional[str] = None,
+        headless: bool = False,
+        block_resources: bool = False,
+    ) -> None:
         """브라우저 초기화 (Chrome > Edge > Chromium 순서 시도)
         
         Raises:
@@ -165,7 +180,7 @@ class PlaywrightScraper:
             try:
                 log(f"  → {browser_name} 시도 중...")
                 launch_options = {
-                    "headless": False,
+                    "headless": bool(headless),
                     "args": browser_args
                 }
                 if channel:
@@ -181,6 +196,7 @@ class PlaywrightScraper:
                     self.context = self.playwright.chromium.launch_persistent_context(
                         user_data_dir, **context_options
                     )
+                    self._configure_resource_blocking(block_resources)
                     log(f"  ✅ {browser_name} 시작 성공 (Persistent Context)")
                 else:
                     self.browser = self.playwright.chromium.launch(**launch_options)
@@ -209,6 +225,84 @@ class PlaywrightScraper:
         )
         logger.error(error_msg)
         raise BrowserInitError(error_msg)
+
+    def _configure_resource_blocking(self, enabled: bool) -> None:
+        """자동(headless) 검색에서 불필요 리소스 요청을 차단한다."""
+        if not enabled or not self.context:
+            return
+
+        blocked = set(getattr(scraper_config, "AUTO_BLOCK_RESOURCE_TYPES", ()))
+        if not blocked:
+            return
+
+        def _route_handler(route, request):
+            try:
+                if request.resource_type in blocked:
+                    route.abort()
+                else:
+                    route.continue_()
+            except Exception:
+                try:
+                    route.continue_()
+                except Exception:
+                    pass
+
+        try:
+            self.context.route("**/*", _route_handler)
+        except Exception as e:
+            logger.debug(f"리소스 차단 라우트 설정 실패 (무시됨): {e}")
+
+    def _enter_manual_mode(
+        self,
+        url: str,
+        profile_dir: str,
+        is_domestic: bool,
+        log_func: Callable[[str], None],
+        reopen_visible: bool,
+    ) -> bool:
+        """수동 모드 활성화. headless 자동 검색인 경우 visible 브라우저로 재오픈."""
+        if not reopen_visible and self.page is not None:
+            self.manual_mode = True
+            log_func("🖐️ 수동 모드 활성화 - 브라우저에서 결과 로딩 후 '추출' 버튼을 누르세요")
+            return True
+
+        if reopen_visible:
+            log_func("🖐️ 자동 추출 실패 - 수동 모드 브라우저를 여는 중...")
+        else:
+            log_func("🖐️ 수동 모드 재초기화: 기존 브라우저 세션이 없어 새로 엽니다.")
+        try:
+            if reopen_visible or self.page is None:
+                self.close()
+                self._init_browser(
+                    log_func=log_func,
+                    user_data_dir=profile_dir,
+                    headless=False,
+                    block_resources=False,
+                )
+                if self.context is None and self.browser is not None:
+                    self.context = self.browser.new_context(
+                        viewport={"width": 1400, "height": 900},
+                        locale="ko-KR",
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    )
+                self.page = self.context.new_page()
+
+            if url:
+                try:
+                    self.page.goto(url, wait_until="domcontentloaded", timeout=scraper_config.PAGE_LOAD_TIMEOUT_MS)
+                except PlaywrightTimeoutError:
+                    log_func("⚠️ 수동 모드 페이지 로딩 시간 초과 - 계속 진행합니다.")
+                except Exception as e:
+                    log_func(f"⚠️ 수동 모드 페이지 진입 실패: {e}")
+            self._wait_for_results(is_domestic, lambda _msg: None)
+            self.manual_mode = True
+            log_func("🖐️ 수동 모드 활성화 - 브라우저에서 결과 로딩 후 '추출' 버튼을 누르세요")
+            return True
+        except Exception as e:
+            logger.error(f"수동 모드 전환 실패: {e}", exc_info=True)
+            self.close()
+            self.manual_mode = False
+            return False
 
     def _wait_for_results(self, is_domestic: bool, log_func: Callable[[str], None]) -> bool:
         if not self.page:
@@ -373,6 +467,9 @@ class PlaywrightScraper:
             logger.info(msg)
         
         results = []
+        url = ""
+        profile_dir = ""
+        auto_headless = bool(getattr(scraper_config, "AUTO_SEARCH_HEADLESS", True))
         
         # 국내선 여부 확인 (한국 내 공항)
         domestic_airports = {"ICN", "GMP", "CJU", "PUS", "TAE", "SEL"}
@@ -397,7 +494,12 @@ class PlaywrightScraper:
             os.makedirs(profile_dir, exist_ok=True)
 
             # 브라우저 초기화 (Persistent Context 포함)
-            self._init_browser(log, profile_dir)
+            self._init_browser(
+                log_func=log,
+                user_data_dir=profile_dir,
+                headless=auto_headless,
+                block_resources=auto_headless,
+            )
             
             if self.context is None:
                 self.context = self.browser.new_context(
@@ -405,6 +507,7 @@ class PlaywrightScraper:
                     locale='ko-KR',
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 )
+                self._configure_resource_blocking(auto_headless)
             
             self.page = self.context.new_page()
             
@@ -436,6 +539,8 @@ class PlaywrightScraper:
                 log(f"🇰🇷 국내선 검색 모드 ({origin_code} → {dest_code})")
             else:
                 log(f"✈️ 국제선 검색 모드")
+            if auto_headless:
+                log("⚡ 자동 검색 최적화 모드: Headless + 리소스 차단")
             log(f"URL: {url}")
             
             try:
@@ -463,7 +568,15 @@ class PlaywrightScraper:
                     
                     if not outbound_flights:
                         log("⚠️ 가는편 데이터 없음 - 수동 모드 권장")
-                        self.manual_mode = True
+                        entered_manual = self._enter_manual_mode(
+                            url=url,
+                            profile_dir=profile_dir,
+                            is_domestic=is_domestic,
+                            log_func=log,
+                            reopen_visible=auto_headless,
+                        )
+                        if not entered_manual:
+                            raise ManualModeActivationError("가는편 데이터 없음 이후 수동 모드 전환에 실패했습니다.")
                         return results
                     
                     # Step 2: 가는편 선택 (오는편 화면으로 전환)
@@ -574,7 +687,15 @@ class PlaywrightScraper:
                     raise DataExtractionError("자동 추출 결과가 없습니다.")
             else:
                 log("데이터가 충분히 로드되지 않았을 수 있습니다.")
-                self.manual_mode = True
+                entered_manual = self._enter_manual_mode(
+                    url=url,
+                    profile_dir=profile_dir,
+                    is_domestic=is_domestic,
+                    log_func=log,
+                    reopen_visible=auto_headless,
+                )
+                if not entered_manual:
+                    raise ManualModeActivationError("결과 로딩 실패 후 수동 모드 전환에 실패했습니다.")
 
             results = self._sort_and_limit_results(results, max_results, log)
             if results:
@@ -583,12 +704,30 @@ class PlaywrightScraper:
                 
         except DataExtractionError as e:
             log(f"⚠️ {e} - 수동 모드로 전환")
-            self.manual_mode = True
+            entered_manual = self._enter_manual_mode(
+                url=url,
+                profile_dir=profile_dir,
+                is_domestic=is_domestic,
+                log_func=log,
+                reopen_visible=auto_headless,
+            )
+            if not entered_manual:
+                raise ManualModeActivationError("자동 추출 결과 없음 이후 수동 모드 전환에 실패했습니다.") from e
+        except ManualModeActivationError:
+            raise
         except Exception as e:
             logger.error(f"Playwright error: {e}", exc_info=True)
             if emit:
                 emit(f"오류 발생: {e}")
-            self.manual_mode = True
+            entered_manual = self._enter_manual_mode(
+                url=url,
+                profile_dir=profile_dir,
+                is_domestic=is_domestic,
+                log_func=log,
+                reopen_visible=auto_headless,
+            )
+            if not entered_manual:
+                raise ManualModeActivationError("오류 복구 중 수동 모드 전환에 실패했습니다.") from e
         
         finally:
             # 수동 모드가 아니면 브라우저 정리 (리소스 누수 방지)
@@ -649,7 +788,7 @@ class PlaywrightScraper:
                     self._bottom_count += 1
                     logger.debug(f"최하단 도달 체크: {self._bottom_count}/3회 (새 항목 없음)")
                     if self._bottom_count >= 3:
-                        logger.info(f"✅ 스크롤 최하단 도달 확인: {len(all_flights)}개 수집 완료, 다음 단계로 진행")
+                        logger.debug(f"✅ 스크롤 최하단 도달 확인: {len(all_flights)}개 수집 완료, 다음 단계로 진행")
                         break
                     time.sleep(scraper_config.DOMESTIC_SCROLL_BOTTOM_PAUSE_SECONDS)
                     continue
@@ -660,7 +799,7 @@ class PlaywrightScraper:
                 if not can_scroll:
                     self._no_scroll_count += 1
                     if self._no_scroll_count >= 3:
-                        logger.info(f"스크롤 끝 도달: 더 이상 스크롤할 수 없음 ({len(all_flights)}개 수집)")
+                        logger.debug(f"스크롤 끝 도달: 더 이상 스크롤할 수 없음 ({len(all_flights)}개 수집)")
                         break
                 else:
                     self._no_scroll_count = 0
@@ -669,7 +808,7 @@ class PlaywrightScraper:
                 if new_count == 0:
                     self._no_new_count += 1
                     if self._no_new_count >= 8:  # 8회 연속 새 항목 없으면 종료
-                        logger.info(f"스크롤 조기 종료: {self._no_new_count}회 연속 새 항목 없음 ({len(all_flights)}개 수집)")
+                        logger.debug(f"스크롤 조기 종료: {self._no_new_count}회 연속 새 항목 없음 ({len(all_flights)}개 수집)")
                         break
                 else:
                     self._no_new_count = 0
@@ -772,7 +911,7 @@ class PlaywrightScraper:
                         all_results_dict[unique_key] = item
                         current_count += 1
                 
-                logger.info(f"✨ 스크롤 {i+1}: 새로운 결과 {current_count}개 추가 (총 {len(all_results_dict)}개)")
+                logger.debug(f"✨ 스크롤 {i+1}: 새로운 결과 {current_count}개 추가 (총 {len(all_results_dict)}개)")
                 
                 # 2. 스크롤 진행
                 self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
@@ -781,7 +920,7 @@ class PlaywrightScraper:
                 # 3. 높이 변화 체크 (종료 조건)
                 new_height = self.page.evaluate("document.body.scrollHeight")
                 if new_height == previous_height and i > 2: # 초반에는 변화가 없어도 시도해볼만 함
-                     logger.info("📜 더 이상 새로운 내용이 로딩되지 않습니다.")
+                     logger.debug("📜 더 이상 새로운 내용이 로딩되지 않습니다.")
                      break
                 previous_height = new_height
 
@@ -854,16 +993,111 @@ class PlaywrightScraper:
 
 class FlightSearcher:
     """통합 항공권 검색 엔진"""
+
+    _cache_lock = threading.Lock()
+    _search_cache: "OrderedDict[tuple, tuple[float, List[Dict[str, Any]]]]" = OrderedDict()
     
     def __init__(self):
         self.scraper = PlaywrightScraper()
         self.last_results: List[FlightResult] = []
+
+    @staticmethod
+    def _build_cache_key(
+        origin: str,
+        destination: str,
+        departure_date: str,
+        return_date: Optional[str],
+        adults: int,
+        cabin_class: str,
+        max_results: int,
+    ) -> tuple:
+        return (
+            (origin or "").upper(),
+            (destination or "").upper(),
+            departure_date or "",
+            return_date or "",
+            int(adults or 1),
+            (cabin_class or "ECONOMY").upper(),
+            int(max_results or 0),
+        )
+
+    @classmethod
+    def _prune_cache_locked(cls, now: float) -> None:
+        ttl = max(1, int(getattr(scraper_config, "SEARCH_CACHE_TTL_SECONDS", 180)))
+        max_entries = max(1, int(getattr(scraper_config, "SEARCH_CACHE_MAX_ENTRIES", 64)))
+
+        expired_keys = []
+        for key, (saved_at, _) in cls._search_cache.items():
+            if now - saved_at > ttl:
+                expired_keys.append(key)
+        for key in expired_keys:
+            cls._search_cache.pop(key, None)
+
+        while len(cls._search_cache) > max_entries:
+            cls._search_cache.popitem(last=False)
+
+    @staticmethod
+    def _deserialize_cached_results(payload: List[Dict[str, Any]]) -> List[FlightResult]:
+        restored = []
+        for row in payload:
+            try:
+                restored.append(FlightResult(**row))
+            except Exception:
+                continue
+        restored.sort(key=lambda x: x.price if x.price > 0 else float("inf"))
+        return restored
+
+    @classmethod
+    def _get_cached_results(cls, cache_key: tuple, force_refresh: bool = False) -> Optional[List[FlightResult]]:
+        if force_refresh or not getattr(scraper_config, "ENABLE_SEARCH_CACHE", True):
+            return None
+
+        now = time.time()
+        with cls._cache_lock:
+            cls._prune_cache_locked(now)
+            item = cls._search_cache.get(cache_key)
+            if not item:
+                return None
+            saved_at, payload = item
+            ttl = max(1, int(getattr(scraper_config, "SEARCH_CACHE_TTL_SECONDS", 180)))
+            if now - saved_at > ttl:
+                cls._search_cache.pop(cache_key, None)
+                return None
+            cls._search_cache.move_to_end(cache_key)
+        return cls._deserialize_cached_results(payload)
+
+    @classmethod
+    def _store_cached_results(cls, cache_key: tuple, results: List[FlightResult]) -> None:
+        if not results or not getattr(scraper_config, "ENABLE_SEARCH_CACHE", True):
+            return
+
+        payload = []
+        for item in results:
+            try:
+                payload.append(item.to_dict())
+            except Exception:
+                continue
+        if not payload:
+            return
+
+        now = time.time()
+        with cls._cache_lock:
+            cls._prune_cache_locked(now)
+            cls._search_cache[cache_key] = (now, payload)
+            cls._search_cache.move_to_end(cache_key)
+            cls._prune_cache_locked(now)
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        with cls._cache_lock:
+            cls._search_cache.clear()
     
     def search(self, origin: str, destination: str, 
                departure_date: str, return_date: Optional[str] = None,
                adults: int = 1, cabin_class: str = "ECONOMY",
                max_results: int = 1000,
-               progress_callback: Callable = None) -> List[FlightResult]:
+               progress_callback: Callable = None,
+               force_refresh: bool = False) -> List[FlightResult]:
         """항공권 검색 진입점"""
         def emit(msg):
             if progress_callback:
@@ -872,6 +1106,25 @@ class FlightSearcher:
         
         cabin_label = {"ECONOMY": "이코노미", "BUSINESS": "비즈니스", "FIRST": "일등석"}.get(cabin_class.upper(), "이코노미")
         emit(f"🔍 {origin} → {destination} 항공권 검색 시작 ({cabin_label})")
+
+        cache_key = self._build_cache_key(
+            origin=origin,
+            destination=destination,
+            departure_date=departure_date,
+            return_date=return_date,
+            adults=adults,
+            cabin_class=cabin_class,
+            max_results=max_results,
+        )
+        cached_results = self._get_cached_results(cache_key, force_refresh=force_refresh)
+        if cached_results is not None:
+            self.last_results = cached_results
+            cheapest = cached_results[0] if cached_results else None
+            if cheapest:
+                emit(f"⚡ 캐시 사용: {len(cached_results)}개 결과, 최저가 {cheapest.price:,}원")
+            else:
+                emit("⚡ 캐시 사용: 결과 없음")
+            return cached_results
         
         results = self.scraper.search(
             origin, destination, 
@@ -883,6 +1136,8 @@ class FlightSearcher:
         self.last_results = results
         
         if results:
+            if not self.scraper.is_manual_mode():
+                self._store_cached_results(cache_key, results)
             cheapest = results[0]
             emit(f"✅ 검색 완료: {len(results)}개 발견, 최저가 {cheapest.price:,}원")
         elif self.scraper.is_manual_mode():
