@@ -1054,13 +1054,7 @@ class SearchPanel(QFrame):
         
         if is_domestic:
             # 국내선: 한국 공항만
-            domestic_airports = {
-                "GMP": "김포",
-                "CJU": "제주",
-                "PUS": "부산 김해",
-                "TAE": "대구",
-                "ICN": "인천"
-            }
+            domestic_airports = config.DOMESTIC_AIRPORTS
             for code, name in domestic_airports.items():
                 self.cb_origin.addItem(f"{code} ({name})", code)
                 self.cb_dest.addItem(f"{code} ({name})", code)
@@ -1115,7 +1109,8 @@ class SearchPanel(QFrame):
                 "dest": self.cb_dest.currentData() or self.cb_dest.currentText(),
                 "dep": self.date_dep.date().toString("yyyyMMdd"),
                 "ret": self.date_ret.date().toString("yyyyMMdd") if self.rb_round.isChecked() else None,
-                "adults": self.spin_adults.value()
+                "adults": self.spin_adults.value(),
+                "cabin_class": self.cb_cabin_class.currentData() or "ECONOMY",
             }
             self.prefs.save_profile(name, params)
             self._refresh_profiles()
@@ -1151,17 +1146,26 @@ class SearchPanel(QFrame):
                 self._toggle_return_date()
                 
             self.spin_adults.setValue(data['adults'])
+
+            cabin = data.get("cabin_class")
+            if cabin:
+                idx_c = self.cb_cabin_class.findData(cabin)
+                if idx_c >= 0:
+                    self.cb_cabin_class.setCurrentIndex(idx_c)
             
         except Exception as e:
             QMessageBox.warning(self, "오류", f"프로필 로드 중 오류: {e}")
 
     def _open_settings(self):
         from ui.dialogs import SettingsDialog
-        dlg = SettingsDialog(self, self.prefs)
+        top = self.window()
+        dlg = SettingsDialog(self, self.prefs, getattr(top, "db", None))
         dlg.exec()
         # Refresh UI after settings close (presets might have changed)
         self._refresh_combos()
         self._refresh_profiles()
+        if hasattr(top, "_configure_alert_auto_timer"):
+            top._configure_alert_auto_timer()
     
     def save_settings(self):
         """입력값을 QSettings에 저장 (프로그램 종료 시 호출)"""
@@ -1172,6 +1176,7 @@ class SearchPanel(QFrame):
         if hasattr(self, 'date_ret') and self.date_ret.isEnabled():
             settings.setValue("ret_date", self.date_ret.date().toString("yyyyMMdd"))
         settings.setValue("adults", self.spin_adults.value())
+        settings.setValue("cabin_class", self.cb_cabin_class.currentData() or "ECONOMY")
         settings.setValue("is_roundtrip", self.rb_round.isChecked())
         if hasattr(self, 'rb_domestic'):
             settings.setValue("is_domestic", self.rb_domestic.isChecked())
@@ -1210,6 +1215,11 @@ class SearchPanel(QFrame):
         # Adults
         adults = settings.value("adults", 1, type=int)
         self.spin_adults.setValue(adults)
+
+        cabin = settings.value("cabin_class", "ECONOMY")
+        idx_c = self.cb_cabin_class.findData(cabin)
+        if idx_c >= 0:
+            self.cb_cabin_class.setCurrentIndex(idx_c)
         
         # Trip type
         is_roundtrip = settings.value("is_roundtrip", True, type=bool)

@@ -56,7 +56,7 @@ from ui.components import (
     NoWheelSpinBox, NoWheelComboBox, NoWheelDateEdit, NoWheelTabWidget,
     FilterPanel, ResultTable, LogViewer, SearchPanel
 )
-from ui.workers import SearchWorker, MultiSearchWorker, DateRangeWorker
+from ui.workers import SearchWorker, MultiSearchWorker, DateRangeWorker, AlertAutoCheckWorker
 from ui.dialogs import (
     CalendarViewDialog, CombinationSelectorDialog, MultiDestDialog,
     MultiDestResultDialog, DateRangeDialog, DateRangeResultDialog,
@@ -144,7 +144,9 @@ class SessionManager:
                     is_round_trip=r.get("is_round_trip", False),
                     outbound_price=r.get("outbound_price", 0),
                     return_price=r.get("return_price", 0),
-                    return_airline=r.get("return_airline", "")
+                    return_airline=r.get("return_airline", ""),
+                    confidence=float(r.get("confidence", 0.0) or 0.0),
+                    extraction_source=r.get("extraction_source", ""),
                 )
                 results.append(flight)
             
@@ -173,6 +175,7 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.multi_worker = None
         self.date_worker = None
+        self.alert_worker = None
         self.active_searcher = None
         self.results = []
         self.all_results = []
@@ -184,6 +187,9 @@ class MainWindow(QMainWindow):
         self._filter_apply_timer = QTimer(self)
         self._filter_apply_timer.setSingleShot(True)
         self._filter_apply_timer.timeout.connect(self._run_scheduled_filter_apply)
+        self._alert_auto_timer = QTimer(self)
+        self._alert_auto_timer.setSingleShot(False)
+        self._alert_auto_timer.timeout.connect(self._run_auto_alert_check)
         
         # prefs는 이미 테마 로드 시 초기화됨
         self.db = FlightDatabase()
@@ -193,6 +199,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'search_panel'):
             self.search_panel.restore_settings()
         self._setup_shortcuts()
+        self._configure_alert_auto_timer()
         
         # 프로그램 시작 시 마지막 검색 결과 복원
         QTimer.singleShot(0, self._restore_last_search)
@@ -471,6 +478,100 @@ class MainWindow(QMainWindow):
         shortcut_filter = QShortcut(QKeySequence("Ctrl+F"), self)
         shortcut_filter.activated.connect(lambda: self.filter_panel.cb_airline_category.setFocus())
 
+    def _emit_telemetry_event(self, payload: dict):
+        """워커/스크래퍼 텔레메트리 이벤트를 DB+JSONL로 저장."""
+        if not payload:
+            return
+        try:
+            self.db.log_telemetry_event(
+                event_type=payload.get("event_type", "unknown"),
+                success=bool(payload.get("success", True)),
+                error_code=payload.get("error_code", ""),
+                route=payload.get("route", ""),
+                manual_mode=bool(payload.get("manual_mode", False)),
+                selector_name=payload.get("selector_name", ""),
+                extraction_source=payload.get("extraction_source", ""),
+                confidence=float(payload.get("confidence", 0.0) or 0.0),
+                duration_ms=payload.get("duration_ms"),
+                result_count=payload.get("result_count"),
+                details=payload.get("details", {}),
+            )
+        except Exception as e:
+            logger.debug(f"Telemetry logging failed: {e}")
+
+    def _configure_alert_auto_timer(self):
+        """가격 알림 자동 점검 타이머 구성."""
+        cfg = self.prefs.get_alert_auto_check()
+        enabled = cfg.get("enabled", False)
+        interval_min = max(5, int(cfg.get("interval_min", 30)))
+        self._alert_auto_timer.stop()
+        if enabled:
+            self._alert_auto_timer.start(interval_min * 60 * 1000)
+            self.log_viewer.append_log(f"🔔 자동 알림 점검 활성화 ({interval_min}분 주기)")
+        else:
+            self.log_viewer.append_log("🔔 자동 알림 점검 비활성화")
+
+    def _run_auto_alert_check(self):
+        """QTimer 기반 자동 가격 알림 점검."""
+        if self.alert_worker and self.alert_worker.isRunning():
+            return
+        if self._get_running_workers():
+            return
+
+        alerts = self.db.get_active_alerts()
+        if not alerts:
+            return
+        self._emit_telemetry_event(
+            {
+                "event_type": "auto_alert_cycle_start",
+                "success": True,
+                "result_count": len(alerts),
+            }
+        )
+
+        self.alert_worker = AlertAutoCheckWorker(
+            alerts,
+            max_results=max(50, min(self.prefs.get_max_results(), 200)),
+            telemetry_callback=self._emit_telemetry_event,
+        )
+        self.alert_worker.progress.connect(lambda msg: self.log_viewer.append_log(msg))
+        self.alert_worker.alert_checked.connect(self._on_auto_alert_checked)
+        self.alert_worker.alert_hit.connect(self._on_auto_alert_hit)
+        self.alert_worker.done.connect(self._on_auto_alert_done)
+        self.alert_worker.start()
+
+    def _on_auto_alert_checked(self, alert_id: int, current_price: int):
+        try:
+            self.db.update_alert_check(alert_id, current_price)
+        except Exception as e:
+            logger.debug(f"Failed to update auto alert check: {e}")
+
+    def _on_auto_alert_hit(self, alert_id: int, price: int, target: int, origin: str, dest: str, cabin: str):
+        try:
+            self.db.mark_alert_triggered(alert_id)
+        except Exception as e:
+            logger.debug(f"Failed to mark auto alert triggered: {e}")
+        self.log_viewer.append_log(
+            f"🔔 자동 알림 발동! {origin}->{dest} [{cabin}] {price:,}원 (목표 {target:,}원 이하)"
+        )
+        QMessageBox.information(
+            self,
+            "🔔 자동 가격 알림",
+            f"노선: {origin} → {dest}\n좌석: {cabin}\n최저가: {price:,}원\n목표가: {target:,}원 이하",
+        )
+
+    def _on_auto_alert_done(self, checked: int, hits: int):
+        self.log_viewer.append_log(f"🔔 자동 점검 완료: {checked}건 확인, {hits}건 발동")
+        self._emit_telemetry_event(
+            {
+                "event_type": "auto_alert_cycle_done",
+                "success": True,
+                "result_count": checked,
+                "details": {"hits": hits},
+            }
+        )
+        self.alert_worker = None
+
     def _schedule_filter_apply(self, filters):
         """연속 필터 이벤트를 디바운스로 합쳐 마지막 변경만 적용."""
         self._pending_filter = filters
@@ -501,6 +602,8 @@ class MainWindow(QMainWindow):
             running_workers.append(("다중 목적지 검색", self.multi_worker))
         if self.date_worker and self.date_worker.isRunning():
             running_workers.append(("날짜 범위 검색", self.date_worker))
+        if self.alert_worker and self.alert_worker.isRunning():
+            running_workers.append(("자동 가격 알림 점검", self.alert_worker))
         return running_workers
 
     def _ensure_no_running_search(self):
@@ -517,6 +620,12 @@ class MainWindow(QMainWindow):
             "Esc로 현재 검색을 취소하거나 완료 후 다시 시도해주세요."
         )
         return False
+
+    def _stop_alert_worker_if_running(self):
+        if self.alert_worker and self.alert_worker.isRunning():
+            self.alert_worker.cancel()
+            self.alert_worker.requestInterruption()
+            self.alert_worker.wait(3000)
 
     def _on_escape(self):
         """Escape 키 처리 - 검색 취소 및 브라우저 정리"""
@@ -547,8 +656,13 @@ class MainWindow(QMainWindow):
                 if not worker.wait(5000):
                     self.log_viewer.append_log(f"⚠️ {worker_name} 종료 지연 - 추가 대기 중")
                     if not worker.wait(2000):
-                        worker.terminate()
-                        worker.wait(500)
+                        QMessageBox.warning(
+                            self,
+                            "종료 지연",
+                            f"{worker_name} 작업이 아직 종료되지 않았습니다.\n"
+                            "잠시 후 다시 Esc를 눌러 취소를 재시도해주세요.",
+                        )
+                        self.log_viewer.append_log(f"⚠️ {worker_name} 종료 미완료 - 강제 종료는 수행하지 않습니다.")
                 self.log_viewer.append_log(f"⚠️ {worker_name} 취소 요청 완료")
 
             self.search_panel.set_searching(False)
@@ -797,7 +911,8 @@ class MainWindow(QMainWindow):
         self.log_viewer.append_log(f"ℹ️ {action_name} 취소: 수동 모드 브라우저를 유지했습니다.")
         return False
     
-    def _start_multi_search(self, origin, destinations, dep, ret, adults):
+    def _start_multi_search(self, origin, destinations, dep, ret, adults, cabin_class):
+        self._stop_alert_worker_if_running()
         if not self._ensure_no_running_search():
             return
 
@@ -805,14 +920,23 @@ class MainWindow(QMainWindow):
             return
 
         self.log_viewer.clear()
-        self.log_viewer.append_log(f"🌍 다중 목적지 검색 시작: {', '.join(destinations)}")
+        self.log_viewer.append_log(f"🌍 다중 목적지 검색 시작: {', '.join(destinations)} [{cabin_class}]")
         
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setFormat("다중 목적지 검색 중...")
         self.tabs.setCurrentIndex(2)  # Logs tab
         
         max_results = self.prefs.get_max_results()
-        self.multi_worker = MultiSearchWorker(origin, destinations, dep, ret, adults, max_results)
+        self.multi_worker = MultiSearchWorker(
+            origin,
+            destinations,
+            dep,
+            ret,
+            adults,
+            cabin_class,
+            max_results,
+            telemetry_callback=self._emit_telemetry_event,
+        )
         self.multi_worker.progress.connect(self._update_progress)
         self.multi_worker.single_finished.connect(self._on_multi_single_finished)
         self.multi_worker.all_finished.connect(self._multi_search_finished)
@@ -844,7 +968,8 @@ class MainWindow(QMainWindow):
         dialog.search_requested.connect(self._start_date_search)
         dialog.exec()
     
-    def _start_date_search(self, origin, dest, dates, duration, adults):
+    def _start_date_search(self, origin, dest, dates, duration, adults, cabin_class):
+        self._stop_alert_worker_if_running()
         if not self._ensure_no_running_search():
             return
 
@@ -852,14 +977,23 @@ class MainWindow(QMainWindow):
             return
 
         self.log_viewer.clear()
-        self.log_viewer.append_log(f"📅 날짜 범위 검색 시작: {dates[0]} ~ {dates[-1]}")
+        self.log_viewer.append_log(f"📅 날짜 범위 검색 시작: {dates[0]} ~ {dates[-1]} [{cabin_class}]")
         
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setFormat("날짜별 검색 중...")
         self.tabs.setCurrentIndex(2)  # Logs tab
         
         max_results = self.prefs.get_max_results()
-        self.date_worker = DateRangeWorker(origin, dest, dates, duration, adults, max_results)
+        self.date_worker = DateRangeWorker(
+            origin,
+            dest,
+            dates,
+            duration,
+            adults,
+            cabin_class,
+            max_results,
+            telemetry_callback=self._emit_telemetry_event,
+        )
         self.date_worker.progress.connect(self._update_progress)
         self.date_worker.date_result.connect(self._on_date_range_result)
         self.date_worker.all_finished.connect(self._date_search_finished)
@@ -884,6 +1018,7 @@ class MainWindow(QMainWindow):
 
     # --- Standard Search ---
     def _start_search(self, origin, dest, dep, ret, adults, cabin_class="ECONOMY"):
+        self._stop_alert_worker_if_running()
         if not self._ensure_no_running_search():
             return
 
@@ -924,7 +1059,16 @@ class MainWindow(QMainWindow):
         
         # Start Worker
         max_results = self.prefs.get_max_results()
-        self.worker = SearchWorker(origin, dest, dep, ret, adults, cabin_class, max_results)
+        self.worker = SearchWorker(
+            origin,
+            dest,
+            dep,
+            ret,
+            adults,
+            cabin_class,
+            max_results,
+            telemetry_callback=self._emit_telemetry_event,
+        )
         self.worker.progress.connect(self._update_progress)
         self.worker.finished.connect(self._search_finished)
         self.worker.error.connect(self._search_error)
@@ -944,6 +1088,18 @@ class MainWindow(QMainWindow):
         if results:
             self.all_results = results
             self.results = results
+            if hasattr(self, "_emit_telemetry_event"):
+                self._emit_telemetry_event(
+                    {
+                        "event_type": "ui_search_finished",
+                        "success": True,
+                        "route": f"{self.current_search_params.get('origin', '')}->{self.current_search_params.get('dest', '')}",
+                        "result_count": len(results),
+                        "extraction_source": getattr(results[0], "extraction_source", ""),
+                        "confidence": getattr(results[0], "confidence", 0.0),
+                        "manual_mode": False,
+                    }
+                )
             
             # Save price history
             if self.current_search_params:
@@ -979,6 +1135,17 @@ class MainWindow(QMainWindow):
         else:
             self.progress_bar.setFormat("💭 검색 결과 없음")
             self.log_viewer.append_log("⚠️ 검색 결과가 없습니다.")
+            if hasattr(self, "_emit_telemetry_event"):
+                self._emit_telemetry_event(
+                    {
+                        "event_type": "ui_search_finished",
+                        "success": False,
+                        "route": f"{self.current_search_params.get('origin', '')}->{self.current_search_params.get('dest', '')}",
+                        "result_count": 0,
+                        "manual_mode": bool(getattr(self, "active_searcher", None)),
+                        "error_code": "NO_RESULT",
+                    }
+                )
             QMessageBox.information(self, "결과 없음", "항공권을 찾을 수 없습니다.")
     
     def _check_price_alerts(self, results):
@@ -992,6 +1159,7 @@ class MainWindow(QMainWindow):
             dest = self.current_search_params.get('dest', '').upper()
             dep = self.current_search_params.get('dep', '')
             ret = self.current_search_params.get('ret')
+            cabin = (self.current_search_params.get('cabin_class', 'ECONOMY') or 'ECONOMY').upper()
             min_price = results[0].price if results else 0
             
             for alert in alerts:
@@ -1003,6 +1171,9 @@ class MainWindow(QMainWindow):
                 alert_ret = alert.return_date if alert.return_date else None
                 if alert_ret and alert_ret != ret:
                     continue
+                alert_cabin = (getattr(alert, "cabin_class", "ECONOMY") or "ECONOMY").upper()
+                if alert_cabin != cabin:
+                    continue
                 
                 # 알림 마지막 체크 시간 및 가격 업데이트
                 self.db.update_alert_check(alert.id, min_price)
@@ -1011,13 +1182,14 @@ class MainWindow(QMainWindow):
                 if min_price <= alert.target_price:
                     self.db.mark_alert_triggered(alert.id)
                     self.log_viewer.append_log(
-                        f"🔔 가격 알림 발동! {origin}→{dest} 최저가 {min_price:,}원 "
+                        f"🔔 가격 알림 발동! {origin}→{dest} [{cabin}] 최저가 {min_price:,}원 "
                         f"(목표: {alert.target_price:,}원 이하)"
                     )
                     QMessageBox.information(
                         self, "🔔 가격 알림",
                         f"목표 가격에 도달했습니다!\n\n"
                         f"노선: {origin} → {dest}\n"
+                        f"좌석: {cabin}\n"
                         f"최저가: {min_price:,}원\n"
                         f"목표 가격: {alert.target_price:,}원 이하"
                     )
@@ -1030,6 +1202,16 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("❌ 오류 발생")
         self.log_viewer.append_log(f"❌ 오류 발생: {err_msg}")
+        if hasattr(self, "_emit_telemetry_event"):
+            self._emit_telemetry_event(
+                {
+                    "event_type": "ui_search_error",
+                    "success": False,
+                    "route": f"{self.current_search_params.get('origin', '')}->{self.current_search_params.get('dest', '')}",
+                    "error_code": "UI_SEARCH_ERROR",
+                    "details": {"message": err_msg},
+                }
+            )
 
         msg_lower = err_msg.lower()
         if "브라우저 오류" in err_msg or "browser" in msg_lower or "playwright" in msg_lower:
@@ -1056,6 +1238,16 @@ class MainWindow(QMainWindow):
     def _activate_manual_mode(self, searcher):
         self.active_searcher = searcher
         self.search_panel.set_searching(False)
+        if hasattr(self, "_emit_telemetry_event"):
+            self._emit_telemetry_event(
+                {
+                    "event_type": "manual_mode_activated",
+                    "success": False,
+                    "route": f"{self.current_search_params.get('origin', '')}->{self.current_search_params.get('dest', '')}",
+                    "manual_mode": True,
+                    "error_code": "AUTO_EXTRACTION_FAILED",
+                }
+            )
         
         self.manual_frame.setVisible(True)
         if hasattr(self, "manual_status_label"):
@@ -1109,10 +1301,11 @@ class MainWindow(QMainWindow):
             self.manual_frame.setVisible(False)
 
     def _open_main_settings(self):
-        dlg = SettingsDialog(self, self.prefs)
+        dlg = SettingsDialog(self, self.prefs, self.db)
         dlg.exec()
         self.search_panel._refresh_combos()
         self.search_panel._refresh_profiles()
+        self._configure_alert_auto_timer()
 
     def _show_shortcuts(self):
         """키보드 단축키 다이얼로그 표시"""
@@ -1476,8 +1669,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """창 닫기 시 워커 스레드 및 리소스 정리"""
+        self._alert_auto_timer.stop()
         # Worker threads 정리 (안전한 종료 패턴)
-        workers = [self.worker, self.multi_worker, self.date_worker]
+        workers = [self.worker, self.multi_worker, self.date_worker, self.alert_worker]
+        has_pending = False
         for worker in workers:
             if worker and worker.isRunning():
                 if hasattr(worker, 'cancel'):
@@ -1487,9 +1682,18 @@ class MainWindow(QMainWindow):
                     logger.warning("Worker 스레드 종료 지연 - 추가 대기 시도")
                     if worker.wait(2000):
                         continue
-                    logger.warning("Worker 스레드가 응답하지 않습니다. 강제 종료합니다.")
-                    worker.terminate()  # 응답 없으면 강제 종료
-                    worker.wait(500)
+                    logger.warning("Worker 스레드가 여전히 종료되지 않았습니다.")
+                    has_pending = True
+
+        if has_pending:
+            QMessageBox.warning(
+                self,
+                "종료 지연",
+                "일부 백그라운드 작업이 아직 종료되지 않았습니다.\n"
+                "잠시 후 다시 종료를 시도해주세요.",
+            )
+            event.ignore()
+            return
         
         # Active searcher 브라우저 종료
         if self.active_searcher:
@@ -1503,6 +1707,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'search_panel'):
                 self.search_panel.save_settings()
             self.prefs.save()
+            self.db.close_all_connections()
         except Exception as e:
             logger.warning(f"Failed to save settings on exit: {e}")
         

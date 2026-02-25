@@ -24,7 +24,17 @@ class SearchWorker(QThread):
     error = pyqtSignal(str)
     manual_mode_signal = pyqtSignal(object)  # active_searcher
 
-    def __init__(self, origin, destination, date, return_date, adults, cabin_class="ECONOMY", max_results=1000):
+    def __init__(
+        self,
+        origin,
+        destination,
+        date,
+        return_date,
+        adults,
+        cabin_class="ECONOMY",
+        max_results=1000,
+        telemetry_callback=None,
+    ):
         super().__init__()
         self.origin = origin
         self.destination = destination
@@ -33,7 +43,10 @@ class SearchWorker(QThread):
         self.adults = adults
         self.cabin_class = cabin_class
         self.max_results = max_results
-        self.searcher = FlightSearcher()
+        try:
+            self.searcher = FlightSearcher(telemetry_callback=telemetry_callback)
+        except TypeError:
+            self.searcher = FlightSearcher()
         self._cancelled = False
         self._cancel_lock = threading.Lock()  # 취소 플래그 스레드 안전성
 
@@ -98,14 +111,26 @@ class MultiSearchWorker(QThread):
     all_finished = pyqtSignal(dict)  # {dest: [results]}
     error = pyqtSignal(str)
     
-    def __init__(self, origin, destinations, date, return_date, adults, max_results=1000):
+    def __init__(
+        self,
+        origin,
+        destinations,
+        date,
+        return_date,
+        adults,
+        cabin_class="ECONOMY",
+        max_results=1000,
+        telemetry_callback=None,
+    ):
         super().__init__()
         self.origin = origin
         self.destinations = destinations  # list of destination codes
         self.date = date
         self.return_date = return_date
         self.adults = adults
+        self.cabin_class = cabin_class
         self.max_results = max_results
+        self.telemetry_callback = telemetry_callback
         self._cancelled = False
         self._cancel_lock = threading.Lock()
         self._active_searchers = set()
@@ -152,13 +177,16 @@ class MultiSearchWorker(QThread):
             if self.is_cancelled():
                 return index, dest, [], "cancelled"
 
-            searcher = FlightSearcher()
+            try:
+                searcher = FlightSearcher(telemetry_callback=self.telemetry_callback)
+            except TypeError:
+                searcher = FlightSearcher()
             self._register_active_searcher(searcher)
             try:
                 if self.is_cancelled():
                     return index, dest, [], "cancelled"
                 results = searcher.search(
-                    self.origin, dest, self.date, self.return_date, self.adults,
+                    self.origin, dest, self.date, self.return_date, self.adults, self.cabin_class,
                     max_results=self.max_results,
                     progress_callback=lambda msg: self.progress.emit(f"[{dest}] {msg}")
                 )
@@ -214,14 +242,26 @@ class DateRangeWorker(QThread):
     date_result = pyqtSignal(str, int, str)  # date, min_price, airline
     all_finished = pyqtSignal(dict)  # {date: (price, airline)}
     
-    def __init__(self, origin, dest, dates, return_offset, adults, max_results=1000):
+    def __init__(
+        self,
+        origin,
+        dest,
+        dates,
+        return_offset,
+        adults,
+        cabin_class="ECONOMY",
+        max_results=1000,
+        telemetry_callback=None,
+    ):
         super().__init__()
         self.origin = origin
         self.dest = dest
         self.dates = dates  # list of date strings
         self.return_offset = return_offset  # days after departure for return
         self.adults = adults
+        self.cabin_class = cabin_class
         self.max_results = max_results
+        self.telemetry_callback = telemetry_callback
         self._cancelled = False
         self._cancel_lock = threading.Lock()
         self._active_searchers = set()
@@ -281,13 +321,16 @@ class DateRangeWorker(QThread):
             except Exception:
                 pass
 
-            searcher = FlightSearcher()
+            try:
+                searcher = FlightSearcher(telemetry_callback=self.telemetry_callback)
+            except TypeError:
+                searcher = FlightSearcher()
             self._register_active_searcher(searcher)
             try:
                 if self.is_cancelled():
                     return date, (0, "취소됨"), "cancelled"
                 results = searcher.search(
-                    self.origin, self.dest, date, ret_date, self.adults,
+                    self.origin, self.dest, date, ret_date, self.adults, self.cabin_class,
                     max_results=self.max_results,
                     progress_callback=lambda msg: self.progress.emit(msg)
                 )
@@ -353,3 +396,79 @@ class DateRangeWorker(QThread):
         self.progress.emit(f"🏁 검색 완료! 총 {len(all_results)}개 날짜 분석됨")
         ordered_results = {date: all_results.get(date, (0, "N/A")) for date in self.dates}
         self.all_finished.emit(ordered_results)
+
+
+class AlertAutoCheckWorker(QThread):
+    """가격 알림 자동 점검 워커"""
+    progress = pyqtSignal(str)
+    alert_checked = pyqtSignal(int, int)  # alert_id, current_price
+    alert_hit = pyqtSignal(int, int, int, str, str, str)  # alert_id, price, target, origin, dest, cabin
+    done = pyqtSignal(int, int)  # checked_count, hit_count
+
+    def __init__(self, alerts, max_results=50, telemetry_callback=None):
+        super().__init__()
+        self.alerts = alerts
+        self.max_results = max_results
+        self.telemetry_callback = telemetry_callback
+        self._cancelled = False
+        self._cancel_lock = threading.Lock()
+
+    def cancel(self):
+        with self._cancel_lock:
+            self._cancelled = True
+        self.requestInterruption()
+
+    def is_cancelled(self):
+        with self._cancel_lock:
+            return self._cancelled or self.isInterruptionRequested()
+
+    def run(self):
+        checked = 0
+        hits = 0
+
+        for alert in self.alerts:
+            if self.is_cancelled():
+                break
+
+            origin = (getattr(alert, "origin", "") or "").upper()
+            dest = (getattr(alert, "destination", "") or "").upper()
+            dep_date = getattr(alert, "departure_date", "")
+            ret_date = getattr(alert, "return_date", None)
+            target_price = int(getattr(alert, "target_price", 0) or 0)
+            cabin_class = (getattr(alert, "cabin_class", "ECONOMY") or "ECONOMY").upper()
+            alert_id = int(getattr(alert, "id", 0) or 0)
+
+            self.progress.emit(f"🔔 자동점검: {origin}->{dest} {dep_date} ({cabin_class})")
+            try:
+                searcher = FlightSearcher(telemetry_callback=self.telemetry_callback)
+            except TypeError:
+                searcher = FlightSearcher()
+            current_price = 0
+            try:
+                results = searcher.search(
+                    origin,
+                    dest,
+                    dep_date,
+                    ret_date,
+                    adults=1,
+                    cabin_class=cabin_class,
+                    max_results=self.max_results,
+                    progress_callback=lambda _msg: None,
+                )
+                if results:
+                    current_price = min(r.price for r in results)
+            except Exception as e:
+                logger.debug(f"Alert auto-check error for {origin}->{dest}: {e}")
+            finally:
+                checked += 1
+                self.alert_checked.emit(alert_id, current_price)
+                try:
+                    searcher.close()
+                except Exception:
+                    pass
+
+            if current_price > 0 and target_price > 0 and current_price <= target_price:
+                hits += 1
+                self.alert_hit.emit(alert_id, current_price, target_price, origin, dest, cabin_class)
+
+        self.done.emit(checked, hits)

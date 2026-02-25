@@ -22,6 +22,20 @@ DOMESTIC_SCROLL_BOTTOM_PAUSE_SECONDS = 0.5
 DOMESTIC_MAX_SCROLLS = 300
 DOMESTIC_COMBINATION_TOP_N = 150
 INTERNATIONAL_MAX_SCROLLS = 20
+SELECTOR_HEALTH_WINDOW = 200
+
+# === 결과 대기 selector 후보 (DOM 변경 대응) ===
+DOMESTIC_WAIT_SELECTORS = [
+    "button:has-text(\"원\")",
+    "text=/\\d{1,3}(,\\d{3})+\\s*원/",
+    "button:has-text(\"직항\")",
+]
+INTERNATIONAL_WAIT_SELECTORS = [
+    "li[data-index]",
+    "div[data-index]",
+    "li[class*=\"result\"]",
+    "text=/\\d{1,3}(,\\d{3})+\\s*원/",
+]
 
 # === 정규표현식 패턴 (Python & JS 공용) ===
 # JS에서 사용할 때는 이스케이프 처리가 필요할 수 있음

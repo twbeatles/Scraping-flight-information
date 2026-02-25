@@ -3,8 +3,8 @@ import time
 from datetime import datetime, timedelta
 
 import scraper_config
-from scraper_v2 import PlaywrightScraper
-from ui.workers import DateRangeWorker, MultiSearchWorker
+from scraper_v2 import FlightResult, PlaywrightScraper
+from ui.workers import AlertAutoCheckWorker, DateRangeWorker, MultiSearchWorker
 
 
 def test_date_range_worker_closes_searcher_when_cancelled_after_init(monkeypatch):
@@ -164,3 +164,131 @@ def test_multi_search_worker_runs_with_parallelism(monkeypatch):
 
     assert len(captured) == 4
     assert state["max_active"] >= 2
+
+
+def test_multi_search_worker_passes_cabin_class(monkeypatch):
+    observed = []
+
+    class _FakeSearcher:
+        def search(self, *args, **kwargs):
+            observed.append(kwargs.get("cabin_class") or (args[5] if len(args) > 5 else None))
+            return []
+
+        def close(self):
+            return None
+
+        def is_manual_mode(self):
+            return False
+
+    monkeypatch.setattr("ui.workers.FlightSearcher", _FakeSearcher)
+
+    worker = MultiSearchWorker(
+        "ICN",
+        ["NRT", "HND"],
+        (datetime.now() + timedelta(days=7)).strftime("%Y%m%d"),
+        None,
+        1,
+        "BUSINESS",
+        max_results=10,
+    )
+    worker.run()
+    assert observed
+    assert set(observed) == {"BUSINESS"}
+
+
+def test_date_range_worker_passes_cabin_class(monkeypatch):
+    observed = []
+
+    class _FakeSearcher:
+        def search(self, *args, **kwargs):
+            observed.append(kwargs.get("cabin_class") or (args[5] if len(args) > 5 else None))
+            return []
+
+        def close(self):
+            return None
+
+        def is_manual_mode(self):
+            return False
+
+    monkeypatch.setattr("ui.workers.FlightSearcher", _FakeSearcher)
+    dep = (datetime.now() + timedelta(days=7)).strftime("%Y%m%d")
+    worker = DateRangeWorker("ICN", "NRT", [dep], 0, 1, "FIRST", max_results=10)
+    worker.run()
+    assert observed == ["FIRST"]
+
+
+def test_alert_auto_check_worker_uses_alert_cabin_and_emits_hit(monkeypatch):
+    class _Alert:
+        def __init__(self):
+            self.id = 1
+            self.origin = "ICN"
+            self.destination = "NRT"
+            self.departure_date = (datetime.now() + timedelta(days=7)).strftime("%Y%m%d")
+            self.return_date = None
+            self.target_price = 150000
+            self.cabin_class = "BUSINESS"
+
+    observed_cabins = []
+
+    class _FakeSearcher:
+        def search(self, *args, **kwargs):
+            observed_cabins.append(kwargs.get("cabin_class"))
+            return [FlightResult(airline="A", price=120000, departure_time="10:00", arrival_time="12:00")]
+
+        def close(self):
+            return None
+
+        def is_manual_mode(self):
+            return False
+
+    monkeypatch.setattr("ui.workers.FlightSearcher", _FakeSearcher)
+
+    worker = AlertAutoCheckWorker([_Alert()])
+    hits = []
+    worker.alert_hit.connect(lambda *args: hits.append(args))
+    worker.run()
+
+    assert observed_cabins == ["BUSINESS"]
+    assert len(hits) == 1
+
+
+def test_playwright_search_retries_on_network_error(monkeypatch):
+    class _FakePage:
+        def __init__(self):
+            self.calls = 0
+
+        def goto(self, *_args, **_kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise Exception("temporary network failure")
+
+    class _FakeContext:
+        def __init__(self, page):
+            self._page = page
+
+        def new_page(self):
+            return self._page
+
+        def close(self):
+            return None
+
+    page = _FakePage()
+    scraper = PlaywrightScraper()
+
+    def _fake_init_browser(_log=None, _user_data_dir=None):
+        scraper.context = _FakeContext(page)
+
+    monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
+    monkeypatch.setattr(scraper, "_wait_for_results", lambda *_args, **_kwargs: {"found": True, "selector": "li[data-index]"})
+    monkeypatch.setattr(
+        scraper,
+        "_extract_prices",
+        lambda: [FlightResult(airline="A", price=100000, departure_time="10:00", arrival_time="12:00")],
+    )
+    monkeypatch.setattr(scraper, "close", lambda: None)
+    monkeypatch.setattr("scraper_v2.time.sleep", lambda *_args, **_kwargs: None)
+
+    results = scraper.search("ICN", "NRT", "20260301", None, adults=1, cabin_class="ECONOMY", max_results=10)
+
+    assert len(results) == 1
+    assert page.calls == 2

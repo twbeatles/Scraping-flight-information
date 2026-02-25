@@ -34,6 +34,20 @@
 
 ---
 
+## 🔄 정합성 업데이트 (2026-02-25)
+
+최신 코드 기준으로 아래 항목을 우선 적용한다.
+
+1. `FlightResult`는 `confidence`, `extraction_source` 필드를 포함한다.
+2. `MultiDestDialog.search_requested`/`DateRangeDialog.search_requested`는 `cabin_class`를 포함한다.
+3. 자동 가격 알림은 `AlertAutoCheckWorker` + `QTimer`로 동작하며 기본값은 OFF, 30분이다.
+4. 워커 종료는 `terminate()`를 사용하지 않고 `cancel() -> requestInterruption() -> wait()` 순서를 사용한다.
+5. `PreferenceManager` 설정 파일명은 `user_preferences.json`이다.
+6. DB는 `close()`, `close_all_connections()`, 텔레메트리 API를 제공한다.
+7. 관측성은 JSONL(`logs/flightbot_events.jsonl`) + DB(`telemetry_events`) 이중 저장이다.
+
+---
+
 ## 📁 프로젝트 구조
 
 ```
@@ -150,6 +164,8 @@ class FlightResult:
     outbound_price: int = 0   # 가는편 가격
     return_price: int = 0     # 오는편 가격
     return_airline: str = ""  # 오는편 항공사 (교차 항공사 시)
+    confidence: float = 0.0
+    extraction_source: str = ""
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -165,9 +181,10 @@ class FlightResult:
 - 수동 모드 종료 후에도 브라우저 컨텍스트 유지
 - UI의 **브라우저 닫기** 버튼 또는 앱 종료 시 정리
 
-**국내선 공항 코드:**
+**국내선 공항 코드(중앙 상수):**
 ```python
-DOMESTIC_AIRPORTS = {"ICN", "GMP", "CJU", "PUS", "TAE", "SEL"}
+DOMESTIC_AIRPORT_CODES = {"ICN", "GMP", "CJU", "PUS", "TAE", "SEL"}
+# config.DOMESTIC_AIRPORT_CODES를 단일 소스로 사용
 ```
 
 **국내선 항공사 목록:**
@@ -282,6 +299,7 @@ class PriceAlert:        # 가격 알림
     last_price: Optional[int]
     triggered: int
     created_at: str
+    cabin_class: str = "ECONOMY"
 ```
 
 **데이터베이스 테이블:**
@@ -290,9 +308,10 @@ class PriceAlert:        # 가격 알림
 | `favorites` | 즐겨찾기 | airline, price, origin, destination, note |
 | `price_history` | 가격 변동 기록 | origin, destination, price, recorded_at |
 | `search_logs` | 검색 로그 | origin, destination, result_count, min_price |
-| `price_alerts` | 가격 알림 | target_price, is_active, triggered |
+| `price_alerts` | 가격 알림 | target_price, cabin_class, is_active, triggered |
 | `last_search_results` | 마지막 검색 캐시 | 전체 FlightResult 필드 |
 | `last_search_meta` | 마지막 검색 메타데이터 | origin, destination, searched_at |
+| `telemetry_events` | 관측성 이벤트 | event_type, success, error_code, selector_name |
 
 **Thread-Safety 패턴:**
 ```python
@@ -319,9 +338,10 @@ class FlightDatabase:
 | **즐겨찾기** | `add_favorite()`, `get_favorites()`, `remove_favorite()`, `is_favorite()` |
 | **가격 히스토리** | `add_price_history()`, `get_price_history()`, `get_price_trend()` |
 | **검색 로그** | `log_search()`, `get_popular_routes()` |
-| **가격 알림** | `add_price_alert()`, `get_active_alerts()`, `mark_alert_triggered()` |
+| **가격 알림** | `add_price_alert(..., cabin_class)`, `get_active_alerts()`, `mark_alert_triggered()` |
 | **마지막 검색** | `save_last_search_results()`, `get_last_search_results()` |
-| **유틸리티** | `get_stats()`, `cleanup_old_data()`, `optimize()` |
+| **관측성** | `log_telemetry_event()`, `get_telemetry_summary()`, `get_selector_health()` |
+| **유틸리티** | `close()`, `close_all_connections()`, `get_stats()`, `cleanup_old_data()`, `optimize()` |
 
 ---
 
@@ -367,8 +387,8 @@ def get_airline_category(airline: str) -> str:
 ```python
 class PreferenceManager:
     def __init__(self, filepath: str = None):
-        # EXE 모드: %LOCALAPPDATA%/FlightBot/preferences.json
-        # 개발 모드: ./preferences.json
+        # EXE 모드: %LOCALAPPDATA%/FlightBot/user_preferences.json
+        # 개발 모드: ./user_preferences.json
     
     # 설정 관리
     def save(self) -> None
@@ -395,6 +415,8 @@ class PreferenceManager:
     # 기타 설정
     def set_max_results(self, limit: int) -> None
     def get_max_results(self) -> int
+    def set_alert_auto_check(self, enabled: bool, interval_min: int) -> None
+    def get_alert_auto_check(self) -> Dict[str, Any]
 ```
 
 ---
@@ -543,8 +565,8 @@ class SearchPanel(QFrame):
 |------------|------|------------|
 | `CalendarViewDialog` | 날짜별 최저가 캘린더 | `date_selected(str)` |
 | `CombinationSelectorDialog` | 가는편/오는편 개별 선택 | `combination_selected(obj, obj)` |
-| `MultiDestDialog` | 다중 목적지 검색 설정 | `search_requested(str, list, str, str, int)` |
-| `DateRangeDialog` | 날짜 범위 검색 설정 | `search_requested(str, str, list, int, int)` |
+| `MultiDestDialog` | 다중 목적지 검색 설정 | `search_requested(str, list, str, str, int, str)` |
+| `DateRangeDialog` | 날짜 범위 검색 설정 | `search_requested(str, str, list, int, int, str)` |
 | `MultiDestResultDialog` | 다중 목적지 결과 비교 | - |
 | `DateRangeResultDialog` | 날짜별 최저가 결과 | - |
 | `ShortcutsDialog` | 키보드 단축키 안내 | - |
@@ -585,6 +607,15 @@ class MultiSearchWorker(QThread):
 class DateRangeWorker(QThread):
     progress = pyqtSignal(str)
     all_finished = pyqtSignal(dict)  # {date: (min_price, airline)}
+```
+
+**AlertAutoCheckWorker:**
+```python
+class AlertAutoCheckWorker(QThread):
+    progress = pyqtSignal(str)
+    alert_checked = pyqtSignal(int, int)
+    alert_hit = pyqtSignal(int, int, int, str, str, str)
+    done = pyqtSignal(int, int)
 ```
 
 ---

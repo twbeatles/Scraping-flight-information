@@ -17,6 +17,20 @@
 
 ---
 
+## 🔄 정합성 업데이트 (2026-02-25)
+
+아래 항목은 코드베이스 최신 구현 기준으로 우선 적용한다.
+
+1. `FlightResult`는 `confidence`, `extraction_source` 필드를 포함한다.
+2. `MultiDestDialog.search_requested`와 `DateRangeDialog.search_requested`는 `cabin_class`를 포함한다.
+3. 자동 가격 알림은 `AlertAutoCheckWorker` + `MainWindow`의 `QTimer` 기반으로 동작한다(기본 OFF, 30분).
+4. 워커 종료 정책은 `terminate()`를 사용하지 않고 `cancel() -> requestInterruption() -> wait()` 순서를 사용한다.
+5. `FlightDatabase`는 `close()`, `close_all_connections()`, `log_telemetry_event()`, `get_telemetry_summary()`, `get_selector_health()`를 제공한다.
+6. 설정 파일은 `preferences.json`이 아니라 `user_preferences.json`을 사용한다.
+7. 관측성 로그는 JSONL 파일(`logs/flightbot_events.jsonl`)과 DB(`telemetry_events`)에 함께 저장한다.
+
+---
+
 ## 📐 아키텍처 개요
 
 ```
@@ -443,10 +457,10 @@ cabin_labels = {
 
 ### 파일 저장 위치
 
-| 모드 | preferences.json | flight_data.db |
-|------|------------------|----------------|
-| 개발 | `./preferences.json` | `./flight_data.db` |
-| EXE | `%LOCALAPPDATA%/FlightBot/` | `%LOCALAPPDATA%/FlightBot/` |
+| 모드 | user_preferences.json | flight_data.db | telemetry JSONL |
+|------|------------------------|----------------|-----------------|
+| 개발 | `./user_preferences.json` | `./flight_data.db` | `./logs/flightbot_events.jsonl` |
+| EXE | `%LOCALAPPDATA%/FlightBot/user_preferences.json` | `%LOCALAPPDATA%/FlightBot/flight_data.db` | `%LOCALAPPDATA%/FlightBot/logs/flightbot_events.jsonl` |
 
 ### 필터 상수 (gui_v2.py)
 

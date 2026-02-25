@@ -20,6 +20,19 @@ AIRPORTS = {
     "DPS": "발리 (덴파사르)"
 }
 
+# 국내선 공항/도시 코드 (단일 소스)
+# - 공항 코드: ICN, GMP, CJU, PUS, TAE
+# - 도시 코드: SEL (서울)
+DOMESTIC_AIRPORTS = {
+    "ICN": "인천",
+    "GMP": "김포",
+    "CJU": "제주",
+    "PUS": "부산 김해",
+    "TAE": "대구",
+    "SEL": "서울(도시)",
+}
+DOMESTIC_AIRPORT_CODES = set(DOMESTIC_AIRPORTS.keys())
+
 # 인터파크 검색용 도시 코드 매핑
 # 입력된 공항 코드를 인터파크 시스템이 이해하는 도시 코드로 변환
 CITY_CODES_MAP = {
@@ -100,7 +113,10 @@ class PreferenceManager:
                 "departure_end": 24      # 24시
             },
             "saved_profiles": {},   # { "ProfileName": { search_params... } }
-            "theme": "dark"         # 테마 설정 (dark/light)
+            "theme": "dark",        # 테마 설정 (dark/light)
+            # 가격 알림 자동 점검 설정
+            "alert_auto_check_enabled": False,
+            "alert_auto_check_interval_min": 30
         }
         
         if not os.path.exists(self.filepath):
@@ -197,6 +213,26 @@ class PreferenceManager:
         if theme in ("dark", "light"):
             self.preferences["theme"] = theme
             self.save()
+
+    # --- Alert Auto Check ---
+    def set_alert_auto_check(self, enabled: bool, interval_min: int):
+        """가격 알림 자동 점검 설정 저장"""
+        safe_interval = max(5, min(int(interval_min), 1440))
+        self.preferences["alert_auto_check_enabled"] = bool(enabled)
+        self.preferences["alert_auto_check_interval_min"] = safe_interval
+        self.save()
+
+    def get_alert_auto_check(self) -> Dict[str, Any]:
+        """가격 알림 자동 점검 설정 반환"""
+        raw_interval = self.preferences.get("alert_auto_check_interval_min", 30)
+        try:
+            interval_min = int(raw_interval)
+        except Exception:
+            interval_min = 30
+        return {
+            "enabled": bool(self.preferences.get("alert_auto_check_enabled", False)),
+            "interval_min": max(5, min(interval_min, 1440)),
+        }
 
     # --- Export/Import Settings ---
     def export_all_settings(self, filepath: str) -> bool:

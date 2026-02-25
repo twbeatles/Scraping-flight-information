@@ -11,7 +11,7 @@ import logging
 import threading
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from scraper_v2 import FlightResult
 
 # 로거 설정
@@ -62,12 +62,15 @@ class PriceAlert:
     last_price: Optional[int]
     triggered: int
     created_at: str
+    cabin_class: str = "ECONOMY"
 
 
 class FlightDatabase:
     """항공권 데이터베이스 관리자 - 연결 재사용 최적화"""
     
     _local = threading.local()  # Thread-local storage (클래스 레벨 초기화)
+    _registry_lock = threading.Lock()
+    _all_connections: List[sqlite3.Connection] = []
     
     def __init__(self, db_path: str = None):
         if db_path is None:
@@ -91,8 +94,17 @@ class FlightDatabase:
             except Exception as e:
                 logger.error(f"Failed to create DB directory: {e}")
 
+        if getattr(sys, 'frozen', False):
+            app_data = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'FlightBot')
+            log_dir = os.path.join(app_data, "logs")
+        else:
+            log_dir = os.path.join(os.getcwd(), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        self.telemetry_log_path = os.path.join(log_dir, "flightbot_events.jsonl")
+
         logger.info(f"Database path: {self.db_path}")
         self._init_db()
+        self._migrate_schema_if_needed()
     
     def _get_connection(self):
         """Thread-safe connection management with proper initialization"""
@@ -107,6 +119,8 @@ class FlightDatabase:
             conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
             conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes with reasonable safety
             FlightDatabase._local.connections[self.db_path] = conn
+            with FlightDatabase._registry_lock:
+                FlightDatabase._all_connections.append(conn)
         else:
             # 연결 유효성 검사
             try:
@@ -117,12 +131,15 @@ class FlightDatabase:
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA synchronous=NORMAL")
                 FlightDatabase._local.connections[self.db_path] = conn
+                with FlightDatabase._registry_lock:
+                    FlightDatabase._all_connections.append(conn)
         
         return conn
     
     def _init_db(self):
         """데이터베이스 및 테이블 초기화"""
-        with sqlite3.connect(self.db_path) as conn:
+        conn = sqlite3.connect(self.db_path)
+        try:
             cursor = conn.cursor()
             
             # 즐겨찾기 테이블
@@ -186,6 +203,7 @@ class FlightDatabase:
                     departure_date TEXT NOT NULL,
                     return_date TEXT,
                     target_price INTEGER NOT NULL,
+                    cabin_class TEXT DEFAULT 'ECONOMY',
                     is_active INTEGER DEFAULT 1,
                     last_checked TEXT,
                     last_price INTEGER,
@@ -211,7 +229,9 @@ class FlightDatabase:
                     is_round_trip INTEGER DEFAULT 0,
                     outbound_price INTEGER DEFAULT 0,
                     return_price INTEGER DEFAULT 0,
-                    return_airline TEXT
+                    return_airline TEXT,
+                    confidence REAL DEFAULT 0.0,
+                    extraction_source TEXT DEFAULT ''
                 )
             """)
             
@@ -229,8 +249,69 @@ class FlightDatabase:
                     result_count INTEGER DEFAULT 0
                 )
             """)
+
+            # 텔레메트리 이벤트 테이블 (관측성)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS telemetry_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_time TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    success INTEGER NOT NULL,
+                    error_code TEXT,
+                    route TEXT,
+                    manual_mode INTEGER DEFAULT 0,
+                    selector_name TEXT,
+                    extraction_source TEXT,
+                    confidence REAL DEFAULT 0.0,
+                    duration_ms INTEGER,
+                    result_count INTEGER,
+                    details_json TEXT DEFAULT '{}'
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tel_time ON telemetry_events(event_time)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tel_type ON telemetry_events(event_type)")
             
             conn.commit()
+        finally:
+            conn.close()
+
+    def _migrate_schema_if_needed(self):
+        """기존 DB를 안전하게 최신 스키마로 보강."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.cursor()
+
+            def ensure_column(table: str, column: str, definition: str):
+                cursor.execute(f"PRAGMA table_info({table})")
+                columns = {row[1] for row in cursor.fetchall()}
+                if column not in columns:
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+            ensure_column("price_alerts", "cabin_class", "TEXT DEFAULT 'ECONOMY'")
+            ensure_column("last_search_results", "confidence", "REAL DEFAULT 0.0")
+            ensure_column("last_search_results", "extraction_source", "TEXT DEFAULT ''")
+
+            conn.commit()
+        finally:
+            conn.close()
+
+    def close_all_connections(self):
+        """열려 있는 SQLite 연결을 모두 닫는다."""
+        with FlightDatabase._registry_lock:
+            conns = list(FlightDatabase._all_connections)
+            FlightDatabase._all_connections.clear()
+
+        for conn in conns:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        if hasattr(FlightDatabase._local, "connections"):
+            FlightDatabase._local.connections = {}
+
+    def close(self):
+        self.close_all_connections()
     
     # ===== 즐겨찾기 =====
     
@@ -442,6 +523,142 @@ class FlightDatabase:
                 "price_history": history_count,
                 "search_logs": log_count
             }
+
+    def _append_telemetry_jsonl(self, event: Dict[str, Any]):
+        try:
+            with open(self.telemetry_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+        except Exception as e:
+            logger.debug(f"Failed to append telemetry jsonl: {e}")
+
+    def log_telemetry_event(
+        self,
+        event_type: str,
+        success: bool = True,
+        error_code: str = "",
+        route: str = "",
+        manual_mode: bool = False,
+        selector_name: str = "",
+        extraction_source: str = "",
+        confidence: float = 0.0,
+        duration_ms: Optional[int] = None,
+        result_count: Optional[int] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        details_json = json.dumps(details or {}, ensure_ascii=False, default=str)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO telemetry_events
+                (event_time, event_type, success, error_code, route, manual_mode,
+                 selector_name, extraction_source, confidence, duration_ms, result_count, details_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    now,
+                    event_type,
+                    1 if success else 0,
+                    error_code or "",
+                    route or "",
+                    1 if manual_mode else 0,
+                    selector_name or "",
+                    extraction_source or "",
+                    float(confidence or 0.0),
+                    duration_ms,
+                    result_count,
+                    details_json,
+                ),
+            )
+            conn.commit()
+
+        event = {
+            "event_time": now,
+            "event_type": event_type,
+            "success": bool(success),
+            "error_code": error_code or "",
+            "route": route or "",
+            "manual_mode": bool(manual_mode),
+            "selector_name": selector_name or "",
+            "extraction_source": extraction_source or "",
+            "confidence": float(confidence or 0.0),
+            "duration_ms": duration_ms,
+            "result_count": result_count,
+            "details": details or {},
+        }
+        self._append_telemetry_jsonl(event)
+
+    def get_telemetry_summary(self, hours: int = 24) -> Dict[str, Any]:
+        cutoff = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "SELECT COUNT(*), SUM(success), SUM(manual_mode) FROM telemetry_events WHERE event_time >= ?",
+                (cutoff,),
+            )
+            row = cursor.fetchone() or (0, 0, 0)
+            total = int(row[0] or 0)
+            success_count = int(row[1] or 0)
+            manual_count = int(row[2] or 0)
+
+            cursor.execute(
+                """
+                SELECT error_code, COUNT(*) as cnt
+                FROM telemetry_events
+                WHERE event_time >= ? AND COALESCE(error_code, '') != ''
+                GROUP BY error_code
+                ORDER BY cnt DESC
+                LIMIT 5
+                """,
+                (cutoff,),
+            )
+            top_errors = [{"error_code": r[0], "count": int(r[1])} for r in cursor.fetchall()]
+
+        return {
+            "total_events": total,
+            "success_events": success_count,
+            "success_rate": (success_count * 100.0 / total) if total > 0 else 0.0,
+            "manual_mode_rate": (manual_count * 100.0 / total) if total > 0 else 0.0,
+            "top_errors": top_errors,
+        }
+
+    def get_selector_health(self, limit: int = 200) -> Dict[str, Any]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT selector_name, success
+                FROM telemetry_events
+                WHERE event_type = 'selector_wait'
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            rows = cursor.fetchall()
+
+        if not rows:
+            return {"overall_success_rate": 0.0, "sample_count": 0, "by_selector": {}}
+
+        total = len(rows)
+        success_count = sum(int(r[1] or 0) for r in rows)
+        by_selector: Dict[str, Dict[str, Any]] = {}
+        for selector_name, success in rows:
+            name = selector_name or "(unknown)"
+            item = by_selector.setdefault(name, {"total": 0, "success": 0, "success_rate": 0.0})
+            item["total"] += 1
+            item["success"] += int(success or 0)
+
+        for item in by_selector.values():
+            item["success_rate"] = (item["success"] * 100.0 / item["total"]) if item["total"] > 0 else 0.0
+
+        return {
+            "overall_success_rate": (success_count * 100.0 / total) if total > 0 else 0.0,
+            "sample_count": total,
+            "by_selector": by_selector,
+        }
     
     
     def cleanup_old_data(self, days: int = 90):
@@ -465,17 +682,24 @@ class FlightDatabase:
 
     # ===== 가격 알림 =====
     
-    def add_price_alert(self, origin: str, dest: str, dep_date: str, 
-                        return_date: str, target_price: int) -> int:
+    def add_price_alert(
+        self,
+        origin: str,
+        dest: str,
+        dep_date: str,
+        return_date: str,
+        target_price: int,
+        cabin_class: str = "ECONOMY",
+    ) -> int:
         """가격 알림 추가"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO price_alerts 
-                (origin, destination, departure_date, return_date, target_price, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (origin, destination, departure_date, return_date, target_price, cabin_class, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
-                origin, dest, dep_date, return_date, target_price,
+                origin, dest, dep_date, return_date, target_price, (cabin_class or "ECONOMY"),
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             ))
             conn.commit()
@@ -596,7 +820,9 @@ class FlightDatabase:
                     1 if getattr(flight, 'is_round_trip', False) else 0,
                     getattr(flight, 'outbound_price', 0),
                     getattr(flight, 'return_price', 0),
-                    getattr(flight, 'return_airline', '')
+                    getattr(flight, 'return_airline', ''),
+                    float(getattr(flight, 'confidence', 0.0) or 0.0),
+                    getattr(flight, 'extraction_source', ''),
                 )
                 for flight in results[:limit]
             ]
@@ -605,8 +831,9 @@ class FlightDatabase:
                 INSERT INTO last_search_results 
                 (airline, price, departure_time, arrival_time, stops, source,
                  return_departure_time, return_arrival_time, return_stops,
-                 is_round_trip, outbound_price, return_price, return_airline)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 is_round_trip, outbound_price, return_price, return_airline,
+                 confidence, extraction_source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows,
             )
@@ -674,7 +901,9 @@ class FlightDatabase:
                     is_round_trip=bool(r.get('is_round_trip', 0)),
                     outbound_price=r.get('outbound_price', 0),
                     return_price=r.get('return_price', 0),
-                    return_airline=r.get('return_airline', '')
+                    return_airline=r.get('return_airline', ''),
+                    confidence=float(r.get('confidence', 0.0) or 0.0),
+                    extraction_source=r.get('extraction_source', ''),
                 )
                 results.append(flight)
             
@@ -718,6 +947,7 @@ if __name__ == "__main__":
     logger.info(f"DB 통계: {stats}")
     
     # 정리
+    db.close_all_connections()
     os.remove("test_flight.db")
     logger.info("테스트 완료!")
 

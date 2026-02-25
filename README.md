@@ -49,6 +49,7 @@
 - **검색 기록** - 이전 검색 조건 복원
 - **세션 저장/불러오기** - 검색 결과 JSON 파일로 저장
 - **가격 알림** - 목표 가격 이하 도달 시 알림
+- **자동 알림 점검(옵션)** - 앱 실행 중 주기 점검(QTimer, 기본 OFF)
 - **CSV/Excel 내보내기** - 결과 파일 저장
 
 ### 🎨 UI/UX
@@ -209,6 +210,9 @@ python gui_v2.py
 3. **🔔 알림 추가** 클릭
 4. 다음 검색 시 목표 가격 이하 발견 시 알림
 
+> ℹ️ v2.5 개선: 설정에서 자동 점검을 활성화하면 앱 실행 중 주기적으로 알림 조건을 확인할 수 있습니다.  
+> 기본값은 **비활성화(OFF)** 입니다.
+
 ### 💾 세션 저장 및 불러오기
 
 검색 결과를 파일로 저장/복원:
@@ -257,7 +261,9 @@ Scraping-flight-information-main-v2/
 ├── database.py            # SQLite 데이터베이스 관리
 ├── config.py              # 공항 코드, 설정 관리
 ├── requirements.txt       # 의존성 패키지 목록
-├── flight_bot.spec        # PyInstaller 빌드 스펙
+├── flight_bot.spec        # PyInstaller 최적화 GUI 빌드 스펙(권장)
+├── FlightBot_v2.5.spec    # PyInstaller 표준 GUI 빌드 스펙
+├── FlightBot_Simple.spec  # PyInstaller 콘솔 디버그 빌드 스펙
 │
 ├── ui/                    # UI 컴포넌트 모듈
 │   ├── styles.py          # 테마 스타일시트 (다크/라이트)
@@ -287,10 +293,17 @@ Scraping-flight-information-main-v2/
 
 ### 사용자 설정 파일
 
-| 모드 | preferences.json 위치 | flight_data.db 위치 |
+| 모드 | user_preferences.json 위치 | flight_data.db 위치 |
 |------|----------------------|---------------------|
-| 개발 | `./preferences.json` | `./flight_data.db` |
+| 개발 | `./user_preferences.json` | `./flight_data.db` |
 | EXE | `%LOCALAPPDATA%/FlightBot/` | `%LOCALAPPDATA%/FlightBot/` |
+
+### 관측성 로그 파일
+
+| 모드 | JSONL 로그 위치 |
+|------|----------------|
+| 개발 | `./logs/flightbot_events.jsonl` |
+| EXE | `%LOCALAPPDATA%/FlightBot/logs/flightbot_events.jsonl` |
 
 ### 설정 가능 항목
 
@@ -300,6 +313,8 @@ Scraping-flight-information-main-v2/
 - **선호 출발 시간**: 기본 필터 시간대 설정
 - **프리셋 관리**: 자주 사용하는 공항 코드 추가
 - **테마**: 다크/라이트 모드 전환
+- **자동 알림 점검**: 활성화 여부 및 점검 주기(분)
+- **진단 정보**: 최근 성공률/수동모드 전환률/selector health 확인
 
 ### 프리셋 공항 추가
 
@@ -321,6 +336,14 @@ pyinstaller --clean flight_bot.spec
 # 또는 직접 빌드
 pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 ```
+
+### 스펙 파일 선택 가이드
+
+| 스펙 파일 | 용도 | 빌드 명령 |
+|----------|------|----------|
+| `flight_bot.spec` | 경량화/최적화된 기본 GUI 배포 | `pyinstaller --clean flight_bot.spec` |
+| `FlightBot_v2.5.spec` | 표준 GUI 배포 (호환 프로필) | `pyinstaller --clean FlightBot_v2.5.spec` |
+| `FlightBot_Simple.spec` | 콘솔 로그 확인용 디버그 실행파일 | `pyinstaller --clean FlightBot_Simple.spec` |
 
 ### 빌드 결과
 
@@ -377,6 +400,24 @@ playwright install chromium
 ---
 
 ## 📝 변경 로그
+
+### v2.5.1 (2026-02-25)
+- 🔁 **스크래핑 안정성 강화**
+  - 네트워크/타임아웃 계열 실패에 대한 재시도 + 지수 백오프(2s, 4s, 8s) 적용
+  - 결과 대기 selector 후보 다중화 및 selector health 집계 추가
+- 🎯 **검색 정확도/일관성 개선**
+  - 다중 목적지/날짜 범위 검색에 좌석등급(`ECONOMY/BUSINESS/FIRST`) 전달 경로 통일
+  - 국내선 판별 기준을 `config.DOMESTIC_AIRPORT_CODES` 단일 소스로 통합
+  - `FlightResult` 메타(`confidence`, `extraction_source`) 추가 및 세션/DB 영속화
+- 🔔 **자동 알림 점검 추가**
+  - 앱 실행 중 `QTimer` 기반 가격 알림 자동 점검(기본 OFF, 기본 30분) 지원
+  - 알림 항목에 좌석등급 저장/매칭 추가
+- 📈 **관측성/운영성 강화**
+  - JSONL 이벤트 로그 + `telemetry_events` DB 요약 지표 도입
+  - 설정창 진단 섹션(최근 24시간 성공률/수동모드 전환률/주요 오류/selector health) 추가
+- 🧹 **종료 안정성 개선**
+  - 워커 강제종료(`terminate`) 제거, `cancel -> requestInterruption -> wait` 안전 종료로 교체
+  - DB 연결 종료 API(`close()`, `close_all_connections()`) 및 종료 시 정리 반영
 
 ### v2.5 (2026-01-10)
 - 🛡️ **안정성 및 리소스 관리 대폭 개선** (Critical Fixes)

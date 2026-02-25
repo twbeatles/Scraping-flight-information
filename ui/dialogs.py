@@ -292,7 +292,7 @@ class CombinationSelectorDialog(QDialog):
 
 class MultiDestDialog(QDialog):
     """다중 목적지 선택 다이얼로그"""
-    search_requested = pyqtSignal(str, list, str, str, int)  # origin, dests, dep, ret, adults
+    search_requested = pyqtSignal(str, list, str, str, int, str)  # origin, dests, dep, ret, adults, cabin_class
     
     def __init__(self, parent=None, prefs=None):
         super().__init__(parent)
@@ -374,6 +374,12 @@ class MultiDestDialog(QDialog):
         self.spin_adults = QSpinBox()
         self.spin_adults.setRange(1, 9)
         adult_layout.addWidget(self.spin_adults)
+        adult_layout.addWidget(QLabel("좌석:"))
+        self.cb_cabin_class = QComboBox()
+        self.cb_cabin_class.addItem("💺 이코노미", "ECONOMY")
+        self.cb_cabin_class.addItem("💼 비즈니스", "BUSINESS")
+        self.cb_cabin_class.addItem("👑 일등석", "FIRST")
+        adult_layout.addWidget(self.cb_cabin_class)
         adult_layout.addStretch()
         layout.addLayout(adult_layout)
         
@@ -417,14 +423,15 @@ class MultiDestDialog(QDialog):
         dep = dep_date.toString("yyyyMMdd")
         ret = ret_date.toString("yyyyMMdd")
         adults = self.spin_adults.value()
+        cabin_class = self.cb_cabin_class.currentData() or "ECONOMY"
         
-        self.search_requested.emit(origin, selected, dep, ret, adults)
+        self.search_requested.emit(origin, selected, dep, ret, adults, cabin_class)
         self.accept()
 
 
 class DateRangeDialog(QDialog):
     """날짜 범위 검색 다이얼로그"""
-    search_requested = pyqtSignal(str, str, list, int, int)  # origin, dest, dates, return_offset, adults
+    search_requested = pyqtSignal(str, str, list, int, int, str)  # origin, dest, dates, return_offset, adults, cabin_class
     
     def __init__(self, parent=None, prefs=None):
         super().__init__(parent)
@@ -493,6 +500,12 @@ class DateRangeDialog(QDialog):
         self.spin_adults = QSpinBox()
         self.spin_adults.setRange(1, 9)
         adult_layout.addWidget(self.spin_adults)
+        adult_layout.addWidget(QLabel("좌석:"))
+        self.cb_cabin_class = QComboBox()
+        self.cb_cabin_class.addItem("💺 이코노미", "ECONOMY")
+        self.cb_cabin_class.addItem("💼 비즈니스", "BUSINESS")
+        self.cb_cabin_class.addItem("👑 일등석", "FIRST")
+        adult_layout.addWidget(self.cb_cabin_class)
         adult_layout.addStretch()
         layout.addLayout(adult_layout)
         
@@ -521,6 +534,7 @@ class DateRangeDialog(QDialog):
         dest = self.cb_dest.currentData()
         duration = self.spin_duration.value()
         adults = self.spin_adults.value()
+        cabin_class = self.cb_cabin_class.currentData() or "ECONOMY"
         
         if origin == dest:
             QMessageBox.warning(self, "입력 오류", "출발지와 도착지가 같습니다.")
@@ -556,7 +570,7 @@ class DateRangeDialog(QDialog):
             if reply != QMessageBox.StandardButton.Yes:
                 return
         
-        self.search_requested.emit(origin, dest, dates, duration, adults)
+        self.search_requested.emit(origin, dest, dates, duration, adults, cabin_class)
         self.accept()
 
 
@@ -828,6 +842,14 @@ class PriceAlertDialog(QDialog):
         self.spin_target.setValue(300000)
         self.spin_target.setSuffix(" 원")
         new_layout.addWidget(self.spin_target, 3, 1)
+
+        # 좌석 등급
+        new_layout.addWidget(QLabel("좌석 등급:"), 2, 2)
+        self.cb_cabin_class = QComboBox()
+        self.cb_cabin_class.addItem("💺 이코노미", "ECONOMY")
+        self.cb_cabin_class.addItem("💼 비즈니스", "BUSINESS")
+        self.cb_cabin_class.addItem("👑 일등석", "FIRST")
+        new_layout.addWidget(self.cb_cabin_class, 2, 3)
         
         # 추가 버튼
         btn_add = QPushButton("🔔 알림 추가")
@@ -840,9 +862,9 @@ class PriceAlertDialog(QDialog):
         layout.addWidget(QLabel("📋 설정된 알림 목록:", objectName="section_title"))
         
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
-            "ID", "노선", "출발일", "귀국일", "목표가", "현재가", "상태"
+            "ID", "노선", "출발일", "귀국일", "좌석", "목표가", "현재가", "상태"
         ])
         self.table.setColumnHidden(0, True)  # ID 숨김
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -879,6 +901,7 @@ class PriceAlertDialog(QDialog):
         dep_date = self.date_dep.date()
         ret_date = None if self.chk_oneway.isChecked() else self.date_ret.date()
         target = self.spin_target.value()
+        cabin_class = self.cb_cabin_class.currentData() or "ECONOMY"
 
         if not _validate_route_and_dates(self, origin, dest, dep_date, ret_date):
             return
@@ -887,7 +910,7 @@ class PriceAlertDialog(QDialog):
         ret = ret_date.toString("yyyyMMdd") if ret_date else None
 
         try:
-            alert_id = self.db.add_price_alert(origin, dest, dep, ret, target)
+            alert_id = self.db.add_price_alert(origin, dest, dep, ret, target, cabin_class)
             QMessageBox.information(self, "완료", f"가격 알림이 추가되었습니다. (ID: {alert_id})")
             self._refresh_alerts()
         except Exception as e:
@@ -924,11 +947,15 @@ class PriceAlertDialog(QDialog):
             else:
                 ret_str = "-"
             self.table.setItem(i, 3, QTableWidgetItem(ret_str))
+
+            cabin_class = getattr(alert, "cabin_class", "ECONOMY") or "ECONOMY"
+            cabin_text = {"ECONOMY": "이코노미", "BUSINESS": "비즈니스", "FIRST": "일등석"}.get(cabin_class, cabin_class)
+            self.table.setItem(i, 4, QTableWidgetItem(cabin_text))
             
             # 목표 가격
             target_item = QTableWidgetItem(f"{alert.target_price:,}원")
             target_item.setForeground(QColor("#4cc9f0"))
-            self.table.setItem(i, 4, target_item)
+            self.table.setItem(i, 5, target_item)
             
             # 현재 가격
             if alert.last_price:
@@ -939,7 +966,7 @@ class PriceAlertDialog(QDialog):
                     current_item.setForeground(QColor("#f59e0b"))
             else:
                 current_item = QTableWidgetItem("미확인")
-            self.table.setItem(i, 5, current_item)
+            self.table.setItem(i, 6, current_item)
             
             # 상태
             if alert.triggered:
@@ -954,7 +981,7 @@ class PriceAlertDialog(QDialog):
             
             status_item = QTableWidgetItem(status)
             status_item.setForeground(QColor(color))
-            self.table.setItem(i, 6, status_item)
+            self.table.setItem(i, 7, status_item)
     
     def _delete_selected(self):
         """선택된 알림 삭제"""
@@ -978,9 +1005,10 @@ class PriceAlertDialog(QDialog):
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent=None, prefs=None):
+    def __init__(self, parent=None, prefs=None, db=None):
         super().__init__(parent)
         self.prefs = prefs
+        self.db = db if db is not None else getattr(parent, "db", None)
         self.setWindowTitle("⚙️ 설정 (Settings)")
         self.setMinimumSize(600, 500)  # Increased size for better content display
         self.setStyleSheet(MODERN_THEME)
@@ -1048,6 +1076,39 @@ class SettingsDialog(QDialog):
         
         layout.addWidget(grp_time)
         layout.addWidget(grp_limit)
+
+        # Alert auto-check settings
+        grp_alert = QGroupBox("🔔 자동 가격 알림 점검")
+        ga_layout = QHBoxLayout(grp_alert)
+        self.chk_alert_auto = QCheckBox("자동 점검 활성화")
+        auto_cfg = self.prefs.get_alert_auto_check()
+        self.chk_alert_auto.setChecked(auto_cfg.get("enabled", False))
+        self.spin_alert_interval = QSpinBox()
+        self.spin_alert_interval.setRange(5, 1440)
+        self.spin_alert_interval.setValue(auto_cfg.get("interval_min", 30))
+        self.spin_alert_interval.setSuffix(" 분")
+        btn_save_alert = QPushButton("자동점검 저장")
+        btn_save_alert.clicked.connect(self._save_alert_auto_check)
+        ga_layout.addWidget(self.chk_alert_auto)
+        ga_layout.addWidget(QLabel("주기:"))
+        ga_layout.addWidget(self.spin_alert_interval)
+        ga_layout.addWidget(btn_save_alert)
+        ga_layout.addStretch()
+        layout.addWidget(grp_alert)
+
+        # Diagnostics
+        grp_diag = QGroupBox("🩺 진단 (최근 24시간)")
+        gd_layout = QVBoxLayout(grp_diag)
+        self.lbl_diag = QLabel("진단 데이터를 불러오는 중...")
+        self.lbl_diag.setWordWrap(True)
+        self.lbl_diag.setStyleSheet("font-size: 12px; color: #cbd5e1;")
+        btn_refresh_diag = QPushButton("진단 새로고침")
+        btn_refresh_diag.clicked.connect(self._refresh_diagnostics)
+        gd_layout.addWidget(self.lbl_diag)
+        gd_layout.addWidget(btn_refresh_diag)
+        layout.addWidget(grp_diag)
+
+        self._refresh_diagnostics()
         layout.addStretch()
         return widget
 
@@ -1055,6 +1116,32 @@ class SettingsDialog(QDialog):
         self.prefs.set_preferred_time(self.spin_start.value(), self.spin_end.value())
         self.prefs.set_max_results(self.spin_limit.value())
         QMessageBox.information(self, "저장", "설정이 저장되었습니다.")
+
+    def _save_alert_auto_check(self):
+        self.prefs.set_alert_auto_check(
+            self.chk_alert_auto.isChecked(),
+            self.spin_alert_interval.value(),
+        )
+        QMessageBox.information(self, "저장", "자동 알림 점검 설정이 저장되었습니다.")
+
+    def _refresh_diagnostics(self):
+        if not self.db:
+            self.lbl_diag.setText("진단 데이터베이스를 사용할 수 없습니다.")
+            return
+        try:
+            summary = self.db.get_telemetry_summary(hours=24)
+            selector = self.db.get_selector_health()
+            error_top = summary.get("top_errors", [])
+            top_text = ", ".join(f"{e['error_code']}({e['count']})" for e in error_top[:3]) if error_top else "없음"
+            self.lbl_diag.setText(
+                f"성공률: {summary.get('success_rate', 0.0):.1f}% | "
+                f"수동모드 전환률: {summary.get('manual_mode_rate', 0.0):.1f}%\n"
+                f"총 이벤트: {summary.get('total_events', 0)} | 주요 오류코드: {top_text}\n"
+                f"Selector Health: {selector.get('overall_success_rate', 0.0):.1f}% "
+                f"(표본 {selector.get('sample_count', 0)}건)"
+            )
+        except Exception as e:
+            self.lbl_diag.setText(f"진단 조회 실패: {e}")
 
     def _create_dest_tab(self):
         widget = QWidget()
