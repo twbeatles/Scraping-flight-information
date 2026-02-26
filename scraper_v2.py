@@ -127,7 +127,12 @@ class PlaywrightScraper:
         self.close()
         return False  # 예외는 전파
     
-    def _init_browser(self, log_func: Callable[[str], None] = None, user_data_dir: Optional[str] = None) -> None:
+    def _init_browser(
+        self,
+        log_func: Callable[[str], None] = None,
+        user_data_dir: Optional[str] = None,
+        headless: bool = False,
+    ) -> None:
         """브라우저 초기화 (Chrome > Edge > Chromium 순서 시도)
         
         Raises:
@@ -182,7 +187,7 @@ class PlaywrightScraper:
             try:
                 log(f"  → {browser_name} 시도 중...")
                 launch_options = {
-                    "headless": False,
+                    "headless": bool(headless),
                     "args": browser_args
                 }
                 if channel:
@@ -387,12 +392,19 @@ class PlaywrightScraper:
         ranked = sorted(max_heap, key=lambda x: (-x[0], -x[1]))
         return [entry[2] for entry in ranked]
     
-    def search(self, origin: str, destination: str, 
-               departure_date: str, return_date: Optional[str] = None,
-               adults: int = 1, cabin_class: str = "ECONOMY",
-               max_results: int = 1000,
-               emit: Callable[[str], None] = None,
-               _retry_count: int = 0) -> List[FlightResult]:
+    def search(
+        self,
+        origin: str,
+        destination: str,
+        departure_date: str,
+        return_date: Optional[str] = None,
+        adults: int = 1,
+        cabin_class: str = "ECONOMY",
+        max_results: int = 1000,
+        emit: Callable[[str], None] = None,
+        _retry_count: int = 0,
+        background_mode: bool = False,
+    ) -> List[FlightResult]:
         """
         항공권 검색 (Playwright 사용, 실패시 수동 모드)
         국내선의 경우 가는편 선택 후 오는편 데이터 추출
@@ -409,8 +421,13 @@ class PlaywrightScraper:
             logger.info(msg)
         
         results = []
-        attempt_no = _retry_count + 1
+        self.manual_mode = False
         self._current_route = f"{origin.upper()}->{destination.upper()}"
+        max_attempts = max(int(scraper_config.MAX_RETRY_COUNT), 1)
+        start_attempt = max(int(_retry_count or 0), 0)
+        if start_attempt >= max_attempts:
+            start_attempt = max_attempts - 1
+        attempt_no = start_attempt + 1
         
         # 국내선 여부 확인 (한국 내 공항)
         domestic_airports = config.DOMESTIC_AIRPORT_CODES
@@ -424,258 +441,279 @@ class PlaywrightScraper:
         if cabin not in ["ECONOMY", "BUSINESS", "FIRST"]:
             cabin = "ECONOMY"
         
-        self._emit_telemetry(
-            "search_attempt",
-            success=True,
-            route=self._current_route,
-            details={"attempt": attempt_no, "cabin_class": cabin, "is_domestic": is_domestic},
-        )
-
         try:
-            # 컨텍스트 생성 (쿠키/스토리지 저장)
-            if getattr(sys, 'frozen', False):
-                 app_data = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'FlightBot')
-                 profile_dir = os.path.join(app_data, "playwright_profile")
-            else:
-                 profile_dir = os.path.join(os.getcwd(), "playwright_profile")
-            
-            os.makedirs(profile_dir, exist_ok=True)
+            for attempt_idx in range(start_attempt, max_attempts):
+                attempt_no = attempt_idx + 1
+                self.manual_mode = False
 
-            # 브라우저 초기화 (Persistent Context 포함)
-            self._init_browser(log, profile_dir)
-            
-            if self.context is None:
-                self.context = self.browser.new_context(
-                    viewport={"width": 1400, "height": 900},
-                    locale='ko-KR',
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                )
-            
-            self.page = self.context.new_page()
-            
-            # URL 구성
-            # CITY_CODES_MAP에 있으면 도시 코드(c:)로, 없으면 공항 코드(a:)로 처리
-            origin_upper = origin.upper()
-            dest_upper = destination.upper()
-            
-            if origin_upper in config.CITY_CODES_MAP:
-                origin_code = config.CITY_CODES_MAP[origin_upper]
-                origin_prefix = "c"
-            else:
-                origin_code = origin_upper
-                origin_prefix = "a"
-            
-            if dest_upper in config.CITY_CODES_MAP:
-                dest_code = config.CITY_CODES_MAP[dest_upper]
-                dest_prefix = "c"
-            else:
-                dest_code = dest_upper
-                dest_prefix = "a"
-            
-            if return_date:
-                url = f"https://travel.interpark.com/air/search/{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{departure_date}/{dest_prefix}:{dest_code}-{origin_prefix}:{origin_code}-{return_date}?cabin={cabin}&infant=0&child=0&adult={adults}"
-            else:
-                url = f"https://travel.interpark.com/air/search/{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{departure_date}?cabin={cabin}&infant=0&child=0&adult={adults}"
-            
-            if is_domestic:
-                log(f"🇰🇷 국내선 검색 모드 ({origin_code} → {dest_code})")
-            else:
-                log(f"✈️ 국제선 검색 모드")
-            log(f"URL: {url}")
-            
-            try:
-                self.page.goto(url, wait_until='domcontentloaded', timeout=scraper_config.PAGE_LOAD_TIMEOUT_MS)
-            except PlaywrightTimeoutError:
-                log("⚠️ 페이지 로딩 시간 초과 - 계속 진행합니다.")
-            except Exception as e:
-                raise NetworkError("페이지 로딩 실패", url) from e
+                # 이전 시도 리소스가 남지 않도록 매 시도 시작 시 정리
+                self.close()
+                self.manual_mode = False
 
-            # 결과 로딩 대기
-            log("결과 로딩 대기 중...")
-            wait_result = self._wait_for_results(is_domestic, log)
-            found_data = wait_result.get("found", False)
-            selected_selector = wait_result.get("selector", "")
-            if selected_selector:
                 self._emit_telemetry(
-                    "selector_selected",
+                    "search_attempt",
                     success=True,
                     route=self._current_route,
-                    selector_name=selected_selector,
+                    details={
+                        "attempt": attempt_no,
+                        "cabin_class": cabin,
+                        "is_domestic": is_domestic,
+                        "background_mode": background_mode,
+                    },
                 )
-            if not found_data:
-                log("데이터가 충분히 로드되지 않았을 수 있습니다.")
-            
-            # 국내선 왕복의 경우: 가는편 데이터 먼저 추출 → 클릭 → 오는편 추출 → 병합
-            if is_domestic and return_date and found_data:
-                log("🇰🇷 국내선 왕복: 가는편/오는편 분리 수집 시작")
-                
+
                 try:
-                    # Step 1: 가는편 데이터 먼저 추출 (클릭 전)
-                    log("📋 1단계: 가는편 목록 추출 중...")
-                    outbound_flights = self._extract_domestic_flights_data()
-                    log(f"✅ 가는편 {len(outbound_flights)}개 발견")
-                    
-                    if not outbound_flights:
-                        log("⚠️ 가는편 데이터 없음 - 수동 모드 권장")
-                        self.manual_mode = True
-                        return results
-                    
-                    # Step 2: 가는편 선택 (오는편 화면으로 전환)
-                    log("🔄 2단계: 가는편 선택 → 오는편 화면 전환...")
-                    airlines_js = str(self.DOMESTIC_AIRLINES)  # Python 리스트를 JS 배열로 변환
-                    best_outbound = min(outbound_flights, key=lambda x: x.get('price', float('inf')))
-                    price_text = f"{best_outbound.get('price', 0):,}원" if best_outbound.get('price') else ""
-                    js_click = ScraperScripts.get_click_flight_by_details_script(
-                        best_outbound.get('airline', ''),
-                        best_outbound.get('depTime', ''),
-                        best_outbound.get('arrTime', ''),
-                        price_text
-                    )
-                    clicked = self.page.evaluate(js_click)
-                    if not clicked:
-                        js_click = ScraperScripts.get_click_flight_script(airlines_js)
-                        clicked = self.page.evaluate(js_click)
-                    
-                    if not clicked:
-                        log("⚠️ 가는편 선택 실패 - 가는편만 반환")
-                        # 가는편만 결과로 반환
-                        for ob in outbound_flights:
-                            results.append(FlightResult(
-                                airline=ob['airline'],
-                                price=ob['price'],
-                                departure_time=ob['depTime'],
-                                arrival_time=ob['arrTime'],
-                                stops=ob['stops'],
-                                source="Interpark (국내선 가는편)",
-                                confidence=0.7,
-                                extraction_source="domestic_outbound_only",
-                            ))
-                        return self._sort_and_limit_results(results, max_results, log)
-                    
-                    # Step 3: 오는편 로딩 대기
-                    log("🕐 3단계: 오는편 로딩 대기...")
-                    return_ready = self._wait_for_domestic_return_view()
-                    if return_ready:
-                        log("✅ 오는편 화면 확인됨")
-                    
-                    if not return_ready:
-                        log("⚠️ 오는편 화면 로딩 실패 - 가는편만 반환")
-                        for ob in outbound_flights:
-                            results.append(FlightResult(
-                                airline=ob['airline'],
-                                price=ob['price'],
-                                departure_time=ob['depTime'],
-                                arrival_time=ob['arrTime'],
-                                stops=ob['stops'],
-                                source="Interpark (국내선 가는편)",
-                                confidence=0.7,
-                                extraction_source="domestic_outbound_only",
-                            ))
-                        return self._sort_and_limit_results(results, max_results, log)
-                    
-                    # Step 4: 오는편 데이터 추출
-                    log("📋 4단계: 오는편 목록 추출 중...")
-                    time.sleep(scraper_config.DOMESTIC_RETURN_POST_CLICK_SETTLE_SECONDS)
-                    return_flights = self._extract_domestic_flights_data()
-                    log(f"✅ 오는편 {len(return_flights)}개 발견")
-                    
-                    # Step 5: 가는편 + 오는편 결합하여 왕복 결과 생성
-                    log("🔗 5단계: 가는편/오는편 결합 중...")
-                    
-                    if outbound_flights and return_flights:
-                        log(
-                            f"⚡ 가는편/오는편 조합 계산 중... "
-                            f"(상위 {scraper_config.DOMESTIC_COMBINATION_TOP_N}×"
-                            f"{scraper_config.DOMESTIC_COMBINATION_TOP_N})"
+                    # 수동 모드가 필요한 단일 검색만 persistent 프로필 사용
+                    profile_dir = None
+                    if not background_mode:
+                        if getattr(sys, 'frozen', False):
+                            app_data = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'FlightBot')
+                            profile_dir = os.path.join(app_data, "playwright_profile")
+                        else:
+                            profile_dir = os.path.join(os.getcwd(), "playwright_profile")
+                        os.makedirs(profile_dir, exist_ok=True)
+
+                    # 브라우저 초기화
+                    self._init_browser(log, profile_dir, headless=background_mode)
+
+                    if self.context is None:
+                        self.context = self.browser.new_context(
+                            viewport={"width": 1400, "height": 900},
+                            locale='ko-KR',
+                            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                         )
-                        results = self._combine_domestic_round_trip(
-                            outbound_flights,
-                            return_flights,
-                            max_results=max_results,
-                        )
-                        log(f"✅ 최저가 기준 상위 {len(results)}개 조합 반환")
+
+                    self.page = self.context.new_page()
+
+                    # URL 구성
+                    # CITY_CODES_MAP에 있으면 도시 코드(c:)로, 없으면 공항 코드(a:)로 처리
+                    origin_upper = origin.upper()
+                    dest_upper = destination.upper()
+
+                    if origin_upper in config.CITY_CODES_MAP:
+                        origin_code = config.CITY_CODES_MAP[origin_upper]
+                        origin_prefix = "c"
                     else:
-                        # 가는편만/오는편만 있는 경우
-                        for ob in outbound_flights:
-                            results.append(FlightResult(
-                                airline=ob['airline'],
-                                price=ob['price'],
-                                departure_time=ob['depTime'],
-                                arrival_time=ob['arrTime'],
-                                stops=ob['stops'],
-                                source="Interpark (국내선 편도)",
-                                confidence=0.75,
-                                extraction_source="domestic_button",
-                            ))
-                    
-                    return self._sort_and_limit_results(results, max_results, log)
-                    
+                        origin_code = origin_upper
+                        origin_prefix = "a"
+
+                    if dest_upper in config.CITY_CODES_MAP:
+                        dest_code = config.CITY_CODES_MAP[dest_upper]
+                        dest_prefix = "c"
+                    else:
+                        dest_code = dest_upper
+                        dest_prefix = "a"
+
+                    if return_date:
+                        url = f"https://travel.interpark.com/air/search/{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{departure_date}/{dest_prefix}:{dest_code}-{origin_prefix}:{origin_code}-{return_date}?cabin={cabin}&infant=0&child=0&adult={adults}"
+                    else:
+                        url = f"https://travel.interpark.com/air/search/{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{departure_date}?cabin={cabin}&infant=0&child=0&adult={adults}"
+
+                    if is_domestic:
+                        log(f"🇰🇷 국내선 검색 모드 ({origin_code} → {dest_code})")
+                    else:
+                        log(f"✈️ 국제선 검색 모드")
+                    log(f"URL: {url}")
+
+                    try:
+                        self.page.goto(url, wait_until='domcontentloaded', timeout=scraper_config.PAGE_LOAD_TIMEOUT_MS)
+                    except PlaywrightTimeoutError:
+                        log("⚠️ 페이지 로딩 시간 초과 - 계속 진행합니다.")
+                    except Exception as e:
+                        raise NetworkError("페이지 로딩 실패", url) from e
+
+                    # 결과 로딩 대기
+                    log("결과 로딩 대기 중...")
+                    wait_result = self._wait_for_results(is_domestic, log)
+                    found_data = wait_result.get("found", False)
+                    selected_selector = wait_result.get("selector", "")
+                    if selected_selector:
+                        self._emit_telemetry(
+                            "selector_selected",
+                            success=True,
+                            route=self._current_route,
+                            selector_name=selected_selector,
+                        )
+                    if not found_data:
+                        log("데이터가 충분히 로드되지 않았을 수 있습니다.")
+                        if background_mode:
+                            log("ℹ️ 백그라운드 모드에서는 수동 모드 전환 없이 종료합니다.")
+                            break
+
+                    # 국내선 왕복의 경우: 가는편 데이터 먼저 추출 → 클릭 → 오는편 추출 → 병합
+                    if is_domestic and return_date and found_data:
+                        log("🇰🇷 국내선 왕복: 가는편/오는편 분리 수집 시작")
+
+                        try:
+                            # Step 1: 가는편 데이터 먼저 추출 (클릭 전)
+                            log("📋 1단계: 가는편 목록 추출 중...")
+                            outbound_flights = self._extract_domestic_flights_data()
+                            log(f"✅ 가는편 {len(outbound_flights)}개 발견")
+
+                            if not outbound_flights:
+                                if background_mode:
+                                    log("⚠️ 가는편 데이터 없음 - 백그라운드 모드 종료")
+                                    return []
+                                log("⚠️ 가는편 데이터 없음 - 수동 모드 권장")
+                                self.manual_mode = True
+                                return results
+
+                            # Step 2: 가는편 선택 (오는편 화면으로 전환)
+                            log("🔄 2단계: 가는편 선택 → 오는편 화면 전환...")
+                            airlines_js = str(self.DOMESTIC_AIRLINES)  # Python 리스트를 JS 배열로 변환
+                            best_outbound = min(outbound_flights, key=lambda x: x.get('price', float('inf')))
+                            price_text = f"{best_outbound.get('price', 0):,}원" if best_outbound.get('price') else ""
+                            js_click = ScraperScripts.get_click_flight_by_details_script(
+                                best_outbound.get('airline', ''),
+                                best_outbound.get('depTime', ''),
+                                best_outbound.get('arrTime', ''),
+                                price_text
+                            )
+                            clicked = self.page.evaluate(js_click)
+                            if not clicked:
+                                js_click = ScraperScripts.get_click_flight_script(airlines_js)
+                                clicked = self.page.evaluate(js_click)
+
+                            if not clicked:
+                                log("⚠️ 가는편 선택 실패 - 가는편만 반환")
+                                # 가는편만 결과로 반환
+                                for ob in outbound_flights:
+                                    results.append(FlightResult(
+                                        airline=ob['airline'],
+                                        price=ob['price'],
+                                        departure_time=ob['depTime'],
+                                        arrival_time=ob['arrTime'],
+                                        stops=ob['stops'],
+                                        source="Interpark (국내선 가는편)",
+                                        confidence=0.7,
+                                        extraction_source="domestic_outbound_only",
+                                    ))
+                                return self._sort_and_limit_results(results, max_results, log)
+
+                            # Step 3: 오는편 로딩 대기
+                            log("🕐 3단계: 오는편 로딩 대기...")
+                            return_ready = self._wait_for_domestic_return_view()
+                            if return_ready:
+                                log("✅ 오는편 화면 확인됨")
+
+                            if not return_ready:
+                                log("⚠️ 오는편 화면 로딩 실패 - 가는편만 반환")
+                                for ob in outbound_flights:
+                                    results.append(FlightResult(
+                                        airline=ob['airline'],
+                                        price=ob['price'],
+                                        departure_time=ob['depTime'],
+                                        arrival_time=ob['arrTime'],
+                                        stops=ob['stops'],
+                                        source="Interpark (국내선 가는편)",
+                                        confidence=0.7,
+                                        extraction_source="domestic_outbound_only",
+                                    ))
+                                return self._sort_and_limit_results(results, max_results, log)
+
+                            # Step 4: 오는편 데이터 추출
+                            log("📋 4단계: 오는편 목록 추출 중...")
+                            time.sleep(scraper_config.DOMESTIC_RETURN_POST_CLICK_SETTLE_SECONDS)
+                            return_flights = self._extract_domestic_flights_data()
+                            log(f"✅ 오는편 {len(return_flights)}개 발견")
+
+                            # Step 5: 가는편 + 오는편 결합하여 왕복 결과 생성
+                            log("🔗 5단계: 가는편/오는편 결합 중...")
+
+                            if outbound_flights and return_flights:
+                                log(
+                                    f"⚡ 가는편/오는편 조합 계산 중... "
+                                    f"(상위 {scraper_config.DOMESTIC_COMBINATION_TOP_N}×"
+                                    f"{scraper_config.DOMESTIC_COMBINATION_TOP_N})"
+                                )
+                                results = self._combine_domestic_round_trip(
+                                    outbound_flights,
+                                    return_flights,
+                                    max_results=max_results,
+                                )
+                                log(f"✅ 최저가 기준 상위 {len(results)}개 조합 반환")
+                            else:
+                                # 가는편만/오는편만 있는 경우
+                                for ob in outbound_flights:
+                                    results.append(FlightResult(
+                                        airline=ob['airline'],
+                                        price=ob['price'],
+                                        departure_time=ob['depTime'],
+                                        arrival_time=ob['arrTime'],
+                                        stops=ob['stops'],
+                                        source="Interpark (국내선 편도)",
+                                        confidence=0.75,
+                                        extraction_source="domestic_button",
+                                    ))
+
+                            return self._sort_and_limit_results(results, max_results, log)
+
+                        except Exception as e:
+                            log(f"⚠️ 국내선 처리 중 오류: {e}")
+                            logger.error(f"Domestic error: {e}", exc_info=True)
+
+                    if found_data:
+                        log("데이터 준비 완료! 추출 시작")
+
+                        # 페이지 안정화 대기
+                        time.sleep(scraper_config.SEARCH_PAGE_STABILIZE_SECONDS)
+
+                        if is_domestic:
+                            # 국내선 편도: 버튼 기반 추출
+                            log("🇰🇷 국내선 편도 추출")
+                            results = self._extract_domestic_prices()
+
+                        else:
+                            # 국제선: 기존 추출 로직
+                            results = self._extract_prices()
+
+                        if not results:
+                            raise DataExtractionError("자동 추출 결과가 없습니다.")
+                    else:
+                        log("데이터가 충분히 로드되지 않았을 수 있습니다.")
+                        if background_mode:
+                            break
+                        self.manual_mode = True
+                        break
+
+                    results = self._sort_and_limit_results(results, max_results, log)
+                    if results:
+                        log(f"✅ 자동 추출 성공: {len(results)}개")
+                    break
+
+                except NetworkError as e:
+                    logger.warning(f"네트워크 오류 (시도 {attempt_no}/{max_attempts}): {e}")
+                    self._emit_telemetry(
+                        "search_attempt",
+                        success=False,
+                        route=self._current_route,
+                        error_code="NETWORK_ERROR",
+                        details={"attempt": attempt_no, "error": str(e)},
+                    )
+                    self.close()
+                    self.manual_mode = False
+                    if attempt_idx + 1 < max_attempts:
+                        delay = scraper_config.RETRY_DELAY_SECONDS * (2 ** attempt_idx)
+                        log(f"🔁 네트워크 오류로 재시도합니다... ({attempt_no}/{max_attempts}, {delay}s 대기)")
+                        time.sleep(delay)
+                        continue
+                    raise
+                except BrowserInitError:
+                    raise
+                except DataExtractionError as e:
+                    if background_mode:
+                        log(f"⚠️ {e} - 백그라운드 모드 종료")
+                        self.manual_mode = False
+                    else:
+                        log(f"⚠️ {e} - 수동 모드로 전환")
+                        self.manual_mode = True
+                    break
                 except Exception as e:
-                    log(f"⚠️ 국내선 처리 중 오류: {e}")
-                    logger.error(f"Domestic error: {e}", exc_info=True)
-
-            
-            if found_data:
-                log("데이터 준비 완료! 추출 시작")
-                
-                # 페이지 안정화 대기
-                time.sleep(scraper_config.SEARCH_PAGE_STABILIZE_SECONDS)
-                
-                if is_domestic:
-                    # 국내선 편도: 버튼 기반 추출
-                    log("🇰🇷 국내선 편도 추출")
-                    results = self._extract_domestic_prices()
-
-                else:
-                    # 국제선: 기존 추출 로직
-                    results = self._extract_prices()
-
-                if not results:
-                    raise DataExtractionError("자동 추출 결과가 없습니다.")
-            else:
-                log("데이터가 충분히 로드되지 않았을 수 있습니다.")
-                self.manual_mode = True
-
-            results = self._sort_and_limit_results(results, max_results, log)
-            if results:
-                log(f"✅ 자동 추출 성공: {len(results)}개")
-
-                
-        except NetworkError as e:
-            logger.warning(f"네트워크 오류 (시도 {attempt_no}/{scraper_config.MAX_RETRY_COUNT}): {e}")
-            self._emit_telemetry(
-                "search_attempt",
-                success=False,
-                route=self._current_route,
-                error_code="NETWORK_ERROR",
-                details={"attempt": attempt_no, "error": str(e)},
-            )
-            if _retry_count + 1 < scraper_config.MAX_RETRY_COUNT:
-                delay = scraper_config.RETRY_DELAY_SECONDS * (2 ** _retry_count)
-                log(f"🔁 네트워크 오류로 재시도합니다... ({attempt_no}/{scraper_config.MAX_RETRY_COUNT}, {delay}s 대기)")
-                time.sleep(delay)
-                return self.search(
-                    origin,
-                    destination,
-                    departure_date,
-                    return_date,
-                    adults,
-                    cabin_class,
-                    max_results,
-                    emit,
-                    _retry_count=_retry_count + 1,
-                )
-            raise
-        except BrowserInitError:
-            raise
-        except DataExtractionError as e:
-            log(f"⚠️ {e} - 수동 모드로 전환")
-            self.manual_mode = True
-        except Exception as e:
-            logger.error(f"Playwright error: {e}", exc_info=True)
-            if emit:
-                emit(f"오류 발생: {e}")
-            self.manual_mode = True
+                    logger.error(f"Playwright error: {e}", exc_info=True)
+                    if emit:
+                        emit(f"오류 발생: {e}")
+                    self.manual_mode = False if background_mode else True
+                    break
         
         finally:
             # 수동 모드가 아니면 브라우저 정리 (리소스 누수 방지)
@@ -697,7 +735,7 @@ class PlaywrightScraper:
                 duration_ms=int(elapsed_time * 1000),
                 extraction_source=results[0].extraction_source if results else "",
                 confidence=results[0].confidence if results else 0.0,
-                details={"attempt": attempt_no},
+                details={"attempt": attempt_no, "background_mode": background_mode},
             )
         
         return results
@@ -973,7 +1011,8 @@ class FlightSearcher:
                departure_date: str, return_date: Optional[str] = None,
                adults: int = 1, cabin_class: str = "ECONOMY",
                max_results: int = 1000,
-               progress_callback: Callable = None) -> List[FlightResult]:
+               progress_callback: Callable = None,
+               background_mode: bool = False) -> List[FlightResult]:
         """항공권 검색 진입점"""
         def emit(msg):
             if progress_callback:
@@ -988,7 +1027,8 @@ class FlightSearcher:
             departure_date, return_date, 
             adults, cabin_class,
             max_results, 
-            emit
+            emit,
+            background_mode=background_mode,
         )
         self.last_results = results
         
@@ -1054,7 +1094,7 @@ class ParallelSearcher:
                 
                 results = searcher.scraper.search(
                     origin, dest, departure_date, return_date, 
-                    adults, cabin_class, max_results=500, emit=emit
+                    adults, cabin_class, max_results=500, emit=emit, background_mode=True
                 )
                 return dest, results
             except Exception as e:
@@ -1114,7 +1154,7 @@ class ParallelSearcher:
                 # 조용히 실행
                 results = searcher.scraper.search(
                     origin, destination, dep_date, ret_date,
-                    adults, cabin_class, max_results=100, emit=lambda msg: None
+                    adults, cabin_class, max_results=100, emit=lambda msg: None, background_mode=True
                 )
                 
                 if results:

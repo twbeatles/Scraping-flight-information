@@ -168,10 +168,12 @@ def test_multi_search_worker_runs_with_parallelism(monkeypatch):
 
 def test_multi_search_worker_passes_cabin_class(monkeypatch):
     observed = []
+    background_modes = []
 
     class _FakeSearcher:
         def search(self, *args, **kwargs):
             observed.append(kwargs.get("cabin_class") or (args[5] if len(args) > 5 else None))
+            background_modes.append(kwargs.get("background_mode"))
             return []
 
         def close(self):
@@ -194,14 +196,17 @@ def test_multi_search_worker_passes_cabin_class(monkeypatch):
     worker.run()
     assert observed
     assert set(observed) == {"BUSINESS"}
+    assert set(background_modes) == {True}
 
 
 def test_date_range_worker_passes_cabin_class(monkeypatch):
     observed = []
+    background_modes = []
 
     class _FakeSearcher:
         def search(self, *args, **kwargs):
             observed.append(kwargs.get("cabin_class") or (args[5] if len(args) > 5 else None))
+            background_modes.append(kwargs.get("background_mode"))
             return []
 
         def close(self):
@@ -215,6 +220,7 @@ def test_date_range_worker_passes_cabin_class(monkeypatch):
     worker = DateRangeWorker("ICN", "NRT", [dep], 0, 1, "FIRST", max_results=10)
     worker.run()
     assert observed == ["FIRST"]
+    assert background_modes == [True]
 
 
 def test_alert_auto_check_worker_uses_alert_cabin_and_emits_hit(monkeypatch):
@@ -229,10 +235,12 @@ def test_alert_auto_check_worker_uses_alert_cabin_and_emits_hit(monkeypatch):
             self.cabin_class = "BUSINESS"
 
     observed_cabins = []
+    background_modes = []
 
     class _FakeSearcher:
         def search(self, *args, **kwargs):
             observed_cabins.append(kwargs.get("cabin_class"))
+            background_modes.append(kwargs.get("background_mode"))
             return [FlightResult(airline="A", price=120000, departure_time="10:00", arrival_time="12:00")]
 
         def close(self):
@@ -249,7 +257,23 @@ def test_alert_auto_check_worker_uses_alert_cabin_and_emits_hit(monkeypatch):
     worker.run()
 
     assert observed_cabins == ["BUSINESS"]
+    assert background_modes == [True]
     assert len(hits) == 1
+
+
+def test_alert_auto_check_worker_cancel_closes_active_searcher():
+    class _FakeSearcher:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    worker = AlertAutoCheckWorker([])
+    fake = _FakeSearcher()
+    worker._set_active_searcher(fake)
+    worker.cancel()
+    assert fake.closed is True
 
 
 def test_playwright_search_retries_on_network_error(monkeypatch):
@@ -275,7 +299,7 @@ def test_playwright_search_retries_on_network_error(monkeypatch):
     page = _FakePage()
     scraper = PlaywrightScraper()
 
-    def _fake_init_browser(_log=None, _user_data_dir=None):
+    def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
         scraper.context = _FakeContext(page)
 
     monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
@@ -292,3 +316,94 @@ def test_playwright_search_retries_on_network_error(monkeypatch):
 
     assert len(results) == 1
     assert page.calls == 2
+
+
+def test_playwright_search_closes_between_network_retries(monkeypatch):
+    class _FakePage:
+        def __init__(self):
+            self.calls = 0
+
+        def goto(self, *_args, **_kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise Exception("temporary network failure")
+
+    class _FakeContext:
+        def __init__(self, page):
+            self._page = page
+
+        def new_page(self):
+            return self._page
+
+        def close(self):
+            return None
+
+    page = _FakePage()
+    scraper = PlaywrightScraper()
+    close_calls = {"count": 0}
+
+    def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
+        scraper.context = _FakeContext(page)
+
+    def _fake_close():
+        close_calls["count"] += 1
+        scraper.page = None
+        scraper.context = None
+        scraper.browser = None
+        scraper.playwright = None
+        scraper.manual_mode = False
+
+    monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
+    monkeypatch.setattr(scraper, "_wait_for_results", lambda *_args, **_kwargs: {"found": True, "selector": "li[data-index]"})
+    monkeypatch.setattr(
+        scraper,
+        "_extract_prices",
+        lambda: [FlightResult(airline="A", price=100000, departure_time="10:00", arrival_time="12:00")],
+    )
+    monkeypatch.setattr(scraper, "close", _fake_close)
+    monkeypatch.setattr("scraper_v2.time.sleep", lambda *_args, **_kwargs: None)
+
+    results = scraper.search("ICN", "NRT", "20260301", None, adults=1, cabin_class="ECONOMY", max_results=10)
+
+    assert len(results) == 1
+    assert page.calls == 2
+    assert close_calls["count"] >= 2
+
+
+def test_playwright_background_mode_disables_manual_fallback(monkeypatch):
+    class _FakePage:
+        def goto(self, *_args, **_kwargs):
+            return None
+
+    class _FakeContext:
+        def __init__(self):
+            self._page = _FakePage()
+
+        def new_page(self):
+            return self._page
+
+        def close(self):
+            return None
+
+    scraper = PlaywrightScraper()
+
+    def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
+        scraper.context = _FakeContext()
+
+    monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
+    monkeypatch.setattr(scraper, "_wait_for_results", lambda *_args, **_kwargs: {"found": False, "selector": ""})
+    monkeypatch.setattr(scraper, "close", lambda: None)
+
+    results = scraper.search(
+        "ICN",
+        "NRT",
+        "20260301",
+        None,
+        adults=1,
+        cabin_class="ECONOMY",
+        max_results=10,
+        background_mode=True,
+    )
+
+    assert results == []
+    assert scraper.manual_mode is False

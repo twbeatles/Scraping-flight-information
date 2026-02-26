@@ -34,7 +34,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-02-25)
+## 🔄 정합성 업데이트 (2026-02-26)
 
 최신 코드 기준으로 아래 항목을 우선 적용한다.
 
@@ -45,6 +45,9 @@
 5. `PreferenceManager` 설정 파일명은 `user_preferences.json`이다.
 6. DB는 `close()`, `close_all_connections()`, 텔레메트리 API를 제공한다.
 7. 관측성은 JSONL(`logs/flightbot_events.jsonl`) + DB(`telemetry_events`) 이중 저장이다.
+8. `PlaywrightScraper.search()`는 반복 루프 기반 재시도/백오프를 사용하며 시도 간 리소스를 정리한다.
+9. 다중/날짜/자동알림 검색은 `background_mode=True`(헤드리스, non-persistent)로 실행한다.
+10. `AlertAutoCheckWorker.cancel()`은 활성 검색기를 즉시 close한다.
 
 ---
 
@@ -68,6 +71,8 @@ Scraping-flight-information-main-v2/
     ├── dialogs.py         # 다이얼로그 위젯 (CalendarViewDialog, MultiDestDialog 등)
     └── workers.py         # 백그라운드 스레드 워커 (SearchWorker, MultiSearchWorker)
 ```
+
+- 2026-02-26 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 현행 유지가 맞다.
 
 ---
 
@@ -176,9 +181,9 @@ class FlightResult:
 2. Edge (`channel="msedge"`)
 3. Chromium (내장, `playwright install chromium` 필요)
 
-**Persistent Context 사용:**
-- `playwright_profile` 디렉터리로 `launch_persistent_context` 실행
-- 수동 모드 종료 후에도 브라우저 컨텍스트 유지
+**Context 전략:**
+- 단일 검색(수동 모드 가능): `playwright_profile` 기반 persistent context 사용
+- 다중/날짜/자동알림: `background_mode=True`로 headless + non-persistent 실행
 - UI의 **브라우저 닫기** 버튼 또는 앱 종료 시 정리
 
 **국내선 공항 코드(중앙 상수):**
@@ -618,6 +623,8 @@ class AlertAutoCheckWorker(QThread):
     done = pyqtSignal(int, int)
 ```
 
+- `SearchWorker`는 `background_mode=False`(수동 모드 가능), 나머지 워커는 `background_mode=True`(헤드리스) 경로를 사용한다.
+
 ---
 
 ## ⚠️ 개발 시 주의사항
@@ -666,8 +673,11 @@ except NetworkError as e:
     # 네트워크 상태 확인 안내
     self.log_viewer.append_log(f"네트워크 오류: {e}")
 except DataExtractionError as e:
-    # 수동 모드 전환
-    self._activate_manual_mode(searcher)
+    # 단일 검색은 수동 모드 전환, 백그라운드는 종료
+    if background_mode:
+        self.log_viewer.append_log("백그라운드 점검 종료")
+    else:
+        self._activate_manual_mode(searcher)
 finally:
     if not manual_mode:
         searcher.close()

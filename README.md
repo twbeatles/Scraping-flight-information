@@ -208,10 +208,10 @@ python gui_v2.py
    - 필요 시 **편도 알림** 체크 (귀국일 없이 감시)
    - **목표 가격** 입력 (예: 300,000원)
 3. **🔔 알림 추가** 클릭
-4. 다음 검색 시 목표 가격 이하 발견 시 알림
+4. 수동 검색 또는 자동 점검 주기에서 목표 가격 이하 발견 시 알림
 
 > ℹ️ v2.5 개선: 설정에서 자동 점검을 활성화하면 앱 실행 중 주기적으로 알림 조건을 확인할 수 있습니다.  
-> 기본값은 **비활성화(OFF)** 입니다.
+> 자동 점검은 백그라운드(헤드리스) 검색으로 동작하며 기본값은 **비활성화(OFF)** 입니다.
 
 ### 💾 세션 저장 및 불러오기
 
@@ -345,6 +345,8 @@ pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 | `FlightBot_v2.5.spec` | 표준 GUI 배포 (호환 프로필) | `pyinstaller --clean FlightBot_v2.5.spec` |
 | `FlightBot_Simple.spec` | 콘솔 로그 확인용 디버그 실행파일 | `pyinstaller --clean FlightBot_Simple.spec` |
 
+> 2026-02-26 점검 결과: 백그라운드 모드/재시도 안정화 변경은 Python 런타임 로직 변경으로, 세 `.spec` 파일의 `hiddenimports`/`datas` 수정은 필요하지 않습니다.
+
 ### 빌드 결과
 
 - `dist/FlightBot_v2.5/` 폴더 생성
@@ -400,6 +402,19 @@ playwright install chromium
 ---
 
 ## 📝 변경 로그
+
+### v2.5.2 (2026-02-26)
+- 🔁 **재시도 안정성 보강**
+  - `PlaywrightScraper.search()` 재시도 경로를 재귀 호출에서 반복 루프로 전환
+  - 재시도 사이클마다 브라우저/컨텍스트를 명시 정리하여 리소스 누적 위험 완화
+- 🧭 **실행 모드 분리**
+  - 단일 검색(수동 모드 가능)만 persistent context 사용
+  - 다중 목적지/날짜 범위/자동 알림 점검은 `background_mode=True`(헤드리스, non-persistent)로 실행
+- 🛑 **자동 알림 취소 안정성**
+  - `AlertAutoCheckWorker.cancel()` 시 활성 검색기를 즉시 close하여 종료 지연 위험 감소
+- ✅ **테스트 강화**
+  - background 모드 전달/수동 fallback 차단/재시도 중 close/자동 알림 취소 경로 테스트 추가
+  - `pytest -q` 기준 `31 passed` 확인
 
 ### v2.5.1 (2026-02-25)
 - 🔁 **스크래핑 안정성 강화**

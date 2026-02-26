@@ -17,7 +17,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-02-25)
+## 🔄 정합성 업데이트 (2026-02-26)
 
 아래 항목은 코드베이스 최신 구현 기준으로 우선 적용한다.
 
@@ -28,6 +28,9 @@
 5. `FlightDatabase`는 `close()`, `close_all_connections()`, `log_telemetry_event()`, `get_telemetry_summary()`, `get_selector_health()`를 제공한다.
 6. 설정 파일은 `preferences.json`이 아니라 `user_preferences.json`을 사용한다.
 7. 관측성 로그는 JSONL 파일(`logs/flightbot_events.jsonl`)과 DB(`telemetry_events`)에 함께 저장한다.
+8. `PlaywrightScraper.search()`는 재귀가 아닌 반복 루프 기반 재시도/백오프를 사용하며, 시도 간 리소스를 정리한다.
+9. 다중/날짜/자동알림 워커는 `background_mode=True`(헤드리스, non-persistent)로 검색하고 단일 검색만 persistent context를 사용한다.
+10. `AlertAutoCheckWorker.cancel()`은 현재 실행 중인 검색기를 즉시 `close()`한다.
 
 ---
 
@@ -161,19 +164,33 @@ with PlaywrightScraper() as scraper:
 ### 2.1 Persistent Context 패턴
 
 ```python
-profile_dir = os.path.join(os.getcwd(), "playwright_profile")
-self.context = self.playwright.chromium.launch_persistent_context(
-    profile_dir,
-    headless=False,
-    args=browser_args,
-    viewport={"width": 1400, "height": 900},
-    locale="ko-KR",
-    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-)
+if background_mode:
+    # 다중/날짜/자동알림: non-persistent + headless
+    self._init_browser(log, user_data_dir=None, headless=True)
+else:
+    # 단일 검색/수동 모드: persistent context 유지
+    profile_dir = os.path.join(os.getcwd(), "playwright_profile")
+    self._init_browser(log, user_data_dir=profile_dir, headless=False)
 ```
 
-- 수동 모드 종료 후에도 브라우저 컨텍스트를 유지
+- 수동 모드가 필요한 단일 검색 경로에서만 persistent context를 유지
+- 백그라운드 점검 경로는 headless/non-persistent로 분리하여 컨텍스트 충돌 위험을 줄임
 - UI의 **브라우저 닫기** 버튼 또는 앱 종료 시 명시적으로 close()
+
+### 2.2 Retry Loop 패턴
+
+```python
+for attempt_idx in range(start_attempt, max_attempts):
+    self.close()  # 시도 시작 전 이전 리소스 정리
+    try:
+        ...
+        return results
+    except NetworkError:
+        if attempt_idx + 1 < max_attempts:
+            time.sleep(RETRY_DELAY_SECONDS * (2 ** attempt_idx))
+            continue
+        raise
+```
 
 ### 3. Thread-Safe 취소 패턴
 
@@ -576,14 +593,16 @@ class DataExtractionError(ScraperError):
 ```python
 def _search_with_retry(self, ...):
     last_error = None
-    
-    for attempt in range(MAX_RETRY_COUNT):
+
+    for attempt_idx in range(MAX_RETRY_COUNT):
+        self.close()  # 이전 시도 리소스 정리
         try:
             return self._do_search(...)
         except NetworkError as e:
             last_error = e
-            logger.warning(f"네트워크 오류 (시도 {attempt + 1}): {e}")
-            time.sleep(RETRY_DELAY_SECONDS)
+            logger.warning(f"네트워크 오류 (시도 {attempt_idx + 1}): {e}")
+            delay = RETRY_DELAY_SECONDS * (2 ** attempt_idx)
+            time.sleep(delay)
         except DataExtractionError as e:
             # 구조 변경 가능성 - 수동 모드 전환
             raise
@@ -620,6 +639,8 @@ def _search_error(self, err_msg: str):
 ---
 
 ## 🔧 빌드 구성 (flight_bot.spec)
+
+- 2026-02-26 점검: 최근 변경(반복 재시도, `background_mode`)은 Python 실행 로직 변경으로 `.spec`의 `hiddenimports`/`datas` 수정은 필요하지 않았다.
 
 ### 제외 목록 (경량화)
 

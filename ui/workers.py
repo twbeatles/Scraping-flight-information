@@ -74,7 +74,8 @@ class SearchWorker(QThread):
                 self.origin, self.destination, self.date, 
                 self.return_date, self.adults, self.cabin_class,
                 max_results=self.max_results,
-                progress_callback=lambda msg: self.progress.emit(msg)
+                progress_callback=lambda msg: self.progress.emit(msg),
+                background_mode=False,
             )
             
             if self.is_cancelled():
@@ -188,7 +189,8 @@ class MultiSearchWorker(QThread):
                 results = searcher.search(
                     self.origin, dest, self.date, self.return_date, self.adults, self.cabin_class,
                     max_results=self.max_results,
-                    progress_callback=lambda msg: self.progress.emit(f"[{dest}] {msg}")
+                    progress_callback=lambda msg: self.progress.emit(f"[{dest}] {msg}"),
+                    background_mode=True,
                 )
                 return index, dest, results, None
             except Exception as e:
@@ -332,7 +334,8 @@ class DateRangeWorker(QThread):
                 results = searcher.search(
                     self.origin, self.dest, date, ret_date, self.adults, self.cabin_class,
                     max_results=self.max_results,
-                    progress_callback=lambda msg: self.progress.emit(msg)
+                    progress_callback=lambda msg: self.progress.emit(msg),
+                    background_mode=True,
                 )
 
                 if searcher.is_manual_mode():
@@ -412,11 +415,27 @@ class AlertAutoCheckWorker(QThread):
         self.telemetry_callback = telemetry_callback
         self._cancelled = False
         self._cancel_lock = threading.Lock()
+        self._active_searcher = None
+
+    def _set_active_searcher(self, searcher):
+        with self._cancel_lock:
+            self._active_searcher = searcher
+
+    def _clear_active_searcher(self, searcher):
+        with self._cancel_lock:
+            if self._active_searcher is searcher:
+                self._active_searcher = None
 
     def cancel(self):
         with self._cancel_lock:
             self._cancelled = True
+            active = self._active_searcher
         self.requestInterruption()
+        if active:
+            try:
+                active.close()
+            except Exception as e:
+                logger.debug(f"자동 알림 취소 중 브라우저 정리 오류 (무시됨): {e}")
 
     def is_cancelled(self):
         with self._cancel_lock:
@@ -443,6 +462,7 @@ class AlertAutoCheckWorker(QThread):
                 searcher = FlightSearcher(telemetry_callback=self.telemetry_callback)
             except TypeError:
                 searcher = FlightSearcher()
+            self._set_active_searcher(searcher)
             current_price = 0
             try:
                 results = searcher.search(
@@ -454,6 +474,7 @@ class AlertAutoCheckWorker(QThread):
                     cabin_class=cabin_class,
                     max_results=self.max_results,
                     progress_callback=lambda _msg: None,
+                    background_mode=True,
                 )
                 if results:
                     current_price = min(r.price for r in results)
@@ -462,11 +483,14 @@ class AlertAutoCheckWorker(QThread):
             finally:
                 checked += 1
                 self.alert_checked.emit(alert_id, current_price)
+                self._clear_active_searcher(searcher)
                 try:
                     searcher.close()
                 except Exception:
                     pass
 
+            if self.is_cancelled():
+                break
             if current_price > 0 and target_price > 0 and current_price <= target_price:
                 hits += 1
                 self.alert_hit.emit(alert_id, current_price, target_price, origin, dest, cabin_class)

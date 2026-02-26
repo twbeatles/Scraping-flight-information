@@ -9,7 +9,7 @@
 
 ---
 
-## 0. 구현 반영 현황 (2026-02-25)
+## 0. 구현 반영 현황 (2026-02-26)
 
 본 문서는 원래 리스크 감사 문서이며, 아래 B01~B11 개선안은 현재 코드에 반영 완료된 상태다.
 
@@ -23,9 +23,10 @@
 | B06 selector 강건화/health | 완료 | `scraper_config.py`, `scraper_v2.py`, `database.py` |
 | B07 자동 가격 알림 점검 | 완료 | `config.py`, `gui_v2.py`, `ui/workers.py`, `ui/dialogs.py` |
 | B08 관측성(JSONL+DB 요약) | 완료 | `database.py`, `gui_v2.py`, `ui/dialogs.py` |
-| B09 문서 정합성 | 진행 중(문서 동기화 업데이트 반영) | `README.md`, `claude.md`, `gemini.md` |
+| B09 문서 정합성 | 완료 | `README.md`, `claude.md`, `gemini.md` |
 | B10 FlightResult 메타 확장 | 완료 | `scraper_v2.py`, `database.py`, `gui_v2.py` |
 | B11 진단 UI/selector health | 완료 | `ui/dialogs.py`, `database.py` |
+| B12 백그라운드 실행 분리/재시도 루프 안정화 | 완료 | `scraper_v2.py`, `ui/workers.py`, `tests/test_workers_and_scraper.py` |
 
 > 참고: 아래 3장 리스크 목록은 감사 기준선(개선 전 위험 정의)으로 유지하며, 현재 코드는 0장 상태표를 기준으로 해석한다.
 
