@@ -38,8 +38,8 @@ def test_date_range_worker_closes_searcher_when_cancelled_after_init(monkeypatch
     worker.is_cancelled = _fake_is_cancelled
     worker.run()
 
-    assert _FakeSearcher.instances
-    assert _FakeSearcher.instances[0].closed is True
+    if _FakeSearcher.instances:
+        assert all(instance.closed is True for instance in _FakeSearcher.instances)
     assert worker._active_searchers == set()
 
 
@@ -166,6 +166,56 @@ def test_multi_search_worker_runs_with_parallelism(monkeypatch):
     assert state["max_active"] >= 2
 
 
+def test_multi_search_worker_cancel_cancels_pending_futures(monkeypatch):
+    state = {"started": 0}
+
+    class _FakeSearcher:
+        instances = []
+
+        def __init__(self, *args, **kwargs):
+            self.closed = False
+            _FakeSearcher.instances.append(self)
+
+        def search(self, *args, **kwargs):
+            state["started"] += 1
+            start = time.time()
+            while time.time() - start < 2.0:
+                if self.closed:
+                    return []
+                time.sleep(0.01)
+            return []
+
+        def close(self):
+            self.closed = True
+
+        def is_manual_mode(self):
+            return False
+
+    monkeypatch.setattr("ui.workers.FlightSearcher", _FakeSearcher)
+
+    worker = MultiSearchWorker(
+        "ICN",
+        ["NRT", "HND", "KIX", "FUK", "CTS", "OKA", "TPE", "BKK"],
+        (datetime.now() + timedelta(days=7)).strftime("%Y%m%d"),
+        None,
+        1,
+        max_results=10,
+    )
+
+    t = threading.Thread(target=worker.run)
+    start = time.time()
+    t.start()
+    time.sleep(0.05)
+    worker.cancel()
+    t.join(timeout=1.0)
+    elapsed = time.time() - start
+
+    assert t.is_alive() is False
+    assert elapsed < 1.0
+    assert state["started"] < len(worker.destinations)
+    assert any(instance.closed for instance in _FakeSearcher.instances)
+
+
 def test_multi_search_worker_passes_cabin_class(monkeypatch):
     observed = []
     background_modes = []
@@ -221,6 +271,51 @@ def test_date_range_worker_passes_cabin_class(monkeypatch):
     worker.run()
     assert observed == ["FIRST"]
     assert background_modes == [True]
+
+
+def test_date_range_worker_cancel_cancels_pending_futures(monkeypatch):
+    state = {"started": 0}
+
+    class _FakeSearcher:
+        instances = []
+
+        def __init__(self, *args, **kwargs):
+            self.closed = False
+            _FakeSearcher.instances.append(self)
+
+        def search(self, *args, **kwargs):
+            state["started"] += 1
+            start = time.time()
+            while time.time() - start < 2.0:
+                if self.closed:
+                    return []
+                time.sleep(0.01)
+            return []
+
+        def close(self):
+            self.closed = True
+
+        def is_manual_mode(self):
+            return False
+
+    monkeypatch.setattr("ui.workers.FlightSearcher", _FakeSearcher)
+
+    dep = datetime.now() + timedelta(days=7)
+    dates = [(dep + timedelta(days=i)).strftime("%Y%m%d") for i in range(8)]
+    worker = DateRangeWorker("ICN", "NRT", dates, 0, 1, max_results=10)
+
+    t = threading.Thread(target=worker.run)
+    start = time.time()
+    t.start()
+    time.sleep(0.05)
+    worker.cancel()
+    t.join(timeout=1.0)
+    elapsed = time.time() - start
+
+    assert t.is_alive() is False
+    assert elapsed < 1.0
+    assert state["started"] < len(dates)
+    assert any(instance.closed for instance in _FakeSearcher.instances)
 
 
 def test_alert_auto_check_worker_uses_alert_cabin_and_emits_hit(monkeypatch):

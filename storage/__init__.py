@@ -1,4 +1,4 @@
-"""Backward-compatible facade for database layer."""
+"""Storage package exports."""
 
 from storage.models import (
     FavoriteItem,

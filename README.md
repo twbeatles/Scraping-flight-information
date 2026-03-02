@@ -1,4 +1,4 @@
-# ✈️ Flight Bot v2.5
+﻿# ✈️ Flight Bot v2.5
 
 **Playwright 기반 실시간 항공권 최저가 비교 분석 도구**
 
@@ -28,15 +28,15 @@
 
 ---
 
-## � 주요 기능
+## ?? ?? ??
 
-### �🔍 검색 기능
+### ?? ?? ??
 - **국내선/국제선** 항공권 검색
 - **왕복/편도** 검색 지원
 - **좌석 등급** 선택 (이코노미/비즈니스/일등석)
 - **다중 목적지** 동시 검색 (최대 5개 목적지 비교)
-- **날짜 범위** 검색으로 최저가 날짜 찾기
-- **수동 모드** 자동 추출 실패 시 브라우저 유지, 수동 추출/닫기 지원
+- **날짜 범위** 검색으로 최저가 날짜 찾기 (최대 30일)
+- **수동 모드** 자동 추출 실패 시 브라우저 유지, 수동 추출/닫기 지원 (전용 텔레메트리 이벤트 기록)
 
 ### 📊 분석 기능
 - **실시간 가격 비교** (최대 1,000개 결과)
@@ -115,7 +115,7 @@ python gui_v2.py
 
 ---
 
-## � 사용 방법
+## ?? ?? ??
 
 ### 기본 검색
 
@@ -167,7 +167,7 @@ python gui_v2.py
 
 1. 헤더의 **🌍 다중 목적지** 버튼 클릭
 2. 출발지 선택
-3. 비교할 **도착지 2개 이상** 체크 (예: 도쿄, 오사카, 후쿠오카)
+3. 비교할 **도착지 2~5개** 체크 (출발지와 동일 공항은 자동 제외)
 4. 날짜 및 인원 설정
 5. **🔍 다중 검색 시작** 클릭
 6. 결과: 각 목적지별 최저가 비교표 표시
@@ -183,7 +183,8 @@ python gui_v2.py
 5. **🔍 날짜 검색 시작** 클릭
 6. 결과: 각 날짜별 최저가 표시
 
-> ⚠️ 날짜 범위가 넓을수록 검색 시간이 오래 걸립니다 (14일 이상 시 확인 메시지 표시)
+> ⚠️ 날짜 범위는 **최대 30일 하드캡**입니다.
+> 15~30일 구간은 실행 전 확인 메시지가 표시됩니다.
 
 ### 📆 캘린더 뷰
 
@@ -251,41 +252,89 @@ python gui_v2.py
 
 ---
 
-## 📁 프로젝트 구조
+## ?? ???? ??
 
+```text
+Scraping-flight-information/
+??? gui_v2.py                  # ?????? facade (python gui_v2.py ??)
+??? scraper_v2.py              # ???? facade
+??? database.py                # DB facade
+??? config.py
+??? scraper_config.py
+??? requirements.txt
+??? flight_bot.spec
+??? FlightBot_v2.5.spec
+??? FlightBot_Simple.spec
+?
+??? app/                       # ?? ??? ??
+?   ??? main_window.py
+?   ??? session_manager.py
+?   ??? mainwindow/
+?       ??? ui_bootstrap.py
+?       ??? telemetry.py
+?       ??? auto_alert.py
+?       ??? worker_lifecycle.py
+?       ??? favorites.py
+?       ??? exports.py
+?       ??? search_single.py
+?       ??? search_multi.py
+?       ??? search_date_range.py
+?       ??? manual_mode.py
+?       ??? filtering.py
+?       ??? history.py
+?       ??? session.py
+?       ??? calendar.py
+?       ??? app_lifecycle.py
+?
+??? ui/
+?   ??? components.py          # facade
+?   ??? components_*.py
+?   ??? dialogs.py             # facade
+?   ??? dialogs_*.py
+?   ??? workers.py             # facade
+?   ??? workers_*.py
+?   ??? styles.py
+?
+??? scraping/
+?   ??? errors.py
+?   ??? models.py
+?   ??? playwright_scraper.py
+?   ??? extract_domestic.py
+?   ??? extract_international.py
+?   ??? searcher.py
+?   ??? parallel.py
+?
+??? storage/
+?   ??? models.py
+?   ??? schema.py
+?   ??? flight_database.py
+?   ??? db_favorites.py
+?   ??? db_history_logs.py
+?   ??? db_telemetry.py
+?   ??? db_alerts.py
+?   ??? db_last_search.py
+?
+??? backups/
+?   ??? code_snapshot_*.zip    # ???? ? ??/?? ??
+?
+??? claude.md
+??? README.md
 ```
-Scraping-flight-information-main-v2/
-├── gui_v2.py              # 메인 애플리케이션 (MainWindow)
-├── scraper_v2.py          # Playwright 스크래퍼 엔진
-├── scraper_config.py      # 스크래핑 설정 및 JavaScript
-├── database.py            # SQLite 데이터베이스 관리
-├── config.py              # 공항 코드, 설정 관리
-├── requirements.txt       # 의존성 패키지 목록
-├── flight_bot.spec        # PyInstaller 최적화 GUI 빌드 스펙(권장)
-├── FlightBot_v2.5.spec    # PyInstaller 표준 GUI 빌드 스펙
-├── FlightBot_Simple.spec  # PyInstaller 콘솔 디버그 빌드 스펙
-│
-├── ui/                    # UI 컴포넌트 모듈
-│   ├── styles.py          # 테마 스타일시트 (다크/라이트)
-│   ├── components.py      # 재사용 UI 위젯
-│   ├── dialogs.py         # 팝업 다이얼로그
-│   └── workers.py         # 백그라운드 워커 스레드
-│
-├── gemini.md              # AI 가이드라인 (Gemini용)
-├── claude.md              # AI 가이드라인 (Claude용)
-└── README.md              # 프로젝트 문서 (현재 파일)
-```
 
-### 모듈별 역할
+### ??? ??
 
-| 모듈 | 역할 |
+| ?? | ?? |
 |------|------|
-| `gui_v2.py` | 메인 윈도우, 이벤트 처리, 탭 관리 |
-| `scraper_v2.py` | Playwright 브라우저 제어, 데이터 추출 |
-| `database.py` | SQLite 즐겨찾기, 가격 히스토리, 알림 관리 |
-| `config.py` | 공항/도시 코드, 사용자 설정 |
-| `ui/components.py` | FilterPanel, ResultTable, SearchPanel |
-| `ui/workers.py` | SearchWorker, MultiSearchWorker |
+| `gui_v2.py` | ??????/?? API ?? facade (`MainWindow`, `main`) |
+| `app/main_window.py` | MainWindow ?? ? ?? ??? ?? |
+| `scraper_v2.py` | ?? ???? API facade |
+| `scraping/*` | Playwright ???? ?? ? ?? ?? ?? |
+| `database.py` | ?? DB API facade |
+| `storage/*` | SQLite ???/???? DB ?? ?? |
+| `config.py` | ??/?? ??, ??? ?? |
+| `ui/components.py` | ???? facade (`FilterPanel`, `ResultTable`, `SearchPanel`) |
+| `ui/dialogs.py` | ????? facade (`MultiDestDialog`, `SettingsDialog` ?) |
+| `ui/workers.py` | ?? facade (`SearchWorker`, `MultiSearchWorker` ?) |
 
 ---
 
@@ -303,7 +352,9 @@ Scraping-flight-information-main-v2/
 | 모드 | JSONL 로그 위치 |
 |------|----------------|
 | 개발 | `./logs/flightbot_events.jsonl` |
-| EXE | `%LOCALAPPDATA%/FlightBot/logs/flightbot_events.jsonl` |
+| EXE | %LOCALAPPDATA%/FlightBot/logs/flightbot_events.jsonl |
+
+- 보존 정책 기본값: telemetry_events DB 30일, JSONL 10MB x 최대 5개 롤링
 
 ### 설정 가능 항목
 
@@ -315,6 +366,7 @@ Scraping-flight-information-main-v2/
 - **테마**: 다크/라이트 모드 전환
 - **자동 알림 점검**: 활성화 여부 및 점검 주기(분)
 - **진단 정보**: 최근 성공률/수동모드 전환률/selector health 확인
+  - 수동 추출 완료/실패는 ui_manual_extract_finished 이벤트로 별도 집계
 
 ### 프리셋 공항 추가
 
@@ -402,6 +454,23 @@ playwright install chromium
 ---
 
 ## 📝 변경 로그
+
+### v2.5.3 (2026-03-02)
+- ?? **PyInstaller spec ??? ??**
+  - `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`? `hiddenimports`? ?? ?? ??
+- ?? **?? ?? ?? ????**
+  - `gui_v2.py`, `database.py`, `scraper_v2.py`, `ui/components.py`, `ui/dialogs.py`, `ui/workers.py`? facade? ??
+  - ?? ??? `app/`, `storage/`, `scraping/`, `ui/*_*.py` ??? ??
+- ?? **?? ??? ??**
+  - ?? ?? ??? `python gui_v2.py` ??
+  - ?? import ??(`from gui_v2 import MainWindow`, `from database import FlightDatabase`, `from ui.dialogs import ...`) ??
+- ?? **?? ?? ?? ??**
+  - `backups/code_snapshot_20260302_094406.zip` ??
+  - SHA256 ? ZIP contents ?? ?? ?? ??
+- ? **?? ??**
+  - import ??? ??? ??
+  - `python -m py_compile` ?? ??
+  - `pytest -q` ?? `44 passed`
 
 ### v2.5.2 (2026-02-26)
 - 🔁 **재시도 안정성 보강**
@@ -529,3 +598,6 @@ pytest -q
 ---
 
 *Made with ❤️ for travelers*
+
+
+

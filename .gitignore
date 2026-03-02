@@ -14,6 +14,7 @@ build_log_simple.txt
 
 # Local backup sources
 backup/
+backups/
 
 # Playwright browser profile/cache
 playwright_profile/

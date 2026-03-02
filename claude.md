@@ -31,6 +31,10 @@
 8. `PlaywrightScraper.search()`는 재귀가 아닌 반복 루프 기반 재시도/백오프를 사용하며, 시도 간 리소스를 정리한다.
 9. 다중/날짜/자동알림 워커는 `background_mode=True`(헤드리스, non-persistent)로 검색하고 단일 검색만 persistent context를 사용한다.
 10. `AlertAutoCheckWorker.cancel()`은 현재 실행 중인 검색기를 즉시 `close()`한다.
+11. 다중 목적지 검색은 UI에서 `2~5개`만 허용하고, 출발지는 목적지 체크목록에서 자동 제외한다.
+12. 날짜 범위 검색은 UI에서 `30일 하드캡`을 적용하며, `15~30일`은 실행 전 확인을 요구한다.
+13. 텔레메트리 보존 정책 기본값은 `DB 30일 + JSONL 10MB x 최대 5개 롤링`이다.
+14. 수동 추출 완료/실패는 `ui_manual_extract_finished` 이벤트로 별도 기록한다.
 
 ---
 
@@ -1133,3 +1137,33 @@ from ui.components import FilterPanel, ResultTable
 
 *이 문서는 Flight Bot v2.5 코드베이스를 기반으로 작성되었습니다.*
 *마지막 업데이트: 2026-01-15*
+
+
+## Refactor Update (2026-03-02)
+
+### Module Split Summary
+- Entry facade kept: `gui_v2.py` -> `app.main_window` re-export.
+- Scraper facade kept: `scraper_v2.py` -> `scraping/*` implementation split.
+- Database facade kept: `database.py` -> `storage/*` implementation split.
+- UI facades kept: `ui/components.py`, `ui/dialogs.py`, `ui/workers.py` with internal modules `components_*`, `dialogs_*`, `workers_*`.
+
+### Compatibility Contract
+- Existing runtime entry remains `python gui_v2.py`.
+- Existing import paths remain valid:
+  - `from gui_v2 import MainWindow, main`
+  - `from database import FlightDatabase`
+  - `from scraper_v2 import FlightSearcher, FlightResult, PlaywrightScraper`
+  - `from ui.dialogs import ...`, `from ui.components import ...`, `from ui.workers import ...`
+
+### Verification Log
+- Pre-change backup:
+  - `backups/code_snapshot_20260302_094406.zip`
+  - `backups/code_snapshot_20260302_094406.zip.sha256`
+  - `backups/code_snapshot_20260302_094406.zip.contents.txt`
+- PyInstaller spec consistency:
+  - `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec` keep `Analysis(["gui_v2.py"])`
+  - `hiddenimports` updated to include split modules (`app/*`, `scraping/*`, `storage/*`, `ui/*_*`)
+- Build checks:
+  - import compatibility smoke passed
+  - `python -m py_compile` full tree passed
+  - `pytest -q`: `44 passed`

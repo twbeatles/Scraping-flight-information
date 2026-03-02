@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta
 
-from PyQt6.QtCore import QDate, QTimer
+from PyQt6.QtCore import QDate, QTimer, Qt
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QButtonGroup, QComboBox, QDateEdit, QRadioButton, QSpinBox, QMessageBox
+from PyQt6.QtWidgets import QApplication, QButtonGroup, QComboBox, QDateEdit, QRadioButton, QSpinBox, QMessageBox
 
 from database import PriceAlert
 from gui_v2 import MainWindow
 from scraper_v2 import FlightResult
+from ui.components import ResultTable, SearchPanel
 
 
 class _DummyLogViewer:
@@ -247,6 +248,130 @@ def test_search_finished_uses_single_render_path():
     assert ctx.results == results
     assert ctx.apply_calls == 1
     assert ctx.tabs.index == 0
+
+
+def test_result_table_copy_row_info_uses_sorted_visual_row(qapp):
+    table = ResultTable()
+    results = [
+        FlightResult(airline="Expensive", price=300000, departure_time="10:00", arrival_time="12:00"),
+        FlightResult(airline="Cheap", price=100000, departure_time="08:00", arrival_time="10:00"),
+    ]
+    table.update_data(results)
+    table.sortItems(1, Qt.SortOrder.AscendingOrder)
+
+    target_row = None
+    for row in range(table.rowCount()):
+        item = table.item(row, 0)
+        if item and "Cheap" in item.text():
+            target_row = row
+            break
+
+    assert target_row is not None
+    table._copy_row_info(target_row)
+    copied = QApplication.clipboard().text()
+
+    assert "Cheap" in copied
+    assert "100,000" in copied
+
+
+def test_manual_extract_logs_success_event_and_uses_search_finished(monkeypatch):
+    class _DummySearcher:
+        def extract_manual(self):
+            return [FlightResult(airline="Manual", price=111000, departure_time="09:00", arrival_time="11:00")]
+
+    class _DummyContext:
+        def __init__(self):
+            self.active_searcher = _DummySearcher()
+            self.current_search_params = {"origin": "ICN", "dest": "NRT"}
+            self.log_viewer = _DummyLogViewer()
+            self.events = []
+            self.search_finished_payload = None
+
+        def _emit_telemetry_event(self, payload):
+            self.events.append(payload)
+
+        def _search_finished(self, results):
+            self.search_finished_payload = results
+
+    ctx = _DummyContext()
+    MainWindow._manual_extract(ctx)
+
+    assert ctx.search_finished_payload is not None
+    assert ctx.events
+    assert ctx.events[0]["event_type"] == "ui_manual_extract_finished"
+    assert ctx.events[0]["success"] is True
+    assert ctx.events[0]["manual_mode"] is True
+    assert ctx.events[0]["result_count"] == 1
+
+
+def test_manual_extract_logs_failure_event_when_no_result(monkeypatch):
+    class _DummySearcher:
+        def extract_manual(self):
+            return []
+
+    class _DummyContext:
+        def __init__(self):
+            self.active_searcher = _DummySearcher()
+            self.current_search_params = {"origin": "ICN", "dest": "NRT"}
+            self.log_viewer = _DummyLogViewer()
+            self.events = []
+            self.search_finished_called = False
+
+        def _emit_telemetry_event(self, payload):
+            self.events.append(payload)
+
+        def _search_finished(self, results):
+            self.search_finished_called = True
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
+
+    ctx = _DummyContext()
+    MainWindow._manual_extract(ctx)
+
+    assert ctx.search_finished_called is False
+    assert ctx.events
+    assert ctx.events[0]["event_type"] == "ui_manual_extract_finished"
+    assert ctx.events[0]["success"] is False
+    assert ctx.events[0]["error_code"] == "MANUAL_NO_RESULT"
+
+
+def test_flight_type_change_preserves_custom_origin_preset(qapp):
+    class _FakePrefs:
+        def get_all_presets(self):
+            return {"ZZZ": "Custom Origin", "YYY": "Custom Dest"}
+
+    class _DummyPanel:
+        def __init__(self):
+            self.prefs = _FakePrefs()
+            self.rb_domestic = type(
+                "_RadioStub",
+                (),
+                {
+                    "__init__": lambda self: setattr(self, "_checked", False),
+                    "isChecked": lambda self: self._checked,
+                },
+            )()
+            self.cb_origin = QComboBox()
+            self.cb_dest = QComboBox()
+
+            for code, name in {"ICN": "Incheon", "NRT": "Narita"}.items():
+                self.cb_origin.addItem(f"{code} ({name})", code)
+                self.cb_dest.addItem(f"{code} ({name})", code)
+            self.cb_origin.addItem("ZZZ (Custom Origin)", "ZZZ")
+            self.cb_dest.addItem("YYY (Custom Dest)", "YYY")
+            self.cb_origin.setCurrentIndex(self.cb_origin.findData("ZZZ"))
+            self.cb_dest.setCurrentIndex(self.cb_dest.findData("YYY"))
+
+    ctx = _DummyPanel()
+
+    ctx.rb_domestic._checked = True
+    SearchPanel._on_flight_type_changed(ctx)
+    assert ctx.cb_origin.findData("ZZZ") == -1
+
+    ctx.rb_domestic._checked = False
+    SearchPanel._on_flight_type_changed(ctx)
+    assert ctx.cb_origin.findData("ZZZ") >= 0
+    assert ctx.cb_dest.findData("YYY") >= 0
 
 
 def test_restore_last_search_avoids_direct_table_render():
