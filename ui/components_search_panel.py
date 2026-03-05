@@ -371,6 +371,19 @@ class SearchPanel(QFrame):
             QMessageBox.warning(self, "입력 오류", "도착지 코드가 올바르지 않습니다.\n예: NRT, HND, TYO")
             return
 
+        if self.rb_domestic.isChecked():
+            if (
+                origin_code not in config.DOMESTIC_AIRPORT_CODES
+                or dest_code not in config.DOMESTIC_AIRPORT_CODES
+            ):
+                QMessageBox.warning(
+                    self,
+                    "입력 오류",
+                    "국내선 모드에서는 국내 공항/도시 코드만 사용할 수 있습니다.\n"
+                    "예: GMP, CJU, PUS, TAE, ICN, SEL",
+                )
+                return
+
         if origin_code == dest_code:
             QMessageBox.warning(self, "입력 오류", "출발지와 도착지가 같습니다.")
             return

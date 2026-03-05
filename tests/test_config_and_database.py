@@ -1,4 +1,5 @@
 import os
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -183,4 +184,22 @@ def test_telemetry_jsonl_rolls_with_size_cap(tmp_path: Path):
     assert any(name.endswith(".1") for name in rolled_files)
     assert len(rolled_files) <= 5
     assert "flightbot_events.jsonl.5" not in rolled_files
+
+
+def test_import_settings_trims_search_history_to_20(tmp_path: Path):
+    pref_path = tmp_path / "prefs.json"
+    import_path = tmp_path / "import.json"
+
+    prefs = PreferenceManager(filepath=str(pref_path))
+    big_history = [
+        {"origin": "ICN", "dest": "NRT", "dep": f"202603{(i % 28) + 1:02d}", "timestamp": f"2026-03-{(i % 28) + 1:02d} 10:00"}
+        for i in range(35)
+    ]
+    import_payload = {"search_history": big_history}
+    import_path.write_text(json.dumps(import_payload, ensure_ascii=False), encoding="utf-8")
+
+    ok = prefs.import_settings(str(import_path))
+
+    assert ok is True
+    assert len(prefs.get_history()) == 20
 

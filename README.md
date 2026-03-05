@@ -122,6 +122,7 @@ python gui_v2.py
 1. **출발지 선택**: 드롭다운에서 출발 공항 선택 (예: ICN 인천)
 2. **도착지 선택**: 드롭다운에서 도착 공항 선택 (예: NRT 나리타)
    - 직접 입력 시 **3자리 영문 코드**만 허용됩니다.
+   - 🇰🇷 국내선 모드에서는 `ICN/GMP/CJU/PUS/TAE/SEL` 등 국내 코드만 허용되며, 비국내 코드는 검색이 차단됩니다.
 3. **여정 유형 선택**: 
    - 왕복: 가는 날 + 오는 날 모두 선택
    - 편도: 가는 날만 선택
@@ -137,7 +138,7 @@ python gui_v2.py
 
 | 작업 | 방법 |
 |------|------|
-| 예약 페이지 열기 | 결과 행 **더블클릭** |
+| 예약 페이지 열기 | 결과 행 **더블클릭** (현재 검색의 `cabin`/`adult` 파라미터 포함) |
 | 즐겨찾기 추가 | 행 **우클릭** → "⭐ 즐겨찾기 추가" |
 | 정보 복사 | 행 **우클릭** → "📋 정보 복사" |
 | 정렬 | 컬럼 헤더 클릭 (가격, 시간 등) |
@@ -246,7 +247,7 @@ python gui_v2.py
 | `F5` | 결과 새로고침 (필터 재적용) |
 | `Escape` | 검색 취소 / 다이얼로그 닫기 |
 | `Ctrl+F` | 필터 영역으로 포커스 이동 |
-| `더블클릭` | 해당 항공편 예약 페이지 열기 |
+| `더블클릭` | 해당 항공편 예약 페이지 열기 (`cabin`/`adult` 쿼리 포함) |
 
 > 💡 **⌨️** 버튼을 클릭하면 단축키 목록을 볼 수 있습니다.
 
@@ -397,7 +398,7 @@ pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 | `FlightBot_v2.5.spec` | 표준 GUI 배포 (호환 프로필) | `pyinstaller --clean FlightBot_v2.5.spec` |
 | `FlightBot_Simple.spec` | 콘솔 로그 확인용 디버그 실행파일 | `pyinstaller --clean FlightBot_Simple.spec` |
 
-> 2026-02-26 점검 결과: 백그라운드 모드/재시도 안정화 변경은 Python 런타임 로직 변경으로, 세 `.spec` 파일의 `hiddenimports`/`datas` 수정은 필요하지 않습니다.
+> 2026-03-05 점검 결과: 모듈 분할 + facade 호환 경로를 EXE에 안정적으로 포함하기 위해 세 `.spec` 파일의 `hiddenimports`를 보강했습니다 (`database`, `scraper_v2`, `ui.components/dialogs/workers`, `app.mainwindow.shared`, `scraping.extract_domestic`, `scraping.extract_international` 포함).
 
 ### 빌드 결과
 
@@ -454,6 +455,20 @@ playwright install chromium
 ---
 
 ## 📝 변경 로그
+
+### v2.5.4 (2026-03-05)
+- 🛠️ **구현 정합성 패치 일괄 적용**
+  - `scraping/parallel.py`에 로거 정의 추가로 `ParallelSearcher` 런타임 `NameError` 제거 (public API 유지)
+  - 결과 더블클릭 예약 URL에 `?cabin={...}&adult={...}` 반영
+  - 검색 기록 복원을 `_restore_search_panel_from_params()` 경로로 통합하여 `cabin_class` 복원 보장
+  - 국내선 모드에서 비국내 코드 수동 입력 시 검색 하드 차단
+  - 설정 import 후 `search_history`를 리스트로 정규화하고 최대 20개로 trim
+  - `storage/db_last_search.py`의 깨진 단독 실행 블록 제거
+- 📦 **배포/문서 동기화**
+  - PyInstaller `.spec` 3종 `hiddenimports` 보강 (facade + 분할 모듈 경로)
+  - `.gitignore`를 런타임 산출물 기준으로 정리 (`*.json` 광역 제외 제거, `user_preferences.json`/`flight_session_*.json`/`logs/` 명시)
+- ✅ **검증**
+  - `pytest -q` 기준 `49 passed`
 
 ### v2.5.3 (2026-03-02)
 - ?? **PyInstaller spec ??? ??**

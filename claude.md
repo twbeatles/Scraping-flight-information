@@ -17,7 +17,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-02-26)
+## 🔄 정합성 업데이트 (2026-03-05)
 
 아래 항목은 코드베이스 최신 구현 기준으로 우선 적용한다.
 
@@ -35,6 +35,12 @@
 12. 날짜 범위 검색은 UI에서 `30일 하드캡`을 적용하며, `15~30일`은 실행 전 확인을 요구한다.
 13. 텔레메트리 보존 정책 기본값은 `DB 30일 + JSONL 10MB x 최대 5개 롤링`이다.
 14. 수동 추출 완료/실패는 `ui_manual_extract_finished` 이벤트로 별도 기록한다.
+15. `ParallelSearcher`는 `scraping/parallel.py`에서 로거를 포함해 런타임 예외 없이 동작해야 하며, `scraper_v2.ParallelSearcher` 공개 경로를 유지한다.
+16. 결과 더블클릭 예약 URL은 현재 검색 파라미터의 `cabin_class`/`adults`를 `?cabin=...&adult=...`로 포함한다.
+17. 검색 기록 복원은 `restore_search_from_history()`의 수동 분기 대신 `_restore_search_panel_from_params()` 단일 경로를 사용한다.
+18. 국내선 모드(`rb_domestic`)에서는 `origin/dest`가 모두 `config.DOMESTIC_AIRPORT_CODES`에 포함되어야 검색을 허용한다.
+19. `PreferenceManager.import_settings()`는 병합 후 `search_history`를 리스트로 정규화하고 최대 20개로 제한한다.
+20. `storage/db_last_search.py`는 mixin 정의 전용 모듈로 유지하며, 깨진 단독 실행 블록을 포함하지 않는다.
 
 ---
 
@@ -1136,7 +1142,7 @@ from ui.components import FilterPanel, ResultTable
 ---
 
 *이 문서는 Flight Bot v2.5 코드베이스를 기반으로 작성되었습니다.*
-*마지막 업데이트: 2026-01-15*
+*마지막 업데이트: 2026-03-05*
 
 
 ## Refactor Update (2026-03-02)
@@ -1162,8 +1168,8 @@ from ui.components import FilterPanel, ResultTable
   - `backups/code_snapshot_20260302_094406.zip.contents.txt`
 - PyInstaller spec consistency:
   - `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec` keep `Analysis(["gui_v2.py"])`
-  - `hiddenimports` updated to include split modules (`app/*`, `scraping/*`, `storage/*`, `ui/*_*`)
+  - `hiddenimports` updated to include split modules (`app/*`, `scraping/*`, `storage/*`, `ui/*_*`) and facade compatibility modules (`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.workers`)
 - Build checks:
   - import compatibility smoke passed
   - `python -m py_compile` full tree passed
-  - `pytest -q`: `44 passed`
+  - `pytest -q`: `49 passed`

@@ -456,3 +456,120 @@ def test_filter_debounce_applies_last_event_once(qapp):
     QTest.qWait(250)
     assert len(ctx.applied) == 1
     assert ctx.applied[0]["start_time"] == 4
+
+
+def test_double_click_url_includes_cabin_and_adults(monkeypatch):
+    opened_urls = []
+    monkeypatch.setattr("app.mainwindow.ui_bootstrap.webbrowser.open", lambda url: opened_urls.append(url))
+
+    class _DummyTable:
+        def get_flight_at_row(self, row):
+            return FlightResult(airline="A", price=120000, departure_time="10:00", arrival_time="12:00")
+
+    class _DummyContext:
+        def __init__(self):
+            self.table = _DummyTable()
+            self.current_search_params = {
+                "origin": "ICN",
+                "dest": "NRT",
+                "dep": "20260301",
+                "ret": "20260305",
+                "cabin_class": "BUSINESS",
+                "adults": 2,
+            }
+            self.log_viewer = _DummyLogViewer()
+
+    ctx = _DummyContext()
+    MainWindow._on_table_double_click(ctx, 0, 0)
+
+    assert len(opened_urls) == 1
+    assert "?cabin=BUSINESS&adult=2" in opened_urls[0]
+
+
+def test_restore_search_from_history_restores_cabin_class(monkeypatch):
+    class _HistoryItem:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def data(self, role):
+            if role == Qt.ItemDataRole.UserRole:
+                return self.payload
+            return None
+
+    panel = _build_search_panel()
+
+    class _DummyContext:
+        def __init__(self):
+            self.search_panel = panel
+
+        def _restore_search_panel_from_params(self, params):
+            MainWindow._restore_search_panel_from_params(self, params)
+
+    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
+
+    payload = {
+        "origin": "ICN",
+        "dest": "NRT",
+        "dep": (datetime.now() + timedelta(days=7)).strftime("%Y%m%d"),
+        "ret": None,
+        "adults": 1,
+        "cabin_class": "BUSINESS",
+    }
+    ctx = _DummyContext()
+    MainWindow.restore_search_from_history(ctx, _HistoryItem(payload))
+
+    assert panel.cb_cabin_class.currentData() == "BUSINESS"
+
+
+def test_domestic_mode_blocks_non_domestic_manual_input(qapp, monkeypatch):
+    class _Prefs:
+        def __init__(self):
+            self._profiles = {}
+            self._presets = {}
+            self._preferred_time = {"departure_start": 0, "departure_end": 24}
+
+        def get_all_profiles(self):
+            return self._profiles
+
+        def get_all_presets(self):
+            return self._presets
+
+        def get_preferred_time(self):
+            return self._preferred_time
+
+        def set_preferred_time(self, start, end):
+            self._preferred_time = {"departure_start": start, "departure_end": end}
+
+        def add_preset(self, code, name):
+            self._presets[code] = name
+
+        def remove_preset(self, code):
+            self._presets.pop(code, None)
+
+        def save_profile(self, name, params):
+            self._profiles[name] = params
+
+        def get_profile(self, name):
+            return self._profiles.get(name, {})
+
+    panel = SearchPanel(_Prefs())
+    emitted = []
+    warnings = []
+    panel.search_requested.connect(lambda *args: emitted.append(args))
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: warnings.append(args) or QMessageBox.StandardButton.Ok)
+
+    panel.rb_domestic.setChecked(True)
+    panel._on_flight_type_changed()
+
+    idx_origin = panel.cb_origin.findData("GMP")
+    if idx_origin >= 0:
+        panel.cb_origin.setCurrentIndex(idx_origin)
+    panel.cb_dest.setCurrentIndex(-1)
+    panel.cb_dest.setEditText("NRT")
+
+    panel._on_search()
+
+    assert warnings
+    assert emitted == []

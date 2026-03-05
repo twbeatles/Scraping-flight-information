@@ -34,7 +34,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-02-26)
+## 🔄 정합성 업데이트 (2026-03-05)
 
 최신 코드 기준으로 아래 항목을 우선 적용한다.
 
@@ -48,6 +48,12 @@
 8. `PlaywrightScraper.search()`는 반복 루프 기반 재시도/백오프를 사용하며 시도 간 리소스를 정리한다.
 9. 다중/날짜/자동알림 검색은 `background_mode=True`(헤드리스, non-persistent)로 실행한다.
 10. `AlertAutoCheckWorker.cancel()`은 활성 검색기를 즉시 close한다.
+11. `ParallelSearcher`는 `scraping/parallel.py` 로거 정의를 포함해 런타임 예외 없이 동작해야 하며, `scraper_v2.ParallelSearcher` 공개 경로를 유지한다.
+12. 결과 더블클릭 예약 URL은 현재 검색 파라미터의 `cabin_class`/`adults`를 `?cabin=...&adult=...`로 포함한다.
+13. 검색 기록 복원은 `_restore_search_panel_from_params()` 단일 복원 경로를 사용해 `cabin_class`를 포함한다.
+14. 국내선 모드(`rb_domestic`)에서는 출발/도착 코드가 모두 `config.DOMESTIC_AIRPORT_CODES`에 포함되지 않으면 검색을 차단한다.
+15. `PreferenceManager.import_settings()`는 병합 후 `search_history`를 리스트로 정규화하고 최대 20개로 trim한다.
+16. `storage/db_last_search.py`는 mixin 모듈 전용으로 유지하며 깨진 단독 실행 블록을 두지 않는다.
 
 ---
 
@@ -72,7 +78,7 @@ Scraping-flight-information-main-v2/
     └── workers.py         # 백그라운드 스레드 워커 (SearchWorker, MultiSearchWorker)
 ```
 
-- 2026-02-26 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 현행 유지가 맞다.
+- 2026-03-05 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 `hiddenimports`에 facade(`database`, `scraper_v2`, `ui.components/dialogs/workers`)와 분할 모듈(`app.mainwindow.shared`, `scraping.extract_domestic`, `scraping.extract_international`)을 보강한 상태가 기준이다.
 
 ---
 
@@ -767,7 +773,7 @@ logging.basicConfig(
 ---
 
 *이 문서는 Flight Bot v2.5 코드베이스를 기반으로 작성되었습니다.*
-*마지막 업데이트: 2026-01-15*
+*마지막 업데이트: 2026-03-05*
 
 
 ## ?? ??? ???? (2026-03-02)
@@ -784,3 +790,20 @@ logging.basicConfig(
    - `from database import FlightDatabase`
    - `from scraper_v2 import FlightSearcher`
 6. PyInstaller spec 3?(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)? ?? ??? ????? `hiddenimports`? ??????.
+
+---
+
+## Implementation Update (2026-03-05)
+
+- Runtime consistency fixes applied:
+  - `ParallelSearcher` logger initialization added (`scraping/parallel.py`)
+  - double-click booking URL now preserves `cabin`/`adult`
+  - history restore path unified via `_restore_search_panel_from_params()` including `cabin_class`
+  - domestic mode now hard-blocks non-domestic manual airport codes
+  - settings import now normalizes and trims `search_history` to max 20
+  - broken standalone block removed from `storage/db_last_search.py`
+- Packaging/docs sync:
+  - all three `.spec` files updated with facade + split-module `hiddenimports` additions
+  - `.gitignore` refined to ignore runtime JSON/log artifacts explicitly without broad `*.json` exclusion
+- Verification:
+  - `pytest -q` -> `49 passed`

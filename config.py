@@ -282,6 +282,12 @@ class PreferenceManager:
                         self.preferences[key] = value
                 else:
                     self.preferences[key] = value
+
+            # 검색 히스토리는 항상 리스트/상한(20개)을 보장
+            history = self.preferences.get("search_history", [])
+            if not isinstance(history, list):
+                history = []
+            self.preferences["search_history"] = history[:20]
             
             self.save()
             logger.info(f"Settings imported from: {filepath}")

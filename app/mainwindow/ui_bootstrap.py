@@ -284,6 +284,14 @@ class UiBootstrapMixin:
             dest = self.current_search_params.get('dest', 'NRT')
             dep = self.current_search_params.get('dep', '')
             ret = self.current_search_params.get('ret', '')
+            cabin = (self.current_search_params.get('cabin_class') or "ECONOMY").upper()
+            if cabin not in {"ECONOMY", "BUSINESS", "FIRST"}:
+                cabin = "ECONOMY"
+            try:
+                adults = int(self.current_search_params.get('adults', 1))
+            except Exception:
+                adults = 1
+            adults = max(1, adults)
             
             # CITY_CODES_MAP에 있으면 도시 코드(c:)로, 없으면 공항 코드(a:)로 처리
             if origin in config.CITY_CODES_MAP:
@@ -301,9 +309,18 @@ class UiBootstrapMixin:
                 dest_prefix = "a"
             
             if ret:
-                url = f"https://travel.interpark.com/air/search/{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{dep}/{dest_prefix}:{dest_code}-{origin_prefix}:{origin_code}-{ret}"
+                url = (
+                    f"https://travel.interpark.com/air/search/"
+                    f"{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{dep}/"
+                    f"{dest_prefix}:{dest_code}-{origin_prefix}:{origin_code}-{ret}"
+                    f"?cabin={cabin}&adult={adults}"
+                )
             else:
-                url = f"https://travel.interpark.com/air/search/{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{dep}"
+                url = (
+                    f"https://travel.interpark.com/air/search/"
+                    f"{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{dep}"
+                    f"?cabin={cabin}&adult={adults}"
+                )
             
             webbrowser.open(url)
             self.log_viewer.append_log(f"브라우저에서 예약 페이지 열기: {flight.airline}")

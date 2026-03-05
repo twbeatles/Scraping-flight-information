@@ -27,7 +27,11 @@ playwright_profile/
 *.wal
 *.db
 *.db-*
-*.json
+user_preferences.json
+flight_session_*.json
+logs/
+logs/*.jsonl
+logs/*.jsonl.*
 
 # IDE
 .vscode/

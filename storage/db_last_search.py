@@ -162,37 +162,4 @@ class LastSearchMixin:
             conn.commit()
 
 
-# 테스트
-if __name__ == "__main__":
-    db = FlightDatabase("test_flight.db")
-    
-    # 즐겨찾기 테스트
-    fav_id = db.add_favorite({
-        "airline": "대한항공",
-        "price": 350000,
-        "origin": "ICN",
-        "destination": "NRT",
-        "departure_date": "20260115",
-        "departure_time": "10:30",
-        "arrival_time": "13:00",
-        "stops": 0
-    })
-    logger.info(f"추가된 즐겨찾기 ID: {fav_id}")
-    
-    # 가격 히스토리 테스트
-    db.add_price_history("ICN", "NRT", "20260115", 350000, "대한항공")
-    db.add_price_history("ICN", "NRT", "20260115", 320000, "진에어")
-    
-    trend = db.get_price_trend("ICN", "NRT")
-    logger.info(f"가격 추이: {trend}")
-    
-    # 통계
-    stats = db.get_stats()
-    logger.info(f"DB 통계: {stats}")
-    
-    # 정리
-    db.close_all_connections()
-    os.remove("test_flight.db")
-    logger.info("테스트 완료!")
-
 __all__ = ["LastSearchMixin"]

@@ -32,3 +32,8 @@
 - import compatibility smoke ??
 - `python -m py_compile` ?? ??
 - `pytest -q`: `44 passed`
+
+## 6) Follow-up (2026-03-05)
+- `pytest -q`: `49 passed` (2026-03-05 구현 정합성 패치 반영 후)
+- `.spec` 3종 `hiddenimports`에 facade + 분할 모듈 보강 추가
+- `IMPLEMENTATION_RISK_REVIEW_2026-03-02.md` 파일은 워크트리에서 삭제 상태이며, 후속 감사 내용은 `IMPLEMENTATION_AUDIT_2026-03-05.md`에 통합 기록

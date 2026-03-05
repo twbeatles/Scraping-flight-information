@@ -1,12 +1,15 @@
 """Parallel route/date search orchestration."""
 
 import heapq
+import logging
 from typing import Callable, Dict, List, Optional
 
 from scraping.models import FlightResult
 from scraping.searcher import FlightSearcher
 
-class ParallelSearcher:
+logger = logging.getLogger(__name__)
+
+class ParallelSearcher:
     """다중 검색을 병렬로 실행하는 검색 엔진"""
     
     def __init__(self, max_concurrent: int = 2):

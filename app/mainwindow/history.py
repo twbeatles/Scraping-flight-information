@@ -79,33 +79,7 @@ class HistoryMixin:
             return
         
         try:
-            sp = self.search_panel
-            
-            idx_o = sp.cb_origin.findData(data['origin'])
-            if idx_o >= 0:
-                sp.cb_origin.setCurrentIndex(idx_o)
-            else:
-                sp.cb_origin.setCurrentText(data['origin'])
-            
-            idx_d = sp.cb_dest.findData(data['dest'])
-            if idx_d >= 0:
-                sp.cb_dest.setCurrentIndex(idx_d)
-            else:
-                sp.cb_dest.setCurrentText(data['dest'])
-            
-            qt_date = QDate.fromString(data['dep'], "yyyyMMdd")
-            sp.date_dep.setDate(qt_date)
-            
-            if data['ret']:
-                sp.rb_round.setChecked(True)
-                sp.date_ret.setEnabled(True)
-                sp.date_ret.setDate(QDate.fromString(data['ret'], "yyyyMMdd"))
-            else:
-                sp.rb_oneway.setChecked(True)
-                sp._toggle_return_date()
-                
-            sp.spin_adults.setValue(data['adults'])
-            
+            self._restore_search_panel_from_params(data)
             QMessageBox.information(self, "복원 완료", "검색 조건이 복원되었습니다.")
             
         except Exception as e:

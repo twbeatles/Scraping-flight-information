@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta
 
 import scraper_config
-from scraper_v2 import FlightResult, PlaywrightScraper
+from scraper_v2 import FlightResult, PlaywrightScraper, ParallelSearcher
 from ui.workers import AlertAutoCheckWorker, DateRangeWorker, MultiSearchWorker
 
 
@@ -502,3 +502,30 @@ def test_playwright_background_mode_disables_manual_fallback(monkeypatch):
 
     assert results == []
     assert scraper.manual_mode is False
+
+
+def test_parallel_searcher_smoke_runs_without_nameerror(monkeypatch):
+    class _FakeScraper:
+        def search(self, *args, **kwargs):
+            emit = kwargs.get("emit")
+            if emit:
+                emit("ok")
+            return []
+
+    class _FakeSearcher:
+        def __init__(self):
+            self.scraper = _FakeScraper()
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("scraping.parallel.FlightSearcher", _FakeSearcher)
+
+    searcher = ParallelSearcher(max_concurrent=1)
+    result = searcher.search_multiple_destinations(
+        "ICN",
+        ["NRT"],
+        (datetime.now() + timedelta(days=7)).strftime("%Y%m%d"),
+    )
+
+    assert result == {"NRT": []}
