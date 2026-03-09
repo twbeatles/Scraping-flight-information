@@ -1,10 +1,15 @@
 """SessionMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+from app.session_manager import SessionManager
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class SessionMixin:
-    def _save_session(self):
+    def _save_session(self: Any):
         """현재 검색 결과를 파일로 저장"""
         if not self.all_results:
             QMessageBox.warning(self, "저장 실패", "저장할 검색 결과가 없습니다.\n먼저 검색을 수행해주세요.")
@@ -24,7 +29,7 @@ class SessionMixin:
             self.log_viewer.append_log(f"💾 세션 저장 완료: {filename}")
         else:
             QMessageBox.critical(self, "저장 실패", "세션 저장 중 오류가 발생했습니다.")
-    def _load_session(self):
+    def _load_session(self: Any):
         """저장된 세션 불러오기"""
         filename, _ = QFileDialog.getOpenFileName(
             self, "세션 불러오기",
@@ -61,7 +66,7 @@ class SessionMixin:
         self.log_viewer.append_log(f"📂 세션 불러오기 완료: {len(results)}개 결과")
     
     # --- Calendar View Methods ---
-    def _restore_last_search(self):
+    def _restore_last_search(self: Any):
         """프로그램 시작 시 마지막 검색 결과 복원"""
         try:
             search_params, results, searched_at, hours_ago = self.db.get_last_search_results()
@@ -91,9 +96,11 @@ class SessionMixin:
                 days_ago = int(hours_ago / 24)
                 age_hours = int(hours_ago % 24)
                 self.progress_bar.setFormat(f"⚠️ {days_ago}일 전 데이터 | 최저가: {min_price:,}원")
-                self.statusBar().showMessage(
-                    f"오래된 검색 데이터 복원됨 ({days_ago}일 {age_hours}시간 전) | 필요 시 새 검색 권장"
-                )
+                status_bar = self.statusBar()
+                if status_bar is not None:
+                    status_bar.showMessage(
+                        f"오래된 검색 데이터 복원됨 ({days_ago}일 {age_hours}시간 전) | 필요 시 새 검색 권장"
+                    )
                 self.log_viewer.append_log(
                     f"⚠️ 이전 검색 결과 복원 ({days_ago}일 {age_hours}시간 전): "
                     f"{origin}→{dest}, {len(results)}건, 최저가 {min_price:,}원"
@@ -114,3 +121,6 @@ class SessionMixin:
         except Exception as e:
             logger.error(f"마지막 검색 결과 복원 실패: {e}")
             self.log_viewer.append_log(f"ℹ️ 이전 검색 결과를 불러오지 못했습니다.")
+
+
+

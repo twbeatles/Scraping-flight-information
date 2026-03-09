@@ -5,6 +5,7 @@ import sys
 import csv
 import logging
 from datetime import datetime
+from typing import Any
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGridLayout, QLabel, QPushButton, QCheckBox,
     QSpinBox, QComboBox, QDateEdit, QTabWidget, QFrame,
@@ -20,6 +21,7 @@ try:
     import openpyxl
     HAS_OPENPYXL = True
 except ImportError:
+    openpyxl = None
     HAS_OPENPYXL = False
 
 import config
@@ -41,19 +43,24 @@ class ResultTable(QTableWidget):
         
         # 열 너비 설정: 내용에 맞게 자동 조절 + 마지막 열 스트레치
         header = self.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         initial_widths = [220, 180, 110, 110, 95, 110, 110, 95, 140]
         for idx, width in enumerate(initial_widths):
             if idx == 8:
-                header.setSectionResizeMode(idx, QHeaderView.ResizeMode.Stretch)
+                if header is not None:
+                    header.setSectionResizeMode(idx, QHeaderView.ResizeMode.Stretch)
             else:
                 self.setColumnWidth(idx, width)
         
         # 최소 너비 설정 (HiDPI 대응)
-        header.setMinimumSectionSize(60)
+        if header is not None:
+            header.setMinimumSectionSize(60)
         
-        self.verticalHeader().setVisible(False)
-        self.verticalHeader().setDefaultSectionSize(48)
+        v_header = self.verticalHeader()
+        if v_header is not None:
+            v_header.setVisible(False)
+            v_header.setDefaultSectionSize(48)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setAlternatingRowColors(True)
@@ -218,22 +225,26 @@ class ResultTable(QTableWidget):
         
         # Add to favorites
         action_fav = menu.addAction("⭐ 즐겨찾기 추가")
-        action_fav.triggered.connect(lambda: self.favorite_requested.emit(row))
+        if action_fav is not None:
+            action_fav.triggered.connect(lambda: self.favorite_requested.emit(row))
         
         menu.addSeparator()
         
         # Copy info
         action_copy = menu.addAction("📋 정보 복사")
-        action_copy.triggered.connect(lambda: self._copy_row_info(row))
+        if action_copy is not None:
+            action_copy.triggered.connect(lambda: self._copy_row_info(row))
         
         menu.addSeparator()
         
         # Export options (전체 결과)
         action_excel = menu.addAction("📊 Excel로 내보내기")
-        action_excel.triggered.connect(self.export_to_excel)
+        if action_excel is not None:
+            action_excel.triggered.connect(self.export_to_excel)
         
         action_csv = menu.addAction("📥 CSV로 내보내기")
-        action_csv.triggered.connect(self.export_to_csv)
+        if action_csv is not None:
+            action_csv.triggered.connect(self.export_to_csv)
         
         menu.exec(self.mapToGlobal(pos))
     
@@ -242,7 +253,9 @@ class ResultTable(QTableWidget):
         if not flight:
             return
         info = f"{flight.airline} | {flight.price:,}원 | {flight.departure_time}→{flight.arrival_time}"
-        QApplication.clipboard().setText(info)
+        clipboard = QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(info)
     
     def export_to_excel(self):
         """검색 결과를 Excel 파일로 내보내기"""
@@ -264,8 +277,12 @@ class ResultTable(QTableWidget):
             return
         
         try:
+            if openpyxl is None:
+                raise RuntimeError("openpyxl is unavailable")
             wb = openpyxl.Workbook()
             ws = wb.active
+            if ws is None:
+                raise RuntimeError("worksheet initialization failed")
             ws.title = "검색 결과"
             
             # 헤더
@@ -292,9 +309,10 @@ class ResultTable(QTableWidget):
                 ws.append(row)
             
             # 열 너비 자동 조절
-            for col in ws.columns:
+            from openpyxl.utils import get_column_letter
+            for col_idx, col in enumerate(ws.columns, start=1):
                 max_length = max(len(str(cell.value or '')) for cell in col)
-                ws.column_dimensions[col[0].column_letter].width = max_length + 2
+                ws.column_dimensions[get_column_letter(col_idx)].width = max_length + 2
             
             wb.save(filename)
             QMessageBox.information(self, "완료", f"Excel 파일이 저장되었습니다:\\n{filename}")

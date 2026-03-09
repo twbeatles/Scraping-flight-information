@@ -1,10 +1,14 @@
 """WorkerLifecycleMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class WorkerLifecycleMixin:
-    def _get_running_workers(self):
+    def _get_running_workers(self: Any):
         """현재 실행 중인 워커 목록 반환"""
         running_workers = []
         if self.worker and self.worker.isRunning():
@@ -16,7 +20,7 @@ class WorkerLifecycleMixin:
         if self.alert_worker and self.alert_worker.isRunning():
             running_workers.append(("자동 가격 알림 점검", self.alert_worker))
         return running_workers
-    def _ensure_no_running_search(self):
+    def _ensure_no_running_search(self: Any):
         """새 검색 시작 전 동시 실행 여부 확인"""
         running_workers = self._get_running_workers()
         if not running_workers:
@@ -30,12 +34,12 @@ class WorkerLifecycleMixin:
             "Esc로 현재 검색을 취소하거나 완료 후 다시 시도해주세요."
         )
         return False
-    def _stop_alert_worker_if_running(self):
+    def _stop_alert_worker_if_running(self: Any):
         if self.alert_worker and self.alert_worker.isRunning():
             self.alert_worker.cancel()
             self.alert_worker.requestInterruption()
             self.alert_worker.wait(3000)
-    def _on_escape(self):
+    def _on_escape(self: Any):
         """Escape 키 처리 - 검색 취소 및 브라우저 정리"""
         running_workers = self._get_running_workers()
 
@@ -80,3 +84,6 @@ class WorkerLifecycleMixin:
             self.log_viewer.append_log("⚠️ 사용자가 검색을 취소했습니다. 브라우저가 정리되었습니다.")
         finally:
             self._cancelling = False
+
+
+

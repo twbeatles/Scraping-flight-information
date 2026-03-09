@@ -1,10 +1,14 @@
 """FavoritesMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class FavoritesMixin:
-    def _create_favorites_tab(self):
+    def _create_favorites_tab(self: Any):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
@@ -29,7 +33,9 @@ class FavoritesMixin:
         self.fav_table.setHorizontalHeaderLabels([
             "ID", "항공사", "가격", "출발지", "도착지", "출발일", "메모"
         ])
-        self.fav_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self.fav_table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.fav_table.setColumnHidden(0, True)  # Hide ID column
         self.fav_table.setAlternatingRowColors(True)
         self.fav_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -42,7 +48,7 @@ class FavoritesMixin:
         
         self._refresh_favorites()
         return widget
-    def _refresh_favorites(self):
+    def _refresh_favorites(self: Any):
         favorites = self.db.get_favorites()
         self.fav_table.setRowCount(len(favorites))
         
@@ -65,7 +71,7 @@ class FavoritesMixin:
             f"가격기록 {stats['price_history']}건 | "
             f"검색로그 {stats['search_logs']}건"
         )
-    def _add_to_favorites(self, row):
+    def _add_to_favorites(self: Any, row):
         flight = self.table.get_flight_at_row(row)
         if not flight:
             return
@@ -105,13 +111,17 @@ class FavoritesMixin:
         self._refresh_favorites()
         self.log_viewer.append_log(f"⭐ 즐겨찾기 추가: {flight.airline} {flight.price:,}원")
         QMessageBox.information(self, "완료", "즐겨찾기에 추가되었습니다!")
-    def _delete_selected_favorite(self):
+    def _delete_selected_favorite(self: Any):
         row = self.fav_table.currentRow()
         if row < 0:
             QMessageBox.warning(self, "선택 오류", "삭제할 항목을 선택하세요.")
             return
         
-        fav_id = int(self.fav_table.item(row, 0).text())
+        id_item = self.fav_table.item(row, 0)
+        if id_item is None:
+            QMessageBox.warning(self, "선택 오류", "선택된 즐겨찾기 정보를 읽을 수 없습니다.")
+            return
+        fav_id = int(id_item.text())
         reply = QMessageBox.question(
             self, "삭제 확인", "선택한 즐겨찾기를 삭제하시겠습니까?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
@@ -122,3 +132,6 @@ class FavoritesMixin:
             self.log_viewer.append_log("즐겨찾기 삭제됨")
 
     # --- Export Functions ---
+
+
+

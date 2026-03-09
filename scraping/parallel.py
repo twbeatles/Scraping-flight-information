@@ -20,7 +20,7 @@ class ParallelSearcher:
     def search_multiple_destinations(self, origin: str, destinations: List[str],
                                      departure_date: str, return_date: Optional[str] = None,
                                      adults: int = 1, cabin_class: str = "ECONOMY",
-                                     progress_callback: Callable = None) -> Dict[str, List[FlightResult]]:
+                                     progress_callback: Optional[Callable[[str], None]] = None) -> Dict[str, List[FlightResult]]:
         """여러 목적지를 병렬로 검색"""
         import threading
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -75,7 +75,7 @@ class ParallelSearcher:
     def search_date_range(self, origin: str, destination: str,
                           dates: List[str], return_offset: int = 0,
                           adults: int = 1, cabin_class: str = "ECONOMY",
-                          progress_callback: Callable = None) -> Dict[str, tuple]:
+                          progress_callback: Optional[Callable[[str], None]] = None) -> Dict[str, tuple]:
         """여러 날짜를 병렬로 검색"""
         import threading
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -161,3 +161,4 @@ if __name__ == "__main__":
             print("결과 없음 또는 수동 모드 전환됨")
     finally:
         searcher.close()
+

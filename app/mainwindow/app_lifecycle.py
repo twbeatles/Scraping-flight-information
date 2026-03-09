@@ -1,24 +1,28 @@
 """AppLifecycleMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class AppLifecycleMixin:
-    def _open_main_settings(self):
+    def _open_main_settings(self: Any):
         dlg = SettingsDialog(self, self.prefs, self.db)
         dlg.exec()
         self.search_panel._refresh_combos()
         self.search_panel._refresh_profiles()
         self._configure_alert_auto_timer()
-    def _show_shortcuts(self):
+    def _show_shortcuts(self: Any):
         """키보드 단축키 다이얼로그 표시"""
         dlg = ShortcutsDialog(self)
         dlg.exec()
-    def _open_price_alert_dialog(self):
+    def _open_price_alert_dialog(self: Any):
         """가격 알림 관리 다이얼로그 열기"""
         dlg = PriceAlertDialog(self, self.db, self.prefs)
         dlg.exec()
-    def _toggle_theme(self):
+    def _toggle_theme(self: Any):
         """라이트/다크 테마 전환 및 저장"""
         if self.is_dark_theme:
             # 다크 -> 라이트
@@ -32,8 +36,9 @@ class AppLifecycleMixin:
             self.btn_theme.setText("🌙")
             self.is_dark_theme = True
             self.prefs.set_theme("dark")
-    def closeEvent(self, event):
+    def closeEvent(self: Any, a0):
         """창 닫기 시 워커 스레드 및 리소스 정리"""
+        event = a0
         self._alert_auto_timer.stop()
         # Worker threads 정리 (안전한 종료 패턴)
         workers = [self.worker, self.multi_worker, self.date_worker, self.alert_worker]
@@ -77,3 +82,6 @@ class AppLifecycleMixin:
             logger.warning(f"Failed to save settings on exit: {e}")
         
         event.accept()
+
+
+

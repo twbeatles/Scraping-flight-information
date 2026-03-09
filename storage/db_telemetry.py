@@ -6,7 +6,7 @@ import sys
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 from scraper_v2 import FlightResult
 from storage.models import (
@@ -20,8 +20,11 @@ from storage.models import (
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from storage.flight_database import FlightDatabase
+
 class TelemetryMixin:
-    def _rotate_telemetry_jsonl_if_needed(self):
+    def _rotate_telemetry_jsonl_if_needed(self: Any):
         try:
             if not os.path.exists(self.telemetry_log_path):
                 return
@@ -47,7 +50,7 @@ class TelemetryMixin:
             os.replace(self.telemetry_log_path, f"{self.telemetry_log_path}.1")
         except Exception as e:
             logger.debug(f"Failed to rotate telemetry jsonl: {e}")
-    def _append_telemetry_jsonl(self, event: Dict[str, Any]):
+    def _append_telemetry_jsonl(self: Any, event: Dict[str, Any]):
         try:
             with self._telemetry_file_lock:
                 self._rotate_telemetry_jsonl_if_needed()
@@ -56,7 +59,7 @@ class TelemetryMixin:
         except Exception as e:
             logger.debug(f"Failed to append telemetry jsonl: {e}")
     def log_telemetry_event(
-        self,
+        self: Any,
         event_type: str,
         success: bool = True,
         error_code: str = "",
@@ -112,7 +115,7 @@ class TelemetryMixin:
             "details": details or {},
         }
         self._append_telemetry_jsonl(event)
-    def get_telemetry_summary(self, hours: int = 24) -> Dict[str, Any]:
+    def get_telemetry_summary(self: Any, hours: int = 24) -> Dict[str, Any]:
         cutoff = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -146,7 +149,7 @@ class TelemetryMixin:
             "manual_mode_rate": (manual_count * 100.0 / total) if total > 0 else 0.0,
             "top_errors": top_errors,
         }
-    def get_selector_health(self, limit: int = 200) -> Dict[str, Any]:
+    def get_selector_health(self: Any, limit: int = 200) -> Dict[str, Any]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -181,7 +184,7 @@ class TelemetryMixin:
             "sample_count": total,
             "by_selector": by_selector,
         }
-    def cleanup_old_data(self, days: int = 90, telemetry_days: int = TELEMETRY_DB_RETENTION_DAYS):
+    def cleanup_old_data(self: Any, days: int = 90, telemetry_days: int = TELEMETRY_DB_RETENTION_DAYS):
         """오래된 데이터 정리"""
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         telemetry_cutoff = (datetime.now() - timedelta(days=telemetry_days)).strftime("%Y-%m-%d %H:%M:%S")
@@ -192,7 +195,7 @@ class TelemetryMixin:
             cursor.execute("DELETE FROM search_logs WHERE searched_at < ?", (cutoff,))
             cursor.execute("DELETE FROM telemetry_events WHERE event_time < ?", (telemetry_cutoff,))
             conn.commit()
-    def optimize(self):
+    def optimize(self: Any):
         """데이터베이스 최적화 (VACUUM)"""
         try:
             with self._get_connection() as conn:
@@ -204,3 +207,6 @@ class TelemetryMixin:
     # ===== 가격 알림 =====
 
 __all__ = ["TelemetryMixin"]
+
+
+

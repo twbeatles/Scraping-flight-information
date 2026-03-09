@@ -19,7 +19,7 @@ class FlightSearcher:
                departure_date: str, return_date: Optional[str] = None,
                adults: int = 1, cabin_class: str = "ECONOMY",
                max_results: int = 1000,
-               progress_callback: Callable = None,
+               progress_callback: Optional[Callable[[str], None]] = None,
                background_mode: bool = False) -> List[FlightResult]:
         """항공권 검색 진입점"""
         def emit(msg):

@@ -25,6 +25,21 @@
 
 ---
 
+## 0-2) 후속 조치 완료 업데이트 (2026-03-09)
+
+- 적용 결과:
+  - [x] 리포지토리 전체 `pyright` 기준 타입 오류 `0`건 달성
+  - [x] `pyrightconfig.json`, `.editorconfig`, `.vscode/settings.json` 추가
+  - [x] `.gitignore`를 개발 산출물/캐시 관점에서 보강
+  - [x] `README.md`, `REFACTOR_SPLIT_REPORT_2026-03-02.md`, `gemini.md`의 깨진 텍스트/정합성 이슈 보정
+  - [x] `.spec` 3종의 Playwright 내부 모듈 경로를 현행 패키지 구조에 맞게 정정
+- 재검증:
+  - `pyright` -> `0 errors, 0 warnings, 0 informations`
+  - `pytest -q` -> `49 passed`
+  - UTF-8 decode 실패 `0`, 깨짐 문자(`�`) 탐지 `0`, UTF-8 BOM 파일 `0`
+
+---
+
 ## 1) 핵심 발견사항 (심각도 순)
 
 ### [P1] `ParallelSearcher` 실행 시 `logger` 미정의로 즉시 예외 발생

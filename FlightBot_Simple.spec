@@ -25,7 +25,7 @@ hiddenimports = [
     "PyQt6.QtGui",
     "PyQt6.QtWidgets",
     "playwright.sync_api",
-    "playwright._impl._api_types",
+    "playwright._impl._api_structures",
     "asyncio",
     "asyncio.windows_events",
     "asyncio.windows_utils",
@@ -169,3 +169,4 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
+

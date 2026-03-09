@@ -1,4 +1,4 @@
-﻿# ✈️ Flight Bot v2.5
+# ✈️ Flight Bot v2.5
 
 **Playwright 기반 실시간 항공권 최저가 비교 분석 도구**
 
@@ -28,9 +28,9 @@
 
 ---
 
-## ?? ?? ??
+## 🌟 주요 기능
 
-### ?? ?? ??
+### ✨ 검색 기능
 - **국내선/국제선** 항공권 검색
 - **왕복/편도** 검색 지원
 - **좌석 등급** 선택 (이코노미/비즈니스/일등석)
@@ -80,8 +80,8 @@
 ### 1단계: 저장소 클론 또는 다운로드
 
 ```bash
-git clone https://github.com/your-repo/flight-bot-v2.git
-cd flight-bot-v2
+git clone https://github.com/twbeatles/Scraping-flight-information.git
+cd Scraping-flight-information
 ```
 
 ### 2단계: 가상 환경 생성 (권장)
@@ -115,7 +115,7 @@ python gui_v2.py
 
 ---
 
-## ?? ?? ??
+## 🎯 사용 방법
 
 ### 기본 검색
 
@@ -253,89 +253,81 @@ python gui_v2.py
 
 ---
 
-## ?? ???? ??
+## 📁 프로젝트 구조
 
 ```text
 Scraping-flight-information/
-??? gui_v2.py                  # ?????? facade (python gui_v2.py ??)
-??? scraper_v2.py              # ???? facade
-??? database.py                # DB facade
-??? config.py
-??? scraper_config.py
-??? requirements.txt
-??? flight_bot.spec
-??? FlightBot_v2.5.spec
-??? FlightBot_Simple.spec
-?
-??? app/                       # ?? ??? ??
-?   ??? main_window.py
-?   ??? session_manager.py
-?   ??? mainwindow/
-?       ??? ui_bootstrap.py
-?       ??? telemetry.py
-?       ??? auto_alert.py
-?       ??? worker_lifecycle.py
-?       ??? favorites.py
-?       ??? exports.py
-?       ??? search_single.py
-?       ??? search_multi.py
-?       ??? search_date_range.py
-?       ??? manual_mode.py
-?       ??? filtering.py
-?       ??? history.py
-?       ??? session.py
-?       ??? calendar.py
-?       ??? app_lifecycle.py
-?
-??? ui/
-?   ??? components.py          # facade
-?   ??? components_*.py
-?   ??? dialogs.py             # facade
-?   ??? dialogs_*.py
-?   ??? workers.py             # facade
-?   ??? workers_*.py
-?   ??? styles.py
-?
-??? scraping/
-?   ??? errors.py
-?   ??? models.py
-?   ??? playwright_scraper.py
-?   ??? extract_domestic.py
-?   ??? extract_international.py
-?   ??? searcher.py
-?   ??? parallel.py
-?
-??? storage/
-?   ??? models.py
-?   ??? schema.py
-?   ??? flight_database.py
-?   ??? db_favorites.py
-?   ??? db_history_logs.py
-?   ??? db_telemetry.py
-?   ??? db_alerts.py
-?   ??? db_last_search.py
-?
-??? backups/
-?   ??? code_snapshot_*.zip    # ???? ? ??/?? ??
-?
-??? claude.md
-??? README.md
+├─ gui_v2.py                  # 실행/호환 facade (python gui_v2.py)
+├─ scraper_v2.py              # 스크래퍼 facade
+├─ database.py                # DB facade
+├─ config.py
+├─ scraper_config.py
+├─ requirements.txt
+├─ flight_bot.spec
+├─ FlightBot_v2.5.spec
+├─ FlightBot_Simple.spec
+├─ app/                       # 앱 엔트리 + MainWindow 조합
+│  ├─ main_window.py
+│  ├─ session_manager.py
+│  └─ mainwindow/
+│     ├─ ui_bootstrap.py
+│     ├─ telemetry.py
+│     ├─ auto_alert.py
+│     ├─ worker_lifecycle.py
+│     ├─ favorites.py
+│     ├─ exports.py
+│     ├─ search_single.py
+│     ├─ search_multi.py
+│     ├─ search_date_range.py
+│     ├─ manual_mode.py
+│     ├─ filtering.py
+│     ├─ history.py
+│     ├─ session.py
+│     ├─ calendar.py
+│     └─ app_lifecycle.py
+├─ ui/
+│  ├─ components.py           # facade
+│  ├─ components_*.py
+│  ├─ dialogs.py              # facade
+│  ├─ dialogs_*.py
+│  ├─ workers.py              # facade
+│  ├─ workers_*.py
+│  └─ styles.py
+├─ scraping/
+│  ├─ errors.py
+│  ├─ models.py
+│  ├─ playwright_scraper.py
+│  ├─ extract_domestic.py
+│  ├─ extract_international.py
+│  ├─ searcher.py
+│  └─ parallel.py
+├─ storage/
+│  ├─ models.py
+│  ├─ schema.py
+│  ├─ flight_database.py
+│  ├─ db_favorites.py
+│  ├─ db_history_logs.py
+│  ├─ db_telemetry.py
+│  ├─ db_alerts.py
+│  └─ db_last_search.py
+└─ backups/
+   └─ code_snapshot_*.zip     # 코드 스냅샷 백업
 ```
 
-### ??? ??
+### 모듈 역할
 
-| ?? | ?? |
+| 구성 요소 | 설명 |
 |------|------|
-| `gui_v2.py` | ??????/?? API ?? facade (`MainWindow`, `main`) |
-| `app/main_window.py` | MainWindow ?? ? ?? ??? ?? |
-| `scraper_v2.py` | ?? ???? API facade |
-| `scraping/*` | Playwright ???? ?? ? ?? ?? ?? |
-| `database.py` | ?? DB API facade |
-| `storage/*` | SQLite ???/???? DB ?? ?? |
-| `config.py` | ??/?? ??, ??? ?? |
-| `ui/components.py` | ???? facade (`FilterPanel`, `ResultTable`, `SearchPanel`) |
-| `ui/dialogs.py` | ????? facade (`MultiDestDialog`, `SettingsDialog` ?) |
-| `ui/workers.py` | ?? facade (`SearchWorker`, `MultiSearchWorker` ?) |
+| `gui_v2.py` | 실행/호환 API facade (`MainWindow`, `main`) |
+| `app/main_window.py` | MainWindow 클래스와 앱 진입점 |
+| `scraper_v2.py` | 스크래퍼 공개 API facade |
+| `scraping/*` | Playwright 스크래핑 및 검색 엔진 |
+| `database.py` | DB 공개 API facade |
+| `storage/*` | SQLite 스키마/영속화 로직 |
+| `config.py` | 공항/설정 상수, 사용자 설정 |
+| `ui/components.py` | UI 컴포넌트 facade (`FilterPanel`, `ResultTable`, `SearchPanel`) |
+| `ui/dialogs.py` | 다이얼로그 facade (`MultiDestDialog`, `SettingsDialog` 등) |
+| `ui/workers.py` | 워커 facade (`SearchWorker`, `MultiSearchWorker` 등) |
 
 ---
 
@@ -456,6 +448,18 @@ playwright install chromium
 
 ## 📝 변경 로그
 
+### v2.5.5 (2026-03-09)
+- ✅ **정적 타입 품질 정비**
+  - 리포지토리 루트 기준 `pyright` 결과 `0 errors` 달성
+  - mixin 구조/Qt Optional 경로/테스트 더미 타입을 정리해 Pylance 오탐을 제거
+- 🧾 **개발 설정 추가**
+  - `pyrightconfig.json` 추가 (분석 대상/제외 경로/진단 기준 고정)
+  - `.editorconfig` 추가 (`utf-8`, `lf`, final newline)
+  - `.vscode/settings.json` 추가 및 `.gitignore` 예외 규칙 반영
+- 🔤 **문서/인코딩 정합성**
+  - README/리포트 문서의 깨진 문구 복구
+  - 저장소 텍스트 파일 UTF-8/BOM 정책 정규화
+
 ### v2.5.4 (2026-03-05)
 - 🛠️ **구현 정합성 패치 일괄 적용**
   - `scraping/parallel.py`에 로거 정의 추가로 `ParallelSearcher` 런타임 `NameError` 제거 (public API 유지)
@@ -471,21 +475,17 @@ playwright install chromium
   - `pytest -q` 기준 `49 passed`
 
 ### v2.5.3 (2026-03-02)
-- ?? **PyInstaller spec ??? ??**
-  - `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`? `hiddenimports`? ?? ?? ??
-- ?? **?? ?? ?? ????**
-  - `gui_v2.py`, `database.py`, `scraper_v2.py`, `ui/components.py`, `ui/dialogs.py`, `ui/workers.py`? facade? ??
-  - ?? ??? `app/`, `storage/`, `scraping/`, `ui/*_*.py` ??? ??
-- ?? **?? ??? ??**
-  - ?? ?? ??? `python gui_v2.py` ??
-  - ?? import ??(`from gui_v2 import MainWindow`, `from database import FlightDatabase`, `from ui.dialogs import ...`) ??
-- ?? **?? ?? ?? ??**
-  - `backups/code_snapshot_20260302_094406.zip` ??
-  - SHA256 ? ZIP contents ?? ?? ?? ??
-- ? **?? ??**
-  - import ??? ??? ??
-  - `python -m py_compile` ?? ??
-  - `pytest -q` ?? `44 passed`
+- 📦 **PyInstaller spec 보강**
+  - `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`에 분할 모듈 경로를 `hiddenimports`로 보강
+- 🧱 **구조 분리 + facade 유지**
+  - facade: `gui_v2.py`, `database.py`, `scraper_v2.py`, `ui/components.py`, `ui/dialogs.py`, `ui/workers.py`
+  - 구현 분리: `app/`, `storage/`, `scraping/`, `ui/*_*.py`
+- 🔁 **호환성 검증**
+  - 기존 실행/임포트 경로(`python gui_v2.py`, facade import) 유지 확인
+- 📚 **백업/문서 동기화**
+  - `backups/code_snapshot_20260302_094406.zip` + SHA256/contents 메타 기록
+- ✅ **검증**
+  - import smoke, `python -m py_compile`, `pytest -q` (`44 passed`)
 
 ### v2.5.2 (2026-02-26)
 - 🔁 **재시도 안정성 보강**
@@ -601,6 +601,9 @@ python gui_v2.py
 
 # 테스트 실행
 pytest -q
+
+# 정적 타입 검사 (Pylance/pyright 기준)
+pyright
 ```
 
 ---

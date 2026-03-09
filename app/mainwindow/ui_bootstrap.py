@@ -1,10 +1,14 @@
 """UiBootstrapMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class UiBootstrapMixin:
-    def _init_ui(self):
+    def _init_ui(self: Any):
         # 전체 UI 스크롤 가능하도록 설정
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -153,13 +157,17 @@ class UiBootstrapMixin:
         main_layout.addWidget(self.search_panel)
         
         # 3. Filter Panel (별도 섹션)
-        main_layout.addWidget(QLabel("필터", objectName="section_title"))
+        filter_label = QLabel("필터")
+        filter_label.setObjectName("section_title")
+        main_layout.addWidget(filter_label)
         self.filter_panel = FilterPanel()
         self.filter_panel.filter_changed.connect(self._schedule_filter_apply)
         main_layout.addWidget(self.filter_panel)
         
         # 4. Progress Bar (별도 섹션, 크게 표시 - Enhanced styling)
-        main_layout.addWidget(QLabel("🔄 검색 상태", objectName="section_title"))
+        status_label = QLabel("🔄 검색 상태")
+        status_label.setObjectName("section_title")
+        main_layout.addWidget(status_label)
         self.progress_bar = QProgressBar()
         self.progress_bar.setFormat("✨ 준비됨")
         self.progress_bar.setMinimumHeight(48)
@@ -186,7 +194,9 @@ class UiBootstrapMixin:
         result_header = QWidget()
         rh_layout = QHBoxLayout(result_header)
         rh_layout.setContentsMargins(0, 0, 0, 0)
-        rh_layout.addWidget(QLabel("검색 결과", objectName="section_title"))
+        result_label = QLabel("검색 결과")
+        result_label.setObjectName("section_title")
+        rh_layout.addWidget(result_label)
         rh_layout.addStretch()
         
         # Export buttons
@@ -252,13 +262,15 @@ class UiBootstrapMixin:
         self.setCentralWidget(scroll)
         
         # Status Bar
-        self.statusBar().showMessage("준비 완료 | Ctrl+Enter: 검색, F5: 새로고침, Esc: 취소")
-    def _toggle_search_panel(self):
+        status_bar = self.statusBar()
+        if status_bar is not None:
+            status_bar.showMessage("준비 완료 | Ctrl+Enter: 검색, F5: 새로고침, Esc: 취소")
+    def _toggle_search_panel(self: Any):
         """검색 패널 접기/펼치기 토글"""
         is_visible = self.search_panel.isVisible()
         self.search_panel.setVisible(not is_visible)
         self.btn_toggle_search.setText("▶ 검색 설정" if is_visible else "▼ 검색 설정")
-    def _setup_shortcuts(self):
+    def _setup_shortcuts(self: Any):
         """키보드 단축키 설정"""
         # Ctrl+Enter: Start search
         shortcut_search = QShortcut(QKeySequence("Ctrl+Return"), self)
@@ -275,7 +287,7 @@ class UiBootstrapMixin:
         # Ctrl+F: Focus on filter
         shortcut_filter = QShortcut(QKeySequence("Ctrl+F"), self)
         shortcut_filter.activated.connect(lambda: self.filter_panel.cb_airline_category.setFocus())
-    def _on_table_double_click(self, row, col):
+    def _on_table_double_click(self: Any, row, col):
         """테이블 더블클릭 - 예약 페이지 열기"""
         flight = self.table.get_flight_at_row(row)
         if flight:
@@ -326,3 +338,6 @@ class UiBootstrapMixin:
             self.log_viewer.append_log(f"브라우저에서 예약 페이지 열기: {flight.airline}")
 
     # --- Favorites Tab ---
+
+
+

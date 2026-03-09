@@ -28,20 +28,24 @@ logger = logging.getLogger(__name__)
 
 class NoWheelSpinBox(QSpinBox):
     """스크롤 휠에 반응하지 않는 SpinBox"""
-    def wheelEvent(self, event):
-        event.ignore()
+    def wheelEvent(self, e):
+        if e is not None:
+            e.ignore()
 
 class NoWheelComboBox(QComboBox):
     """스크롤 휠에 반응하지 않는 ComboBox"""
-    def wheelEvent(self, event):
-        event.ignore()
+    def wheelEvent(self, e):
+        if e is not None:
+            e.ignore()
 
 class NoWheelDateEdit(QDateEdit):
     """스크롤 휠에 반응하지 않는 DateEdit"""
-    def wheelEvent(self, event):
-        event.ignore()
+    def wheelEvent(self, e):
+        if e is not None:
+            e.ignore()
 
 class NoWheelTabWidget(QTabWidget):
     """스크롤 휠에 반응하지 않는 TabWidget"""
-    def wheelEvent(self, event):
-        event.ignore()
+    def wheelEvent(self, a0):
+        if a0 is not None:
+            a0.ignore()

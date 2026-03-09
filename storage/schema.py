@@ -6,7 +6,7 @@ import sys
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 from scraper_v2 import FlightResult
 from storage.models import (
@@ -20,8 +20,11 @@ from storage.models import (
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from storage.flight_database import FlightDatabase
+
 class DatabaseSchemaMixin:
-    def _init_db(self):
+    def _init_db(self: Any):
         """데이터베이스 및 테이블 초기화"""
         conn = sqlite3.connect(self.db_path)
         try:
@@ -161,7 +164,7 @@ class DatabaseSchemaMixin:
             conn.commit()
         finally:
             conn.close()
-    def _migrate_schema_if_needed(self):
+    def _migrate_schema_if_needed(self: Any):
         """기존 DB를 안전하게 최신 스키마로 보강."""
         conn = sqlite3.connect(self.db_path)
         try:
@@ -182,7 +185,7 @@ class DatabaseSchemaMixin:
             conn.commit()
         finally:
             conn.close()
-    def _backfill_favorite_dedup_keys(self):
+    def _backfill_favorite_dedup_keys(self: Any):
         """Legacy favorites created before dedup_key migration are backfilled once."""
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
@@ -208,3 +211,6 @@ class DatabaseSchemaMixin:
             conn.commit()
 
 __all__ = ["DatabaseSchemaMixin"]
+
+
+

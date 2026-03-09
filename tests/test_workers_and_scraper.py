@@ -1,6 +1,7 @@
 import threading
 import time
 from datetime import datetime, timedelta
+from typing import Any, cast
 
 import scraper_config
 from scraper_v2 import FlightResult, PlaywrightScraper, ParallelSearcher
@@ -83,7 +84,7 @@ def test_international_dedup_key_preserves_distinct_return_details():
             return None
 
     scraper = PlaywrightScraper()
-    scraper.page = _FakePage()
+    cast(Any, scraper).page = _FakePage()
 
     results = scraper._extract_prices()
 
@@ -395,7 +396,7 @@ def test_playwright_search_retries_on_network_error(monkeypatch):
     scraper = PlaywrightScraper()
 
     def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
-        scraper.context = _FakeContext(page)
+        cast(Any, scraper).context = _FakeContext(page)
 
     monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
     monkeypatch.setattr(scraper, "_wait_for_results", lambda *_args, **_kwargs: {"found": True, "selector": "li[data-index]"})
@@ -438,7 +439,7 @@ def test_playwright_search_closes_between_network_retries(monkeypatch):
     close_calls = {"count": 0}
 
     def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
-        scraper.context = _FakeContext(page)
+        cast(Any, scraper).context = _FakeContext(page)
 
     def _fake_close():
         close_calls["count"] += 1
@@ -483,7 +484,7 @@ def test_playwright_background_mode_disables_manual_fallback(monkeypatch):
     scraper = PlaywrightScraper()
 
     def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
-        scraper.context = _FakeContext()
+        cast(Any, scraper).context = _FakeContext()
 
     monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
     monkeypatch.setattr(scraper, "_wait_for_results", lambda *_args, **_kwargs: {"found": False, "selector": ""})

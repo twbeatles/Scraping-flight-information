@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+from typing import Any, cast
 
 import scraper_config
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -37,7 +38,7 @@ def test_wait_for_results_returns_selected_selector():
             return True
 
     scraper = PlaywrightScraper()
-    scraper.page = _FakePage()
+    cast(Any, scraper).page = _FakePage()
 
     # Exception type is broad in fake page; fallback path should still keep trying.
     result = scraper._wait_for_results(is_domestic=False, log_func=lambda _m: None)

@@ -87,7 +87,7 @@ def get_airline_category(airline_name: str) -> str:
 class PreferenceManager:
     """사용자 환경설정, 프리셋, 히스토리 관리자"""
     
-    def __init__(self, filepath: str = None):
+    def __init__(self, filepath: str | None = None):
         if filepath is None:
             if getattr(sys, 'frozen', False):
                 # Frozen/EXE: Use AppData

@@ -1,0 +1,28 @@
+{
+  "include": [
+    "app",
+    "scraping",
+    "storage",
+    "ui",
+    "tests",
+    "scripts",
+    "config.py",
+    "database.py",
+    "scraper_config.py",
+    "scraper_v2.py",
+    "gui_v2.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".pytest_cache",
+    "playwright_profile",
+    "logs",
+    "build",
+    "dist",
+    "backup",
+    "backups"
+  ],
+  "pythonVersion": "3.14",
+  "typeCheckingMode": "standard",
+  "reportMissingTypeStubs": "none"
+}

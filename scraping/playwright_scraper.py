@@ -68,7 +68,7 @@ class PlaywrightScraper:
     
     def _init_browser(
         self,
-        log_func: Callable[[str], None] = None,
+        log_func: Optional[Callable[[str], None]] = None,
         user_data_dir: Optional[str] = None,
         headless: bool = False,
     ) -> None:
@@ -340,7 +340,7 @@ class PlaywrightScraper:
         adults: int = 1,
         cabin_class: str = "ECONOMY",
         max_results: int = 1000,
-        emit: Callable[[str], None] = None,
+        emit: Optional[Callable[[str], None]] = None,
         _retry_count: int = 0,
         background_mode: bool = False,
     ) -> List[FlightResult]:
@@ -416,6 +416,8 @@ class PlaywrightScraper:
                     self._init_browser(log, profile_dir, headless=background_mode)
 
                     if self.context is None:
+                        if self.browser is None:
+                            raise BrowserInitError("브라우저 컨텍스트를 초기화할 수 없습니다.")
                         self.context = self.browser.new_context(
                             viewport={"width": 1400, "height": 900},
                             locale='ko-KR',
@@ -697,7 +699,8 @@ class PlaywrightScraper:
         
         try:
             # 스크롤하며 수집 (최대 횟수 도달 또는 스크롤 종료 시 중단)
-            for scroll_i in range(scraper_config.DOMESTIC_MAX_SCROLLS):
+            scroll_i = -1
+            for scroll_i in range(scraper_config.DOMESTIC_MAX_SCROLLS):
                 js_script = ScraperScripts.get_domestic_list_script(airlines_js)
                 
                 batch = self.page.evaluate(js_script)

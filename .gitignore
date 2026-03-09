@@ -1,14 +1,31 @@
 # Python cache
 __pycache__/
 *.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
 
 # Test/cache artifacts
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# Coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
 
 # Build artifacts
 build/
 dist/
 *.spec.bak
+*.egg-info/
+pip-wheel-metadata/
 build_log.txt
 build_log_simple.txt
 
@@ -34,5 +51,10 @@ logs/*.jsonl
 logs/*.jsonl.*
 
 # IDE
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .idea/
+
+# OS artifacts
+.DS_Store
+Thumbs.db

@@ -2,6 +2,7 @@
 import sys
 import logging
 from datetime import datetime, timedelta
+from typing import Any, cast
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QCalendarWidget, QGroupBox, QListWidget, QListWidgetItem, QFrame,
@@ -16,6 +17,7 @@ try:
     import openpyxl
     HAS_OPENPYXL = True
 except ImportError:
+    openpyxl = None
     HAS_OPENPYXL = False
 
 import config
@@ -84,8 +86,8 @@ class PriceAlertDialog(QDialog):
     
     def __init__(self, parent=None, db=None, prefs=None):
         super().__init__(parent)
-        self.db = db
-        self.prefs = prefs
+        self.db: Any = db
+        self.prefs: Any = prefs
         self.setWindowTitle("🔔 가격 알림 관리")
         self.setMinimumSize(700, 550)
         self.setStyleSheet(MODERN_THEME)
@@ -166,7 +168,9 @@ class PriceAlertDialog(QDialog):
         layout.addWidget(grp_new)
         
         # 현재 알림 목록
-        layout.addWidget(QLabel("📋 설정된 알림 목록:", objectName="section_title"))
+        alert_label = QLabel("📋 설정된 알림 목록:")
+        alert_label.setObjectName("section_title")
+        layout.addWidget(alert_label)
         
         self.table = QTableWidget()
         self.table.setColumnCount(8)
@@ -174,7 +178,9 @@ class PriceAlertDialog(QDialog):
             "ID", "노선", "출발일", "귀국일", "좌석", "목표가", "현재가", "상태"
         ])
         self.table.setColumnHidden(0, True)  # ID 숨김
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         layout.addWidget(self.table)
@@ -214,7 +220,7 @@ class PriceAlertDialog(QDialog):
             return
 
         dep = dep_date.toString("yyyyMMdd")
-        ret = ret_date.toString("yyyyMMdd") if ret_date else None
+        ret = ret_date.toString("yyyyMMdd") if ret_date is not None else None
 
         try:
             alert_id = self.db.add_price_alert(origin, dest, dep, ret, target, cabin_class)
@@ -297,7 +303,11 @@ class PriceAlertDialog(QDialog):
             QMessageBox.warning(self, "선택 오류", "삭제할 알림을 선택하세요.")
             return
         
-        alert_id = int(self.table.item(row, 0).text())
+        alert_id_item = self.table.item(row, 0)
+        if alert_id_item is None:
+            QMessageBox.warning(self, "선택 오류", "선택된 알림 정보를 읽을 수 없습니다.")
+            return
+        alert_id = int(alert_id_item.text())
         reply = QMessageBox.question(
             self, "삭제 확인",
             "선택한 알림을 삭제하시겠습니까?",
@@ -313,8 +323,8 @@ class PriceAlertDialog(QDialog):
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, prefs=None, db=None):
         super().__init__(parent)
-        self.prefs = prefs
-        self.db = db if db is not None else getattr(parent, "db", None)
+        self.prefs: Any = prefs
+        self.db: Any = db if db is not None else getattr(parent, "db", None)
         self.setWindowTitle("⚙️ 설정 (Settings)")
         self.setMinimumSize(600, 500)  # Increased size for better content display
         self.setStyleSheet(MODERN_THEME)
@@ -568,8 +578,12 @@ class SettingsDialog(QDialog):
         if not fname: return
         
         try:
+            if openpyxl is None:
+                raise RuntimeError("openpyxl is unavailable")
             wb = openpyxl.load_workbook(fname)
             ws = wb.active
+            if ws is None:
+                raise RuntimeError("worksheet initialization failed")
             # Assume Row 2: Origin, Dest, DepDate, RetDate, Adults
             origin = ws['A2'].value
             dest = ws['B2'].value
@@ -593,7 +607,7 @@ class SettingsDialog(QDialog):
             return
             
         # Get results from MainWindow (parent)
-        main_win = self.parent()
+        main_win = cast(Any, self.parent())
         if not main_win or not hasattr(main_win, 'all_results') or not main_win.all_results:
             QMessageBox.warning(self, "오류", "내보낼 검색 결과가 없습니다.")
             return
@@ -602,8 +616,12 @@ class SettingsDialog(QDialog):
         if not fname: return
         
         try:
+            if openpyxl is None:
+                raise RuntimeError("openpyxl is unavailable")
             wb = openpyxl.Workbook()
             ws = wb.active
+            if ws is None:
+                raise RuntimeError("worksheet initialization failed")
             ws.title = "검색결과"
             
             # Header

@@ -1,14 +1,18 @@
 """SearchMultiMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class SearchMultiMixin:
-    def _open_multi_dest_search(self):
+    def _open_multi_dest_search(self: Any):
         dialog = MultiDestDialog(self, self.prefs)
         dialog.search_requested.connect(self._start_multi_search)
         dialog.exec()
-    def _guard_manual_browser_for_new_search(self, action_name: str) -> bool:
+    def _guard_manual_browser_for_new_search(self: Any, action_name: str) -> bool:
         """수동 모드 브라우저가 열려 있을 때 새 검색 진행 여부를 확인"""
         if not self.active_searcher:
             return True
@@ -25,7 +29,7 @@ class SearchMultiMixin:
 
         self.log_viewer.append_log(f"ℹ️ {action_name} 취소: 수동 모드 브라우저를 유지했습니다.")
         return False
-    def _start_multi_search(self, origin, destinations, dep, ret, adults, cabin_class):
+    def _start_multi_search(self: Any, origin, destinations, dep, ret, adults, cabin_class):
         self._stop_alert_worker_if_running()
         if not self._ensure_no_running_search():
             return
@@ -55,7 +59,7 @@ class SearchMultiMixin:
         self.multi_worker.single_finished.connect(self._on_multi_single_finished)
         self.multi_worker.all_finished.connect(self._multi_search_finished)
         self.multi_worker.start()
-    def _on_multi_single_finished(self, dest, results):
+    def _on_multi_single_finished(self: Any, dest, results):
         if results:
             best = min(results, key=lambda x: x.price)
             self.log_viewer.append_log(
@@ -63,7 +67,7 @@ class SearchMultiMixin:
             )
         else:
             self.log_viewer.append_log(f"📌 [{dest}] 중간 결과: 검색 결과 없음")
-    def _multi_search_finished(self, results):
+    def _multi_search_finished(self: Any, results):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_bar.setFormat("다중 검색 완료")
@@ -75,3 +79,6 @@ class SearchMultiMixin:
         self.log_viewer.append_log(f"✅ 다중 목적지 검색 완료: {len(results)}개 목적지")
 
     # --- Date Range Search ---
+
+
+

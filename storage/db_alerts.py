@@ -6,7 +6,7 @@ import sys
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 from scraper_v2 import FlightResult
 from storage.models import (
@@ -20,13 +20,16 @@ from storage.models import (
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from storage.flight_database import FlightDatabase
+
 class AlertsMixin:
     def add_price_alert(
-        self,
+        self: Any,
         origin: str,
         dest: str,
         dep_date: str,
-        return_date: str,
+        return_date: str | None,
         target_price: int,
         cabin_class: str = "ECONOMY",
     ) -> int:
@@ -43,7 +46,7 @@ class AlertsMixin:
             ))
             conn.commit()
             return cursor.lastrowid
-    def get_active_alerts(self) -> List[PriceAlert]:
+    def get_active_alerts(self: Any) -> List[PriceAlert]:
         """활성화된 가격 알림 조회"""
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
@@ -55,7 +58,7 @@ class AlertsMixin:
             """)
             rows = cursor.fetchall()
             return [PriceAlert(**dict(row)) for row in rows]
-    def get_all_alerts(self) -> List[PriceAlert]:
+    def get_all_alerts(self: Any) -> List[PriceAlert]:
         """모든 가격 알림 조회"""
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
@@ -63,7 +66,7 @@ class AlertsMixin:
             cursor.execute("SELECT * FROM price_alerts ORDER BY created_at DESC")
             rows = cursor.fetchall()
             return [PriceAlert(**dict(row)) for row in rows]
-    def update_alert_check(self, alert_id: int, current_price: int) -> bool:
+    def update_alert_check(self: Any, alert_id: int, current_price: int) -> bool:
         """알림 마지막 체크 시간 및 가격 업데이트"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -78,7 +81,7 @@ class AlertsMixin:
             ))
             conn.commit()
             return cursor.rowcount > 0
-    def mark_alert_triggered(self, alert_id: int) -> bool:
+    def mark_alert_triggered(self: Any, alert_id: int) -> bool:
         """알림 발동 상태로 표시"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -89,14 +92,14 @@ class AlertsMixin:
             """, (alert_id,))
             conn.commit()
             return cursor.rowcount > 0
-    def delete_alert(self, alert_id: int) -> bool:
+    def delete_alert(self: Any, alert_id: int) -> bool:
         """가격 알림 삭제"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM price_alerts WHERE id = ?", (alert_id,))
             conn.commit()
             return cursor.rowcount > 0
-    def toggle_alert_active(self, alert_id: int, is_active: bool) -> bool:
+    def toggle_alert_active(self: Any, alert_id: int, is_active: bool) -> bool:
         """가격 알림 활성화/비활성화"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -109,3 +112,6 @@ class AlertsMixin:
     # ===== 마지막 검색 결과 저장/복원 =====
 
 __all__ = ["AlertsMixin"]
+
+
+

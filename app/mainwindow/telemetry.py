@@ -1,10 +1,14 @@
 """TelemetryMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class TelemetryMixin:
-    def _emit_telemetry_event(self, payload: dict):
+    def _emit_telemetry_event(self: Any, payload: dict):
         """워커/스크래퍼 텔레메트리 이벤트를 DB+JSONL로 저장."""
         if not payload:
             return
@@ -24,3 +28,6 @@ class TelemetryMixin:
             )
         except Exception as e:
             logger.debug(f"Telemetry logging failed: {e}")
+
+
+

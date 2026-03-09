@@ -1,10 +1,14 @@
 """HistoryMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class HistoryMixin:
-    def create_history_tab(self):
+    def create_history_tab(self: Any):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
@@ -18,7 +22,7 @@ class HistoryMixin:
         
         self._refresh_history_tab()
         return widget
-    def _refresh_history_tab(self):
+    def _refresh_history_tab(self: Any):
         if not hasattr(self, 'list_history'):
             return
         self.list_history.clear()
@@ -28,7 +32,7 @@ class HistoryMixin:
             list_item = QListWidgetItem(display)
             list_item.setData(Qt.ItemDataRole.UserRole, item)
             self.list_history.addItem(list_item)
-    def _restore_search_panel_from_params(self, params: dict):
+    def _restore_search_panel_from_params(self: Any, params: dict):
         """검색 파라미터를 검색 패널 UI에 복원"""
         if not params:
             return
@@ -73,7 +77,7 @@ class HistoryMixin:
             idx = sp.cb_cabin_class.findData(cabin)
             if idx >= 0:
                 sp.cb_cabin_class.setCurrentIndex(idx)
-    def restore_search_from_history(self, item):
+    def restore_search_from_history(self: Any, item):
         data = item.data(Qt.ItemDataRole.UserRole)
         if not data:
             return
@@ -86,3 +90,6 @@ class HistoryMixin:
             QMessageBox.warning(self, "오류", f"복원 중 오류: {e}")
     
     # --- Session Management Methods ---
+
+
+

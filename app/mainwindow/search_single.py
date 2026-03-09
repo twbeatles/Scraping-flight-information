@@ -1,10 +1,14 @@
 """SearchSingleMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class SearchSingleMixin:
-    def _start_search(self, origin, dest, dep, ret, adults, cabin_class="ECONOMY"):
+    def _start_search(self: Any, origin, dest, dep, ret, adults, cabin_class="ECONOMY"):
         self._stop_alert_worker_if_running()
         if not self._ensure_no_running_search():
             return
@@ -61,11 +65,13 @@ class SearchSingleMixin:
         self.worker.error.connect(self._search_error)
         self.worker.manual_mode_signal.connect(self._activate_manual_mode)
         self.worker.start()
-    def _update_progress(self, msg):
-        self.statusBar().showMessage(msg)
+    def _update_progress(self: Any, msg):
+        status_bar = self.statusBar()
+        if status_bar is not None:
+            status_bar.showMessage(msg)
         self.progress_bar.setFormat(msg)
         self.log_viewer.append_log(msg)
-    def _search_finished(self, results):
+    def _search_finished(self: Any, results):
         self.search_panel.set_searching(False)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
@@ -132,7 +138,7 @@ class SearchSingleMixin:
                     }
                 )
             QMessageBox.information(self, "결과 없음", "항공권을 찾을 수 없습니다.")
-    def _check_price_alerts(self, results):
+    def _check_price_alerts(self: Any, results):
         """검색 완료 후 활성 가격 알림 체크"""
         if not results or not self.current_search_params:
             return
@@ -179,7 +185,7 @@ class SearchSingleMixin:
                     )
         except Exception as e:
             logger.debug(f"가격 알림 체크 중 오류 (무시됨): {e}")
-    def _search_error(self, err_msg):
+    def _search_error(self: Any, err_msg):
         self.search_panel.set_searching(False)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
@@ -217,3 +223,6 @@ class SearchSingleMixin:
             )
         else:
             QMessageBox.critical(self, "오류", f"검색 중 오류 발생:\n{err_msg}")
+
+
+

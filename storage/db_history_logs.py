@@ -6,7 +6,7 @@ import sys
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 from scraper_v2 import FlightResult
 from storage.models import (
@@ -20,9 +20,12 @@ from storage.models import (
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from storage.flight_database import FlightDatabase
+
 class HistoryLogsMixin:
-    def add_price_history(self, origin: str, dest: str, dep_date: str, 
-                          price: int, airline: str = None):
+    def add_price_history(self: Any, origin: str, dest: str, dep_date: str, 
+                          price: int, airline: str | None = None):
         """가격 히스토리 추가"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -35,7 +38,7 @@ class HistoryLogsMixin:
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             ))
             conn.commit()
-    def add_price_history_batch(self, origin: str, dest: str, dep_date: str, 
+    def add_price_history_batch(self: Any, origin: str, dest: str, dep_date: str, 
                                 results: List[Dict[str, Any]]):
         """검색 결과 일괄 저장 (최저가만)"""
         if not results:
@@ -46,11 +49,12 @@ class HistoryLogsMixin:
         min_item = next((r for r in results if r.get('price') == min_price), None)
         
         if min_item:
+            airline_value = min_item.get('airline')
             self.add_price_history(
                 origin, dest, dep_date,
-                min_price, min_item.get('airline')
+                min_price, str(airline_value) if airline_value is not None else None
             )
-    def get_price_history(self, origin: str, dest: str, 
+    def get_price_history(self: Any, origin: str, dest: str, 
                           days: int = 30) -> List[PriceHistoryItem]:
         """노선별 가격 히스토리 조회"""
         cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -65,7 +69,7 @@ class HistoryLogsMixin:
             """, (origin, dest, cutoff))
             rows = cursor.fetchall()
             return [PriceHistoryItem(**dict(row)) for row in rows]
-    def get_price_trend(self, origin: str, dest: str, dep_date: str = None) -> Dict[str, Any]:
+    def get_price_trend(self: Any, origin: str, dest: str, dep_date: str | None = None) -> Dict[str, Any]:
         """가격 변동 추이 분석"""
         history = self.get_price_history(origin, dest, days=30)
         
@@ -95,9 +99,9 @@ class HistoryLogsMixin:
         }
     
     # ===== 검색 로그 =====
-    def log_search(self, origin: str, dest: str, dep_date: str, 
-                   return_date: str = None, adults: int = 1,
-                   result_count: int = 0, min_price: int = None):
+    def log_search(self: Any, origin: str, dest: str, dep_date: str, 
+                   return_date: str | None = None, adults: int = 1,
+                   result_count: int = 0, min_price: int | None = None):
         """검색 로그 저장"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -112,7 +116,7 @@ class HistoryLogsMixin:
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             ))
             conn.commit()
-    def get_popular_routes(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_popular_routes(self: Any, limit: int = 10) -> List[Dict[str, Any]]:
         """인기 노선 조회 (검색 빈도 기준)"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -131,7 +135,7 @@ class HistoryLogsMixin:
             ]
     
     # ===== 유틸리티 =====
-    def get_stats(self) -> Dict[str, int]:
+    def get_stats(self: Any) -> Dict[str, int]:
         """데이터베이스 통계"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -152,3 +156,6 @@ class HistoryLogsMixin:
             }
 
 __all__ = ["HistoryLogsMixin"]
+
+
+

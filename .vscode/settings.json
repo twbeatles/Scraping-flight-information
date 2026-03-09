@@ -1,0 +1,8 @@
+{
+  "files.encoding": "utf8",
+  "files.autoGuessEncoding": false,
+  "python.defaultInterpreterPath": "python",
+  "python.analysis.typeCheckingMode": "standard",
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.useLibraryCodeForTypes": true
+}

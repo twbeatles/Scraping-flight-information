@@ -1,10 +1,14 @@
 """ManualModeMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class ManualModeMixin:
-    def _activate_manual_mode(self, searcher):
+    def _activate_manual_mode(self: Any, searcher):
         self.active_searcher = searcher
         self.search_panel.set_searching(False)
         if hasattr(self, "_emit_telemetry_event"):
@@ -29,7 +33,7 @@ class ManualModeMixin:
         QMessageBox.warning(self, "수동 모드 전환", 
                             "자동 추출에 실패했습니다.\n"
                             "브라우저창이 유지됩니다. 직접 검색 후 '데이터 추출하기' 버튼을 누르세요.")
-    def _manual_extract(self):
+    def _manual_extract(self: Any):
         if not self.active_searcher:
             return
 
@@ -82,7 +86,7 @@ class ManualModeMixin:
         finally:
             if hasattr(self, "manual_status_label"):
                 self.manual_status_label.setText("🖐️ <b>수동 모드 유지 중</b> - 필요 시 다시 추출 가능합니다")
-    def _close_active_browser(self, confirm: bool = True):
+    def _close_active_browser(self: Any, confirm: bool = True):
         if not self.active_searcher:
             return
         if confirm:
@@ -102,3 +106,6 @@ class ManualModeMixin:
         finally:
             self.active_searcher = None
             self.manual_frame.setVisible(False)
+
+
+

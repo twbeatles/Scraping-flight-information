@@ -1,20 +1,24 @@
 """FilteringMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.main_window import MainWindow
 
 
 class FilteringMixin:
-    def _schedule_filter_apply(self, filters):
+    def _schedule_filter_apply(self: Any, filters):
         """연속 필터 이벤트를 디바운스로 합쳐 마지막 변경만 적용."""
         self._pending_filter = filters
         self._filter_apply_timer.start(scraper_config.FILTER_DEBOUNCE_MS)
-    def _run_scheduled_filter_apply(self):
+    def _run_scheduled_filter_apply(self: Any):
         if self._pending_filter is None:
             return
         filters = self._pending_filter
         self._pending_filter = None
         self._apply_filter(filters)
-    def _append_filter_log(self, message: str):
+    def _append_filter_log(self: Any, message: str):
         """동일 필터 로그의 짧은 간격 중복 출력을 억제."""
         now = time.monotonic()
         if message == self._last_filter_log_msg and (now - self._last_filter_log_ts) < 1.0:
@@ -22,7 +26,7 @@ class FilteringMixin:
         self._last_filter_log_msg = message
         self._last_filter_log_ts = now
         self.log_viewer.append_log(message)
-    def _apply_filter(self, filters=None):
+    def _apply_filter(self: Any, filters=None):
         if filters is None:
             filters = self.filter_panel.get_current_filters()
             
@@ -105,7 +109,12 @@ class FilteringMixin:
             price_msg = f" | 가격: {min_p//10000}~{max_p//10000}만원"
         
         msg = f"필터링: {len(filtered)}/{len(self.all_results)} | 시간: {start_h}~{end_h}시 | 항공사: {airline_category}{price_msg}"
-        self.statusBar().showMessage(msg)
+        status_bar = self.statusBar()
+        if status_bar is not None:
+            status_bar.showMessage(msg)
         self._append_filter_log(msg)
 
     # --- History Tab Methods ---
+
+
+

@@ -6,7 +6,7 @@ import sys
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 from scraper_v2 import FlightResult
 from storage.models import (
@@ -20,8 +20,11 @@ from storage.models import (
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from storage.flight_database import FlightDatabase
+
 class LastSearchMixin:
-    def save_last_search_results(self, search_params: Dict[str, Any], results: List[Any]):
+    def save_last_search_results(self: Any, search_params: Dict[str, Any], results: List[Any]):
         """마지막 검색 결과를 DB에 저장 (프로그램 재시작 시 복원용)"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -86,7 +89,7 @@ class LastSearchMixin:
             
             conn.commit()
             logger.info(f"마지막 검색 결과 저장: {actual_count}/{len(results)}건")
-    def get_last_search_results(self) -> tuple:
+    def get_last_search_results(self: Any) -> tuple:
         """저장된 마지막 검색 결과 복원
         
         Returns:
@@ -153,7 +156,7 @@ class LastSearchMixin:
                 results.append(flight)
             
             return search_params, results, searched_at, hours_ago
-    def clear_last_search_results(self):
+    def clear_last_search_results(self: Any):
         """저장된 마지막 검색 결과 삭제"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -163,3 +166,6 @@ class LastSearchMixin:
 
 
 __all__ = ["LastSearchMixin"]
+
+
+

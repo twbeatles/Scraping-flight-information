@@ -6,7 +6,7 @@ import sys
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 from scraper_v2 import FlightResult
 from storage.models import (
@@ -20,6 +20,9 @@ from storage.models import (
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from storage.flight_database import FlightDatabase
+
 class FavoritesMixin:
     @staticmethod
     def _normalize_text(value: Any, upper: bool = False) -> str:
@@ -31,7 +34,7 @@ class FavoritesMixin:
             return int(value or 0)
         except (TypeError, ValueError):
             return 0
-    def _build_favorite_dedup_key(self, flight_data: Dict[str, Any]) -> str:
+    def _build_favorite_dedup_key(self: Any, flight_data: Dict[str, Any]) -> str:
         is_round_trip = bool(
             flight_data.get("is_round_trip")
             or flight_data.get("return_date")
@@ -58,7 +61,7 @@ class FavoritesMixin:
             "RT" if is_round_trip else "OW",
         ]
         return "|".join(parts)
-    def add_favorite(self, flight_data: Dict[str, Any], search_params: Dict[str, Any] = None) -> int:
+    def add_favorite(self: Any, flight_data: Dict[str, Any], search_params: Dict[str, Any] | None = None) -> int:
         """즐겨찾기 추가"""
         dedup_key = self._build_favorite_dedup_key(flight_data or {})
         with self._get_connection() as conn:
@@ -85,7 +88,7 @@ class FavoritesMixin:
             ))
             conn.commit()
             return cursor.lastrowid
-    def get_favorites(self) -> List[FavoriteItem]:
+    def get_favorites(self: Any) -> List[FavoriteItem]:
         """모든 즐겨찾기 조회"""
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
@@ -93,7 +96,7 @@ class FavoritesMixin:
             cursor.execute("SELECT * FROM favorites ORDER BY created_at DESC")
             rows = cursor.fetchall()
             return [FavoriteItem(**dict(row)) for row in rows]
-    def get_favorite_by_id(self, fav_id: int) -> Optional[FavoriteItem]:
+    def get_favorite_by_id(self: Any, fav_id: int) -> Optional[FavoriteItem]:
         """ID로 즐겨찾기 조회"""
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
@@ -101,28 +104,28 @@ class FavoritesMixin:
             cursor.execute("SELECT * FROM favorites WHERE id = ?", (fav_id,))
             row = cursor.fetchone()
             return FavoriteItem(**dict(row)) if row else None
-    def update_favorite_note(self, fav_id: int, note: str) -> bool:
+    def update_favorite_note(self: Any, fav_id: int, note: str) -> bool:
         """즐겨찾기 메모 수정"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE favorites SET note = ? WHERE id = ?", (note, fav_id))
             conn.commit()
             return cursor.rowcount > 0
-    def remove_favorite(self, fav_id: int) -> bool:
+    def remove_favorite(self: Any, fav_id: int) -> bool:
         """즐겨찾기 삭제"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM favorites WHERE id = ?", (fav_id,))
             conn.commit()
             return cursor.rowcount > 0
-    def is_favorite_by_entry(self, flight_data: Dict[str, Any]) -> bool:
+    def is_favorite_by_entry(self: Any, flight_data: Dict[str, Any]) -> bool:
         """중복키 기준으로 즐겨찾기 존재 여부를 확인한다."""
         dedup_key = self._build_favorite_dedup_key(flight_data or {})
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM favorites WHERE dedup_key = ?", (dedup_key,))
             return cursor.fetchone()[0] > 0
-    def is_favorite(self, airline: str, price: int, departure_time: str, origin: str, dest: str) -> bool:
+    def is_favorite(self: Any, airline: str, price: int, departure_time: str, origin: str, dest: str) -> bool:
         """하위 호환용 메서드. 내부적으로 dedup_key 기반 검사로 위임한다."""
         return self.is_favorite_by_entry(
             {
@@ -137,3 +140,6 @@ class FavoritesMixin:
     # ===== 가격 히스토리 =====
 
 __all__ = ["FavoritesMixin"]
+
+
+

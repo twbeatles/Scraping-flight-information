@@ -210,7 +210,8 @@ def benchmark_worker_parallelism() -> dict:
 
 
 def main():
-    app = QApplication.instance() or QApplication([])
+    app_instance = QApplication.instance()
+    app = app_instance if isinstance(app_instance, QApplication) else QApplication([])
     print("=== Flight Bot Performance Smoke Benchmark ===")
 
     table_stats = benchmark_result_table(app)

@@ -32,7 +32,7 @@ class FlightDatabase(
     _registry_lock = threading.Lock()
     _all_connections: List[sqlite3.Connection] = []
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str | None = None):
         if db_path is None:
             # Determine appropriate path based on environment
             if getattr(sys, 'frozen', False):

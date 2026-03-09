@@ -39,7 +39,7 @@ hiddenimports = [
     
     # Playwright
     'playwright.sync_api',
-    'playwright._impl._api_types',
+    'playwright._impl._api_structures',
     
     # asyncio (Windows 필수)
     'asyncio',
@@ -183,3 +183,4 @@ exe = EXE(
 # 2. 빌드 명령: pyinstaller --clean flight_bot.spec
 # 3. 예상 크기: ~80-120MB (Playwright 포함)
 # 4. 실행 전 Playwright 브라우저 설치 필요: playwright install chromium
+

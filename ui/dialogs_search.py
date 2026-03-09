@@ -351,12 +351,16 @@ class MultiDestResultDialog(QDialog):
         layout = QVBoxLayout(self)
         
         # Summary Table
-        layout.addWidget(QLabel("목적지별 최저가 비교:", objectName="section_title"))
+        summary_label = QLabel("목적지별 최저가 비교:")
+        summary_label.setObjectName("section_title")
+        layout.addWidget(summary_label)
         
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(["목적지", "최저가", "항공사", "출발시간", "결과 수"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(True)
         
         # Sort by lowest price
@@ -415,13 +419,17 @@ class DateRangeResultDialog(QDialog):
     def _init_ui(self):
         layout = QVBoxLayout(self)
         
-        layout.addWidget(QLabel("날짜별 최저가:", objectName="section_title"))
+        summary_label = QLabel("날짜별 최저가:")
+        summary_label.setObjectName("section_title")
+        layout.addWidget(summary_label)
         
         # Table
         self.table = QTableWidget()
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["날짜", "요일", "최저가", "항공사"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(True)
         
         sorted_dates = sorted(self.results.items(), key=lambda x: x[0])

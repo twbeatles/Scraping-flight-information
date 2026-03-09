@@ -5,6 +5,7 @@ import sys
 import csv
 import logging
 from datetime import datetime
+from typing import Any, cast
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGridLayout, QLabel, QPushButton, QCheckBox,
     QSpinBox, QComboBox, QDateEdit, QTabWidget, QFrame,
@@ -354,7 +355,7 @@ class SearchPanel(QFrame):
         ret_date = self.date_ret.date() if self.rb_round.isChecked() else None
         
         dep = dep_date.toString("yyyyMMdd")
-        ret = ret_date.toString("yyyyMMdd") if ret_date else None
+        ret = ret_date.toString("yyyyMMdd") if ret_date is not None else None
         adults = self.spin_adults.value()
         cabin_class = self.cb_cabin_class.currentData() or "ECONOMY"
         
@@ -394,7 +395,7 @@ class SearchPanel(QFrame):
             QMessageBox.warning(self, "날짜 오류", "출발일이 오늘보다 이전입니다.")
             return
         
-        if ret_date and ret_date < dep_date:
+        if ret_date is not None and ret_date < dep_date:
             QMessageBox.warning(self, "날짜 오류", "귀국일이 출발일보다 이전입니다.")
             return
 
@@ -534,8 +535,9 @@ class SearchPanel(QFrame):
         # Refresh UI after settings close (presets might have changed)
         self._refresh_combos()
         self._refresh_profiles()
-        if hasattr(top, "_configure_alert_auto_timer"):
-            top._configure_alert_auto_timer()
+        main_win = cast(Any, top)
+        if hasattr(main_win, "_configure_alert_auto_timer"):
+            main_win._configure_alert_auto_timer()
     
     def save_settings(self):
         """입력값을 QSettings에 저장 (프로그램 종료 시 호출)"""

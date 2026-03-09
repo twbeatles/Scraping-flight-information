@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta
+import time
+from typing import cast
 
 from PyQt6.QtCore import QDate, QTimer, Qt
 from PyQt6.QtTest import QTest
@@ -145,7 +147,7 @@ def test_restore_search_panel_round_trip_and_cabin(qapp):
     panel = _build_search_panel()
 
     class _DummyContext:
-        pass
+        search_panel: object
 
     ctx = _DummyContext()
     ctx.search_panel = panel
@@ -177,7 +179,7 @@ def test_restore_search_panel_oneway_disables_return_date(qapp):
     panel = _build_search_panel()
 
     class _DummyContext:
-        pass
+        search_panel: object
 
     ctx = _DummyContext()
     ctx.search_panel = panel
@@ -268,7 +270,8 @@ def test_result_table_copy_row_info_uses_sorted_visual_row(qapp):
 
     assert target_row is not None
     table._copy_row_info(target_row)
-    copied = QApplication.clipboard().text()
+    clipboard = QApplication.clipboard()
+    copied = clipboard.text() if clipboard is not None else ""
 
     assert "Cheap" in copied
     assert "100,000" in copied
@@ -336,6 +339,13 @@ def test_manual_extract_logs_failure_event_when_no_result(monkeypatch):
 
 
 def test_flight_type_change_preserves_custom_origin_preset(qapp):
+    class _RadioStub:
+        def __init__(self):
+            self._checked: bool = False
+
+        def isChecked(self):
+            return self._checked
+
     class _FakePrefs:
         def get_all_presets(self):
             return {"ZZZ": "Custom Origin", "YYY": "Custom Dest"}
@@ -343,14 +353,7 @@ def test_flight_type_change_preserves_custom_origin_preset(qapp):
     class _DummyPanel:
         def __init__(self):
             self.prefs = _FakePrefs()
-            self.rb_domestic = type(
-                "_RadioStub",
-                (),
-                {
-                    "__init__": lambda self: setattr(self, "_checked", False),
-                    "isChecked": lambda self: self._checked,
-                },
-            )()
+            self.rb_domestic = _RadioStub()
             self.cb_origin = QComboBox()
             self.cb_dest = QComboBox()
 
@@ -365,11 +368,11 @@ def test_flight_type_change_preserves_custom_origin_preset(qapp):
     ctx = _DummyPanel()
 
     ctx.rb_domestic._checked = True
-    SearchPanel._on_flight_type_changed(ctx)
+    SearchPanel._on_flight_type_changed(cast(SearchPanel, ctx))
     assert ctx.cb_origin.findData("ZZZ") == -1
 
     ctx.rb_domestic._checked = False
-    SearchPanel._on_flight_type_changed(ctx)
+    SearchPanel._on_flight_type_changed(cast(SearchPanel, ctx))
     assert ctx.cb_origin.findData("ZZZ") >= 0
     assert ctx.cb_dest.findData("YYY") >= 0
 
@@ -443,7 +446,9 @@ def test_filter_debounce_applies_last_event_once(qapp):
             self._filter_apply_timer = QTimer()
             self._filter_apply_timer.setSingleShot(True)
             self.applied = []
-            self._filter_apply_timer.timeout.connect(lambda: MainWindow._run_scheduled_filter_apply(self))
+            self._filter_apply_timer.timeout.connect(
+                lambda: MainWindow._run_scheduled_filter_apply(cast(MainWindow, self))
+            )
 
         def _apply_filter(self, filters=None):
             self.applied.append(filters)
@@ -451,9 +456,12 @@ def test_filter_debounce_applies_last_event_once(qapp):
     ctx = _DebounceContext()
 
     for h in range(5):
-        MainWindow._schedule_filter_apply(ctx, {"start_time": h, "end_time": 24})
+        MainWindow._schedule_filter_apply(cast(MainWindow, ctx), {"start_time": h, "end_time": 24})
 
-    QTest.qWait(250)
+    deadline = time.time() + 0.5
+    while time.time() < deadline and not ctx.applied:
+        qapp.processEvents()
+        time.sleep(0.01)
     assert len(ctx.applied) == 1
     assert ctx.applied[0]["start_time"] == 4
 
