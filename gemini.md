@@ -773,7 +773,7 @@ logging.basicConfig(
 ---
 
 *이 문서는 Flight Bot v2.5 코드베이스를 기반으로 작성되었습니다.*
-*마지막 업데이트: 2026-03-05*
+*마지막 업데이트: 2026-03-14*
 
 
 ## 리팩터링 업데이트 (2026-03-02)
@@ -807,3 +807,54 @@ logging.basicConfig(
   - `.gitignore` refined to ignore runtime JSON/log artifacts explicitly without broad `*.json` exclusion
 - Verification:
   - `pytest -q` -> `49 passed`
+
+## Refactor Update (2026-03-14)
+
+### Superseding Notes
+- This section supersedes older split/package notes where they differ.
+- Public runtime and import compatibility remains unchanged:
+  - `python gui_v2.py`
+  - `from gui_v2 import MainWindow`
+  - `from database import FlightDatabase`
+  - `from scraper_v2 import FlightSearcher, PlaywrightScraper`
+  - `from ui.dialogs import ...`
+  - `from ui.components import ...`
+
+### Newly Split Internal Modules
+1. `app/mainwindow/ui_bootstrap_sections.py`
+2. `scraping/playwright_browser.py`
+3. `scraping/playwright_search.py`
+4. `scraping/playwright_domestic.py`
+5. `scraping/playwright_results.py`
+6. `ui/search_panel_shared.py`
+7. `ui/search_panel_build.py`
+8. `ui/search_panel_actions.py`
+9. `ui/search_panel_state.py`
+10. `ui/search_panel_widget.py`
+11. `ui/dialogs_search_multi.py`
+12. `ui/dialogs_search_date_range.py`
+13. `ui/dialogs_search_results.py`
+14. `ui/dialogs_tools_shortcuts.py`
+15. `ui/dialogs_tools_price_alert.py`
+16. `ui/dialogs_tools_settings.py`
+17. `ui/styles_dark.py`
+18. `ui/styles_light.py`
+
+### Spec Sync
+- `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec` now include second-stage split hiddenimports.
+- The required hiddenimport groups are:
+  - `app.mainwindow.ui_bootstrap_sections`
+  - `scraping.playwright_*`
+  - `ui.search_panel_*`
+  - `ui.dialogs_search_*`
+  - `ui.dialogs_tools_*`
+  - `ui.styles_dark`, `ui.styles_light`
+
+### Verification
+- Backup created before the refactor:
+  - `backups/code_snapshot_20260314_231358.zip`
+  - `backups/code_snapshot_20260314_231358.zip.sha256`
+  - `backups/code_snapshot_20260314_231358.zip.contents.txt`
+- Validation baseline:
+  - `python -m py_compile` passed
+  - `pytest -q` -> `56 passed`

@@ -271,6 +271,7 @@ Scraping-flight-information/
 │  ├─ session_manager.py
 │  └─ mainwindow/
 │     ├─ ui_bootstrap.py
+│     ├─ ui_bootstrap_sections.py
 │     ├─ telemetry.py
 │     ├─ auto_alert.py
 │     ├─ worker_lifecycle.py
@@ -286,17 +287,42 @@ Scraping-flight-information/
 │     ├─ calendar.py
 │     └─ app_lifecycle.py
 ├─ ui/
-│  ├─ components.py           # facade
-│  ├─ components_*.py
-│  ├─ dialogs.py              # facade
-│  ├─ dialogs_*.py
-│  ├─ workers.py              # facade
+│  ├─ components.py           # public facade
+│  ├─ components_primitives.py
+│  ├─ components_filter_panel.py
+│  ├─ components_result_table.py
+│  ├─ components_log_viewer.py
+│  ├─ components_search_panel.py
+│  ├─ search_panel_widget.py
+│  ├─ search_panel_build.py
+│  ├─ search_panel_actions.py
+│  ├─ search_panel_state.py
+│  ├─ search_panel_shared.py
+│  ├─ dialogs.py              # public facade
+│  ├─ dialogs_base.py
+│  ├─ dialogs_calendar.py
+│  ├─ dialogs_combination.py
+│  ├─ dialogs_search.py
+│  ├─ dialogs_search_multi.py
+│  ├─ dialogs_search_date_range.py
+│  ├─ dialogs_search_results.py
+│  ├─ dialogs_tools.py
+│  ├─ dialogs_tools_shortcuts.py
+│  ├─ dialogs_tools_price_alert.py
+│  ├─ dialogs_tools_settings.py
+│  ├─ workers.py              # public facade
 │  ├─ workers_*.py
-│  └─ styles.py
+│  ├─ styles.py               # theme facade
+│  ├─ styles_dark.py
+│  └─ styles_light.py
 ├─ scraping/
 │  ├─ errors.py
 │  ├─ models.py
-│  ├─ playwright_scraper.py
+│  ├─ playwright_scraper.py   # public entrypoint wrapper
+│  ├─ playwright_browser.py
+│  ├─ playwright_search.py
+│  ├─ playwright_domestic.py
+│  ├─ playwright_results.py
 │  ├─ extract_domestic.py
 │  ├─ extract_international.py
 │  ├─ searcher.py
@@ -320,14 +346,21 @@ Scraping-flight-information/
 |------|------|
 | `gui_v2.py` | 실행/호환 API facade (`MainWindow`, `main`) |
 | `app/main_window.py` | MainWindow 클래스와 앱 진입점 |
+| `app/mainwindow/ui_bootstrap_sections.py` | 메인 윈도우 UI 섹션 조립 |
 | `scraper_v2.py` | 스크래퍼 공개 API facade |
-| `scraping/*` | Playwright 스크래핑 및 검색 엔진 |
+| `scraping/playwright_scraper.py` | `PlaywrightScraper` 공개 진입점 wrapper |
+| `scraping/playwright_*.py` | 브라우저 초기화, 검색 orchestration, 국내선 추출, 결과 정렬 분리 구현 |
 | `database.py` | DB 공개 API facade |
 | `storage/*` | SQLite 스키마/영속화 로직 |
 | `config.py` | 공항/설정 상수, 사용자 설정 |
 | `ui/components.py` | UI 컴포넌트 facade (`FilterPanel`, `ResultTable`, `SearchPanel`) |
-| `ui/dialogs.py` | 다이얼로그 facade (`MultiDestDialog`, `SettingsDialog` 등) |
+| `ui/components_search_panel.py` + `ui/search_panel_*.py` | SearchPanel facade + 입력/상태/액션 분리 구현 |
+| `ui/dialogs.py`, `ui/dialogs_search.py`, `ui/dialogs_tools.py` | 다이얼로그 facade 레이어 |
+| `ui/dialogs_search_*.py`, `ui/dialogs_tools_*.py` | 검색/도구 다이얼로그 세부 구현 |
 | `ui/workers.py` | 워커 facade (`SearchWorker`, `MultiSearchWorker` 등) |
+| `ui/styles.py`, `ui/styles_dark.py`, `ui/styles_light.py` | 테마 facade + 개별 테마 정의 |
+
+> 2026-03-14 기준: 외부 import 경로는 그대로 유지하고, 길어진 구현만 내부 모듈로 분리하는 1차 구조 정리를 적용했습니다.
 
 ---
 
@@ -390,7 +423,7 @@ pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 | `FlightBot_v2.5.spec` | 표준 GUI 배포 (호환 프로필) | `pyinstaller --clean FlightBot_v2.5.spec` |
 | `FlightBot_Simple.spec` | 콘솔 로그 확인용 디버그 실행파일 | `pyinstaller --clean FlightBot_Simple.spec` |
 
-> 2026-03-05 점검 결과: 모듈 분할 + facade 호환 경로를 EXE에 안정적으로 포함하기 위해 세 `.spec` 파일의 `hiddenimports`를 보강했습니다 (`database`, `scraper_v2`, `ui.components/dialogs/workers`, `app.mainwindow.shared`, `scraping.extract_domestic`, `scraping.extract_international` 포함).
+> 2026-03-14 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.workers`)는 유지하고, 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)도 함께 포함합니다.
 
 ### 빌드 결과
 
@@ -447,6 +480,19 @@ playwright install chromium
 ---
 
 ## 📝 변경 로그
+
+### v2.5.6 (2026-03-14)
+- 🧩 **1차 코드 분할 리팩토링 마감**
+  - `scraping/playwright_scraper.py`를 얇은 진입점으로 정리하고 브라우저/검색/국내선/결과 처리를 `scraping/playwright_*.py`로 분리
+  - `app/mainwindow/ui_bootstrap.py`, `ui/components_search_panel.py`, `ui/dialogs_search.py`, `ui/dialogs_tools.py`, `ui/styles.py`를 facade 성격으로 정리하고 세부 구현을 전용 모듈로 분리
+- 📦 **PyInstaller spec 동기화**
+  - `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`에 새 분리 모듈 hiddenimports 반영
+- 📚 **문서 정합성 보강**
+  - README/가이드 문서/SCRAPING_AUDIT에 2026-03-14 기준 구조, 백업, 검증 현황 추가
+  - 리팩토링 시작 백업: `backups/code_snapshot_20260314_231358.zip`
+- ✅ **검증**
+  - `python -m py_compile` 대상 파일 통과
+  - `pytest -q` 기준 `56 passed`
 
 ### v2.5.5 (2026-03-09)
 - ✅ **정적 타입 품질 정비**

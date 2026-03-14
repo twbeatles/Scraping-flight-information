@@ -128,6 +128,20 @@ def test_domestic_topk_combination_matches_naive_ordering():
     assert combined_keys == naive
 
 
+def test_build_interpark_search_url_normalizes_hyphenated_dates():
+    url = scraper_config.build_interpark_search_url(
+        "ICN",
+        "NRT",
+        "2026-03-01",
+        "2026-03-05",
+        cabin="BUSINESS",
+        adults=2,
+    )
+
+    assert "/c:SEL-c:TYO-20260301/c:TYO-c:SEL-20260305" in url
+    assert url.endswith("?cabin=BUSINESS&infant=0&child=0&adult=2")
+
+
 def test_multi_search_worker_runs_with_parallelism(monkeypatch):
     lock = threading.Lock()
     state = {"active": 0, "max_active": 0}
@@ -412,6 +426,61 @@ def test_playwright_search_retries_on_network_error(monkeypatch):
 
     assert len(results) == 1
     assert page.calls == 2
+
+
+def test_domestic_one_way_search_uses_scrolling_extractor(monkeypatch):
+    class _FakePage:
+        def __init__(self):
+            self.urls = []
+
+        def goto(self, url, *_args, **_kwargs):
+            self.urls.append(url)
+
+    class _FakeContext:
+        def __init__(self, page):
+            self._page = page
+
+        def new_page(self):
+            return self._page
+
+        def close(self):
+            return None
+
+    page = _FakePage()
+    scraper = PlaywrightScraper()
+    calls = {"domestic": 0}
+    domestic_entries = [
+        {
+            "airline": "테스트항공",
+            "price": 30000 + i,
+            "depTime": f"{i % 24:02d}:{(i * 5) % 60:02d}",
+            "arrTime": f"{(i + 1) % 24:02d}:{(i * 5 + 30) % 60:02d}",
+            "stops": 0,
+        }
+        for i in range(25)
+    ]
+
+    def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
+        cast(Any, scraper).context = _FakeContext(page)
+
+    def _fake_domestic_extract():
+        calls["domestic"] += 1
+        return domestic_entries
+
+    monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
+    monkeypatch.setattr(scraper, "_wait_for_results", lambda *_args, **_kwargs: {"found": True, "selector": 'button:has-text("원")'})
+    monkeypatch.setattr(scraper, "_extract_domestic_flights_data", _fake_domestic_extract)
+    monkeypatch.setattr(scraper, "close", lambda: None)
+    monkeypatch.setattr("scraping.playwright_scraper.time.sleep", lambda *_args, **_kwargs: None)
+
+    results = scraper.search("GMP", "CJU", "2026-03-01", None, adults=1, cabin_class="ECONOMY", max_results=50)
+
+    assert calls["domestic"] == 1
+    assert len(results) == 25
+    assert all(result.extraction_source == "domestic_scroll" for result in results)
+    assert page.urls
+    assert "20260301" in page.urls[0]
+    assert "2026-03-01" not in page.urls[0]
 
 
 def test_playwright_search_closes_between_network_retries(monkeypatch):

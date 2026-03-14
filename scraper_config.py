@@ -4,6 +4,9 @@ Configuration and Scripts for Flight Scraper V2
 """
 
 import json
+from datetime import datetime
+
+import config
 
 # === 타임아웃 및 재시도 설정 ===
 MAX_RETRY_COUNT = 3
@@ -23,6 +26,63 @@ DOMESTIC_MAX_SCROLLS = 300
 DOMESTIC_COMBINATION_TOP_N = 150
 INTERNATIONAL_MAX_SCROLLS = 20
 SELECTOR_HEALTH_WINDOW = 200
+INTERPARK_SEARCH_URL_BASE = "https://travel.interpark.com/air/search"
+
+
+def normalize_interpark_date(date_text: str | None) -> str:
+    """Convert supported user-facing date formats to Interpark's compact path format."""
+    if not date_text:
+        return ""
+
+    value = str(date_text).strip()
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, fmt).strftime("%Y%m%d")
+        except ValueError:
+            continue
+
+    raise ValueError(f"Unsupported Interpark date format: {date_text}")
+
+
+def resolve_interpark_location(code: str) -> tuple[str, str]:
+    """Return the route prefix and normalized city/airport code for Interpark URLs."""
+    normalized = (code or "").strip().upper()
+    if normalized in config.CITY_CODES_MAP:
+        return "c", config.CITY_CODES_MAP[normalized]
+    return "a", normalized
+
+
+def build_interpark_search_url(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: str | None = None,
+    *,
+    cabin: str = "ECONOMY",
+    adults: int = 1,
+    infant: int = 0,
+    child: int = 0,
+) -> str:
+    """Build a canonical Interpark search URL with compact dates."""
+    origin_prefix, origin_code = resolve_interpark_location(origin)
+    dest_prefix, dest_code = resolve_interpark_location(destination)
+    departure = normalize_interpark_date(departure_date)
+    returning = normalize_interpark_date(return_date) if return_date else ""
+
+    route = f"{origin_prefix}:{origin_code}-{dest_prefix}:{dest_code}-{departure}"
+    if returning:
+        route = (
+            f"{route}/"
+            f"{dest_prefix}:{dest_code}-{origin_prefix}:{origin_code}-{returning}"
+        )
+
+    safe_cabin = (cabin or "ECONOMY").upper()
+    safe_adults = max(1, int(adults or 1))
+
+    return (
+        f"{INTERPARK_SEARCH_URL_BASE}/{route}"
+        f"?cabin={safe_cabin}&infant={int(infant)}&child={int(child)}&adult={safe_adults}"
+    )
 
 # === 결과 대기 selector 후보 (DOM 변경 대응) ===
 DOMESTIC_WAIT_SELECTORS = [
@@ -40,7 +100,7 @@ INTERNATIONAL_WAIT_SELECTORS = [
 # === 정규표현식 패턴 (Python & JS 공용) ===
 # JS에서 사용할 때는 이스케이프 처리가 필요할 수 있음
 REGEX_TIME = r"(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})"
-REGEX_PRICE = r"(\d{1,3},\d{3},?\d{0,3})\s*원"
+REGEX_PRICE = r"(?:^|[^\d,])(\d{1,3}(?:,\d{3}){1,2})\s*원"
 REGEX_STOPS = r"(\d)회\s*경유"
 
 # === JavaScript 스크립트 템플릿 ===
@@ -75,46 +135,83 @@ class ScraperScripts:
         () => {{
             const results = [];
             const airlines = {airlines_js_list};
-            
-            const buttons = document.querySelectorAll('button');
-            
-            for (const btn of buttons) {{
+
+            const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+            const exactPricePattern = /^(\\d{{1,3}}(?:,\\d{{3}}){{1,2}})\\s*원$/;
+            const boundaryPricePattern = /(?:^|[^0-9,])(\\d{{1,3}}(?:,\\d{{3}}){{1,2}})\\s*원/g;
+
+            const readPrice = (button) => {{
+                const nodes = [button, ...button.querySelectorAll('p, span, strong, em, div')];
+                for (const node of nodes) {{
+                    const text = normalize(node.textContent);
+                    if (!text) continue;
+                    const exactMatch = text.match(exactPricePattern);
+                    if (exactMatch) {{
+                        return parseInt(exactMatch[1].replace(/,/g, ''), 10);
+                    }}
+                }}
+
+                const fallbackMatches = Array.from(
+                    normalize(button.textContent).matchAll(boundaryPricePattern)
+                );
+                if (fallbackMatches.length > 0) {{
+                    return parseInt(fallbackMatches[0][1].replace(/,/g, ''), 10);
+                }}
+                return 0;
+            }};
+
+            const readAirline = (button, text) => {{
+                const texts = Array.from(button.querySelectorAll('p, span, div'))
+                    .map((node) => normalize(node.textContent))
+                    .filter(Boolean);
+
+                for (const airlineName of airlines) {{
+                    if (texts.some((entry) => entry === airlineName || entry.includes(airlineName))) {{
+                        return airlineName;
+                    }}
+                }}
+
+                for (const airlineName of airlines) {{
+                    if (text.includes(airlineName)) {{
+                        return airlineName;
+                    }}
+                }}
+
+                return '';
+            }};
+
+            const readStops = (text) => {{
+                if (text.includes('직항')) {{
+                    return 0;
+                }}
+
+                const stopMatch = text.match(/{REGEX_STOPS}/);
+                if (stopMatch) {{
+                    return parseInt(stopMatch[1], 10) || 0;
+                }}
+                return text.includes('경유') ? 1 : 0;
+            }};
+
+            for (const btn of document.querySelectorAll('button')) {{
                 try {{
-                    const text = btn.textContent || '';
-                    
-                    // 시간 패턴
+                    const text = normalize(btn.textContent);
                     const timeMatch = text.match(/{REGEX_TIME}/);
                     if (!timeMatch) continue;
-                    
-                    // 가격 패턴
-                    const priceMatch = text.match(/{REGEX_PRICE}/);
-                    if (!priceMatch) continue;
-                    
-                    const firstPrice = priceMatch[1].replace(/[^\\d]/g, '');
-                    const price = parseInt(firstPrice);
-                    
+
+                    const airline = readAirline(btn, text);
+                    if (!airline) continue;
+
+                    const price = readPrice(btn);
                     if (price < 1000 || price > 10000000) continue;
                     if (text.includes('이벤트') || text.includes('프로모션')) continue;
-                    
-                    let airline = '기타';
-                    for (const a of airlines) {{
-                        if (text.includes(a)) {{
-                            airline = a;
-                            break;
-                        }}
-                    }}
-                    
-                    let stops = 0;
-                    if (text.includes('경유')) {{
-                        stops = 1;
-                    }}
-                    
+
                     results.push({{
                         airline: airline,
                         price: price,
                         depTime: timeMatch[1],
                         arrTime: timeMatch[2],
-                        stops: stops
+                        stops: readStops(text),
+                        key: `${{airline}}_${{timeMatch[1]}}_${{timeMatch[2]}}_${{price}}`
                     }});
                 }} catch (e) {{ }}
             }}
@@ -125,51 +222,7 @@ class ScraperScripts:
     @staticmethod
     def get_domestic_prices_script(airlines_js_list):
         """국내선 가격 추출 JS (버튼 기반)"""
-        return f"""
-        () => {{
-            const results = [];
-            const airlines = {airlines_js_list};
-            const allButtons = document.querySelectorAll('button');
-            
-            for (const btn of allButtons) {{
-                try {{
-                    const text = btn.textContent || '';
-                    
-                    const timeMatch = text.match(/{REGEX_TIME}/);
-                    if (!timeMatch) continue;
-                    
-                    const priceMatch = text.match(/{REGEX_PRICE}/);
-                    if (!priceMatch) continue;
-                    
-                    let airline = '기타';
-                    for (const a of airlines) {{
-                        if (text.includes(a)) {{
-                            airline = a;
-                            break;
-                        }}
-                    }}
-                    
-                    let stops = 0;
-                    if (text.includes('경유')) {{
-                        const stopMatch = text.match(/{REGEX_STOPS}/);
-                        if (stopMatch) stops = parseInt(stopMatch[1]);
-                        else stops = 1;
-                    }}
-                    
-                    const price = parseInt(priceMatch[1].replace(/,/g, ''));
-                    
-                    results.push({{
-                        airline: airline,
-                        price: price,
-                        depTime: timeMatch[1],
-                        arrTime: timeMatch[2],
-                        stops: stops
-                    }});
-                }} catch (e) {{ }}
-            }}
-            return results;
-        }}
-        """
+        return ScraperScripts.get_domestic_list_script(airlines_js_list)
 
     @staticmethod
     def get_international_prices_script():

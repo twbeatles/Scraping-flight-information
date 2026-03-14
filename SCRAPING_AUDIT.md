@@ -1,11 +1,41 @@
 # Flight Bot v2.5 항공권 스크래핑 기능 감사 보고서
 
 - 작성일: 2026-02-25
+- 최종 갱신: 2026-03-14
 - 대상 저장소: `Scraping-flight-information`
 - 점검 범위: 스크래퍼, 워커, GUI, DB, 설정/세션/알림, 테스트
-- 근거 문서: `README.md`, `claude.md`
-- 근거 코드: `scraper_v2.py`, `scraper_config.py`, `ui/workers.py`, `gui_v2.py`, `database.py`, `ui/components.py`, `ui/dialogs.py`, `tests/*`
-- 실행 확인: `pytest -q` 통과 (28 passed)
+- 근거 문서: `README.md`, `claude.md`, `gemini.md`
+- 근거 코드: `scraper_v2.py`, `scraper_config.py`, `app/mainwindow/*`, `scraping/playwright_*.py`, `ui/components_search_panel.py`, `ui/search_panel_*.py`, `ui/dialogs_search.py`, `ui/dialogs_tools.py`, `ui/styles.py`, `tests/*`
+- 실행 확인: `pytest -q` 통과 (56 passed)
+
+---
+
+## Refresh (2026-03-14)
+
+- 현재 감사 기준선은 2026-03-14 리팩토링 이후 구조다.
+- 외부 공개 경로는 유지한다:
+  - `gui_v2.py`
+  - `scraper_v2.py`
+  - `database.py`
+  - `ui.components`
+  - `ui.dialogs`
+  - `ui.workers`
+- 내부 구현은 다음 모듈 묶음으로 분리되었다:
+  - `scraping/playwright_browser.py`, `scraping/playwright_search.py`, `scraping/playwright_domestic.py`, `scraping/playwright_results.py`
+  - `app/mainwindow/ui_bootstrap_sections.py`
+  - `ui/search_panel_*.py`
+  - `ui/dialogs_search_*.py`
+  - `ui/dialogs_tools_*.py`
+  - `ui/styles_dark.py`, `ui/styles_light.py`
+- 패키징 기준도 함께 갱신되었다:
+  - `flight_bot.spec`
+  - `FlightBot_v2.5.spec`
+  - `FlightBot_Simple.spec`
+  - 위 세 파일은 facade + second-stage split hiddenimports를 모두 포함한다.
+- 리팩토링 시작 백업:
+  - `backups/code_snapshot_20260314_231358.zip`
+
+> 아래 0장 이후의 리스크/라인 근거는 원래 감사 로그를 보존한 것이다. 최신 구조를 읽을 때는 이 Refresh 섹션과 2026-03-14 문서 업데이트를 우선 기준으로 본다.
 
 ---
 

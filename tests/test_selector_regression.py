@@ -26,6 +26,17 @@ def test_regex_patterns_match_fixture_sample():
     assert "1" in stop_matches
 
 
+def test_price_regex_avoids_time_digit_prefix_regression():
+    fixture = Path(__file__).resolve().parent / "fixtures" / "interpark_domestic_card.html"
+    html = fixture.read_text(encoding="utf-8")
+
+    price_matches = re.findall(scraper_config.REGEX_PRICE, html)
+
+    assert "31,500" in price_matches
+    assert "31,200" in price_matches
+    assert "531,500" not in price_matches
+
+
 def test_wait_for_results_returns_selected_selector():
     class _FakePage:
         def __init__(self):

@@ -1,9 +1,17 @@
 """International extraction helpers."""
 
-from typing import List
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, List
 
 from scraping.models import FlightResult
-from scraping.playwright_scraper import PlaywrightScraper
+from scraping.playwright_results import (
+    extract_international_prices as _extract_international_prices,
+)
 
-def extract_international_prices(scraper: PlaywrightScraper) -> List[FlightResult]:
-    return scraper._extract_prices()
+if TYPE_CHECKING:
+    from scraping.playwright_scraper import PlaywrightScraper
+
+
+def extract_international_prices(scraper: "PlaywrightScraper") -> List[FlightResult]:
+    return _extract_international_prices(scraper)

@@ -480,8 +480,8 @@ def test_double_click_url_includes_cabin_and_adults(monkeypatch):
             self.current_search_params = {
                 "origin": "ICN",
                 "dest": "NRT",
-                "dep": "20260301",
-                "ret": "20260305",
+                "dep": "2026-03-01",
+                "ret": "2026-03-05",
                 "cabin_class": "BUSINESS",
                 "adults": 2,
             }
@@ -491,7 +491,8 @@ def test_double_click_url_includes_cabin_and_adults(monkeypatch):
     MainWindow._on_table_double_click(ctx, 0, 0)
 
     assert len(opened_urls) == 1
-    assert "?cabin=BUSINESS&adult=2" in opened_urls[0]
+    assert "/c:SEL-c:TYO-20260301/c:TYO-c:SEL-20260305" in opened_urls[0]
+    assert "?cabin=BUSINESS&infant=0&child=0&adult=2" in opened_urls[0]
 
 
 def test_restore_search_from_history_restores_cabin_class(monkeypatch):

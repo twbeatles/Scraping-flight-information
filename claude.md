@@ -1142,7 +1142,7 @@ from ui.components import FilterPanel, ResultTable
 ---
 
 *이 문서는 Flight Bot v2.5 코드베이스를 기반으로 작성되었습니다.*
-*마지막 업데이트: 2026-03-05*
+*마지막 업데이트: 2026-03-14*
 
 
 ## Refactor Update (2026-03-02)
@@ -1173,3 +1173,58 @@ from ui.components import FilterPanel, ResultTable
   - import compatibility smoke passed
   - `python -m py_compile` full tree passed
   - `pytest -q`: `49 passed`
+
+## Refactor Update (2026-03-14)
+
+### Superseding Notes
+- This update supersedes the older split notes where they differ.
+- Public entrypoints stay unchanged:
+  - `python gui_v2.py`
+  - `from scraper_v2 import PlaywrightScraper`
+  - `from ui.dialogs import ...`
+  - `from ui.components import ...`
+  - `from ui.workers import ...`
+
+### Newly Split Internal Modules
+- Main window bootstrap sections:
+  - `app/mainwindow/ui_bootstrap_sections.py`
+- Scraper runtime split:
+  - `scraping/playwright_browser.py`
+  - `scraping/playwright_search.py`
+  - `scraping/playwright_domestic.py`
+  - `scraping/playwright_results.py`
+- Search panel split:
+  - `ui/search_panel_shared.py`
+  - `ui/search_panel_build.py`
+  - `ui/search_panel_actions.py`
+  - `ui/search_panel_state.py`
+  - `ui/search_panel_widget.py`
+- Dialog split:
+  - `ui/dialogs_search_multi.py`
+  - `ui/dialogs_search_date_range.py`
+  - `ui/dialogs_search_results.py`
+  - `ui/dialogs_tools_shortcuts.py`
+  - `ui/dialogs_tools_price_alert.py`
+  - `ui/dialogs_tools_settings.py`
+- Theme split:
+  - `ui/styles_dark.py`
+  - `ui/styles_light.py`
+
+### Packaging Sync
+- All three PyInstaller spec files now include the second-stage split hiddenimports in addition to facade imports.
+- Required hiddenimport groups now include:
+  - `app.mainwindow.ui_bootstrap_sections`
+  - `scraping.playwright_*`
+  - `ui.search_panel_*`
+  - `ui.dialogs_search_*`
+  - `ui.dialogs_tools_*`
+  - `ui.styles_dark`, `ui.styles_light`
+
+### Verification
+- Backup created before refactor work:
+  - `backups/code_snapshot_20260314_231358.zip`
+  - `backups/code_snapshot_20260314_231358.zip.sha256`
+  - `backups/code_snapshot_20260314_231358.zip.contents.txt`
+- Validation baseline:
+  - `python -m py_compile` passed
+  - `pytest -q`: `56 passed`
