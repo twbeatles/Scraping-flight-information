@@ -43,6 +43,7 @@ hiddenimports = [
     "scraper_v2",
     "ui.components",
     "ui.dialogs",
+    "ui.styles",
     "ui.workers",
     # Refactored package modules (facade-compatible split)
     "app.main_window",

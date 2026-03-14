@@ -3,8 +3,8 @@
 from ui.search_panel_shared import *
 
 
-class SearchPanelBuildMixin:
-    def _init_ui(self):
+class SearchPanelBuildMixin(SearchPanelMixinBase):
+    def _init_ui(self) -> None:
         # Use GridLayout for better alignment
         layout = QGridLayout(self)
         layout.setSpacing(15)
@@ -200,7 +200,11 @@ class SearchPanelBuildMixin:
         layout.setColumnStretch(2, 10)
         layout.setColumnMinimumWidth(1, 30)
 
-    def _create_airport_combo(self, default_code="ICN", include_presets=False):
+    def _create_airport_combo(
+        self,
+        default_code: str = "ICN",
+        include_presets: bool = False,
+    ) -> QComboBox:
         cb = QComboBox()
         cb.setEditable(True) 
         
@@ -225,7 +229,7 @@ class SearchPanelBuildMixin:
             cb.setCurrentIndex(index)
         return cb
 
-    def _labeled_widget(self, label_text, widget):
+    def _labeled_widget(self, label_text: str, widget: QWidget) -> QWidget:
         container = QWidget()
         vbox = QVBoxLayout(container)
         vbox.setContentsMargins(0, 0, 0, 0)

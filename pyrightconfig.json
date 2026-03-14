@@ -22,7 +22,7 @@
     "backup",
     "backups"
   ],
-  "pythonVersion": "3.14",
+  "pythonVersion": "3.10",
   "typeCheckingMode": "standard",
   "reportMissingTypeStubs": "none"
 }

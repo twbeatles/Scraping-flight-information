@@ -6,7 +6,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 import logging
-from playwright.sync_api import Browser, Page
+from playwright.sync_api import Browser, BrowserContext, Page, Playwright
 
 from scraping.models import FlightResult
 from scraping.playwright_browser import (
@@ -46,17 +46,17 @@ class PlaywrightScraper:
     ]
 
     def __init__(self, telemetry_callback: Optional[Callable[[Dict[str, Any]], None]] = None):
-        self.playwright = None
+        self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
-        self.context = None
-        self.manual_mode = False
+        self.context: Optional[BrowserContext] = None
+        self.manual_mode: bool = False
         self.telemetry_callback = telemetry_callback
-        self._last_is_domestic = False
-        self._current_route = ""
-        self._no_scroll_count = 0
-        self._no_new_count = 0
-        self._bottom_count = 0
+        self._last_is_domestic: bool = False
+        self._current_route: str = ""
+        self._no_scroll_count: int = 0
+        self._no_new_count: int = 0
+        self._bottom_count: int = 0
 
     def _emit_telemetry(self, event_type: str, success: bool = True, **kwargs) -> None:
         if not self.telemetry_callback:

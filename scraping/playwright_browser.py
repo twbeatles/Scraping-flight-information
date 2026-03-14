@@ -35,7 +35,8 @@ def init_browser(
     log("🌐 Playwright 브라우저 시작 중...")
 
     try:
-        scraper.playwright = sync_playwright().start()
+        playwright = sync_playwright().start()
+        scraper.playwright = playwright
     except FileNotFoundError as exc:
         error_message = (
             "❌ Playwright 실행 파일을 찾을 수 없습니다.\n\n"
@@ -67,6 +68,9 @@ def init_browser(
         ("Chromium (내장)", None),
     ]
     tried_browsers: list[str] = []
+    playwright = scraper.playwright
+    if playwright is None:
+        raise BrowserInitError("Playwright 객체 초기화 결과를 확인할 수 없습니다.")
 
     for browser_name, channel in browsers_to_try:
         try:
@@ -88,13 +92,13 @@ def init_browser(
                         "AppleWebKit/537.36"
                     ),
                 }
-                scraper.context = scraper.playwright.chromium.launch_persistent_context(
+                scraper.context = playwright.chromium.launch_persistent_context(
                     user_data_dir,
                     **context_options,
                 )
                 log(f"  - {browser_name} 시작 성공 (Persistent Context)")
             else:
-                scraper.browser = scraper.playwright.chromium.launch(**launch_options)
+                scraper.browser = playwright.chromium.launch(**launch_options)
                 log(f"  - {browser_name} 시작 성공")
             return
         except Exception as exc:

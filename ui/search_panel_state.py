@@ -3,8 +3,8 @@
 from ui.search_panel_shared import *
 
 
-class SearchPanelStateMixin:
-    def _refresh_profiles(self):
+class SearchPanelStateMixin(SearchPanelMixinBase):
+    def _refresh_profiles(self) -> None:
         self.cb_profiles.blockSignals(True)
         self.cb_profiles.clear()
         self.cb_profiles.addItem("- 프로필 선택 -", None)
@@ -13,7 +13,7 @@ class SearchPanelStateMixin:
             self.cb_profiles.addItem(name, name)
         self.cb_profiles.blockSignals(False)
 
-    def _save_current_profile(self):
+    def _save_current_profile(self) -> None:
         name, ok = QInputDialog.getText(self, "프로필 저장", "프로필 이름 (예: 제주 가족여행):")
         if ok and name:
             params = {
@@ -28,7 +28,7 @@ class SearchPanelStateMixin:
             self._refresh_profiles()
             QMessageBox.information(self, "저장 완료", f"'{name}' 프로필이 저장되었습니다.")
 
-    def _load_selected_profile(self):
+    def _load_selected_profile(self) -> None:
         name = self.cb_profiles.currentData()
         if not name: return
         
@@ -68,7 +68,7 @@ class SearchPanelStateMixin:
         except Exception as e:
             QMessageBox.warning(self, "오류", f"프로필 로드 중 오류: {e}")
 
-    def _open_settings(self):
+    def _open_settings(self) -> None:
         from ui.dialogs import SettingsDialog
         top = self.window()
         dlg = SettingsDialog(self, self.prefs, getattr(top, "db", None))
@@ -80,7 +80,7 @@ class SearchPanelStateMixin:
         if hasattr(main_win, "_configure_alert_auto_timer"):
             main_win._configure_alert_auto_timer()
     
-    def save_settings(self):
+    def save_settings(self) -> None:
         """입력값을 QSettings에 저장 (프로그램 종료 시 호출)"""
         settings = QSettings("FlightBot", "FlightComparisonBot")
         settings.setValue("origin", self.cb_origin.currentText())
@@ -94,7 +94,7 @@ class SearchPanelStateMixin:
         if hasattr(self, 'rb_domestic'):
             settings.setValue("is_domestic", self.rb_domestic.isChecked())
     
-    def restore_settings(self):
+    def restore_settings(self) -> None:
         """저장된 입력값 복원 (프로그램 시작 시 호출)"""
         settings = QSettings("FlightBot", "FlightComparisonBot")
         

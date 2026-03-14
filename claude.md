@@ -1142,7 +1142,7 @@ from ui.components import FilterPanel, ResultTable
 ---
 
 *이 문서는 Flight Bot v2.5 코드베이스를 기반으로 작성되었습니다.*
-*마지막 업데이트: 2026-03-14*
+*마지막 업데이트: 2026-03-15*
 
 
 ## Refactor Update (2026-03-02)
@@ -1173,6 +1173,39 @@ from ui.components import FilterPanel, ResultTable
   - import compatibility smoke passed
   - `python -m py_compile` full tree passed
   - `pytest -q`: `49 passed`
+
+## Quality Update (2026-03-15)
+
+### Superseding Notes
+- This update supersedes older type-checking and packaging notes where they differ.
+- Public runtime/import entrypoints remain unchanged:
+  - `python gui_v2.py`
+  - `from scraper_v2 import PlaywrightScraper`
+  - `from ui.dialogs import ...`
+  - `from ui.components import ...`
+  - `from ui.workers import ...`
+
+### Static Quality Baseline
+- `pyrightconfig.json` is pinned to Python `3.10` with `typeCheckingMode=standard`.
+- Type contracts were tightened for:
+  - `scraping/playwright_scraper.py`, `scraping/playwright_browser.py`, `scraping/playwright_search.py`
+  - `ui/search_panel_shared.py`, `ui/search_panel_build.py`, `ui/search_panel_actions.py`, `ui/search_panel_state.py`, `ui/search_panel_widget.py`
+  - `app/main_window.py`
+- Verified baseline:
+  - `pyright` -> `0 errors`
+  - `pytest -q` -> `56 passed`
+
+### Packaging and Text Integrity
+- All three PyInstaller spec files were reviewed again:
+  - `flight_bot.spec`
+  - `FlightBot_v2.5.spec`
+  - `FlightBot_Simple.spec`
+- `hiddenimports` now explicitly include the `ui.styles` facade in addition to the split modules and existing facade imports.
+- Text integrity guardrails added:
+  - `.gitattributes`
+  - `scripts/check_tracked_text.py`
+  - `.github/workflows/quality.yml`
+- `.gitignore` was reviewed after the quality-tooling changes and no extra ignore rules were required.
 
 ## Refactor Update (2026-03-14)
 

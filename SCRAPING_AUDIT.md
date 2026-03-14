@@ -1,7 +1,7 @@
 # Flight Bot v2.5 항공권 스크래핑 기능 감사 보고서
 
 - 작성일: 2026-02-25
-- 최종 갱신: 2026-03-14
+- 최종 갱신: 2026-03-15
 - 대상 저장소: `Scraping-flight-information`
 - 점검 범위: 스크래퍼, 워커, GUI, DB, 설정/세션/알림, 테스트
 - 근거 문서: `README.md`, `claude.md`, `gemini.md`
@@ -9,6 +9,29 @@
 - 실행 확인: `pytest -q` 통과 (56 passed)
 
 ---
+
+## Refresh (2026-03-15)
+
+- 현재 감사 기준선은 2026-03-15 품질/패키징 점검까지 반영한 구조다.
+- 정적 품질 기준:
+  - `pyrightconfig.json`: Python `3.10`, `typeCheckingMode=standard`
+  - `pyright`: `0 errors`
+  - `pytest -q`: `56 passed`
+  - `python scripts/check_tracked_text.py`: `Checked 97 tracked text files: OK`
+- 타입 계약 보강 대상:
+  - `scraping/playwright_scraper.py`, `scraping/playwright_browser.py`, `scraping/playwright_search.py`
+  - `ui/search_panel_shared.py`, `ui/search_panel_build.py`, `ui/search_panel_actions.py`, `ui/search_panel_state.py`, `ui/search_panel_widget.py`
+  - `app/main_window.py`
+- 패키징 기준 재확인:
+  - `flight_bot.spec`
+  - `FlightBot_v2.5.spec`
+  - `FlightBot_Simple.spec`
+  - 위 세 파일은 facade + split-module hiddenimports에 더해 `ui.styles` facade도 명시적으로 포함한다.
+- 텍스트/인코딩 가드레일:
+  - `.gitattributes`
+  - `scripts/check_tracked_text.py`
+  - `.github/workflows/quality.yml`
+- `.gitignore`는 새 품질 도구 기준으로 재확인했고 추가 ignore 규칙은 필요하지 않았다.
 
 ## Refresh (2026-03-14)
 

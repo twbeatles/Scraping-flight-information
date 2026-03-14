@@ -3,8 +3,8 @@
 from ui.search_panel_shared import *
 
 
-class SearchPanelActionsMixin:
-    def _manage_preset(self, combo_widget=None):
+class SearchPanelActionsMixin(SearchPanelMixinBase):
+    def _manage_preset(self, combo_widget: QComboBox | None = None) -> None:
         if not combo_widget:
             combo_widget = self.cb_dest
             
@@ -49,7 +49,7 @@ class SearchPanelActionsMixin:
                     self.prefs.remove_preset(code)
                     self._refresh_combos()
 
-    def _refresh_combos(self):
+    def _refresh_combos(self) -> None:
         """출발/도착 콤보박스 모두 갱신"""
         for cb in [self.cb_origin, self.cb_dest]:
             current = cb.currentData()
@@ -68,7 +68,7 @@ class SearchPanelActionsMixin:
             idx = cb.findData(current)
             if idx >= 0: cb.setCurrentIndex(idx)
 
-    def _toggle_return_date(self):
+    def _toggle_return_date(self) -> None:
         is_round = self.rb_round.isChecked()
         self.date_ret.setEnabled(is_round)
         if not is_round:
@@ -76,7 +76,7 @@ class SearchPanelActionsMixin:
         else:
             self.date_ret.setStyleSheet("")
 
-    def _on_search(self):
+    def _on_search(self) -> None:
         # Save time preference
         self.prefs.set_preferred_time(self.spin_time_start.value(), self.spin_time_end.value())
         
@@ -136,13 +136,13 @@ class SearchPanelActionsMixin:
         self.search_requested.emit(origin_code, dest_code, dep, ret, adults, cabin_class)
 
 
-    def set_searching(self, searching):
+    def set_searching(self, searching: bool) -> None:
         self.btn_search.setText("⏳ 검색 중..." if searching else "🔍 최저가 검색 시작")
         self.btn_search.setEnabled(not searching)
         self.cb_origin.setEnabled(not searching)
         self.cb_dest.setEnabled(not searching)
     
-    def _on_flight_type_changed(self):
+    def _on_flight_type_changed(self) -> None:
         """국내선/국제선 전환시 공항 목록 업데이트"""
         is_domestic = self.rb_domestic.isChecked()
         

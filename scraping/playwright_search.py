@@ -122,7 +122,13 @@ def run_search(
                         ),
                     )
 
-                scraper.page = scraper.context.new_page()
+                context = scraper.context
+                if context is None:
+                    raise BrowserInitError("브라우저 컨텍스트가 정상적으로 생성되지 않았습니다.")
+                scraper.page = context.new_page()
+                page = scraper.page
+                if page is None:
+                    raise BrowserInitError("브라우저 페이지를 생성할 수 없습니다.")
 
                 _, origin_code = scraper_config.resolve_interpark_location(origin_upper)
                 _, dest_code = scraper_config.resolve_interpark_location(destination_upper)
@@ -144,7 +150,7 @@ def run_search(
                 log(f"URL: {url}")
 
                 try:
-                    scraper.page.goto(
+                    page.goto(
                         url,
                         wait_until="domcontentloaded",
                         timeout=scraper_config.PAGE_LOAD_TIMEOUT_MS,

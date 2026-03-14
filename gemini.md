@@ -773,7 +773,7 @@ logging.basicConfig(
 ---
 
 *이 문서는 Flight Bot v2.5 코드베이스를 기반으로 작성되었습니다.*
-*마지막 업데이트: 2026-03-14*
+*마지막 업데이트: 2026-03-15*
 
 
 ## 리팩터링 업데이트 (2026-03-02)
@@ -807,6 +807,35 @@ logging.basicConfig(
   - `.gitignore` refined to ignore runtime JSON/log artifacts explicitly without broad `*.json` exclusion
 - Verification:
   - `pytest -q` -> `49 passed`
+
+## Quality Update (2026-03-15)
+
+### Superseding Notes
+- This section supersedes older type-checking and packaging notes where they differ.
+- Public runtime and import compatibility remains unchanged:
+  - `python gui_v2.py`
+  - `from gui_v2 import MainWindow`
+  - `from database import FlightDatabase`
+  - `from scraper_v2 import FlightSearcher, PlaywrightScraper`
+  - `from ui.dialogs import ...`
+  - `from ui.components import ...`
+
+### Static Quality Baseline
+1. `pyrightconfig.json` is now pinned to Python `3.10` with `typeCheckingMode=standard`.
+2. Type contracts were tightened for `PlaywrightScraper`, split `SearchPanel` mixins, and `MainWindow`.
+3. Verified baseline:
+   - `pyright` -> `0 errors`
+   - `pytest -q` -> `56 passed`
+   - `python scripts/check_tracked_text.py` -> tracked UTF-8 text check passed
+
+### Packaging and Repository Hygiene
+1. `flight_bot.spec`, `FlightBot_v2.5.spec`, and `FlightBot_Simple.spec` were reviewed again.
+2. `hiddenimports` now explicitly include the `ui.styles` facade alongside existing facade and split-module imports.
+3. Repository guardrails added:
+   - `.gitattributes`
+   - `scripts/check_tracked_text.py`
+   - `.github/workflows/quality.yml`
+4. `.gitignore` was reviewed after the quality-tooling update and no additional ignore entries were needed.
 
 ## Refactor Update (2026-03-14)
 

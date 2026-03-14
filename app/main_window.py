@@ -1,6 +1,8 @@
 """Main window composition module."""
 
 from app.mainwindow.shared import *
+from typing import Any
+
 from app.session_manager import SessionManager
 from app.mainwindow.ui_bootstrap import UiBootstrapMixin
 from app.mainwindow.telemetry import TelemetryMixin
@@ -37,6 +39,28 @@ class MainWindow(
     CalendarMixin,
     AppLifecycleMixin,
 ):
+    prefs: config.PreferenceManager
+    worker: SearchWorker | None
+    multi_worker: MultiSearchWorker | None
+    date_worker: DateRangeWorker | None
+    alert_worker: AlertAutoCheckWorker | None
+    active_searcher: FlightSearcher | None
+    results: list[FlightResult]
+    all_results: list[FlightResult]
+    current_search_params: dict[str, Any]
+    search_panel: SearchPanel
+    filter_panel: FilterPanel
+    table: ResultTable
+    log_viewer: LogViewer
+    progress_bar: QProgressBar
+    tabs: QTabWidget
+    favorites_tab: QWidget
+    history_list: QWidget
+    manual_frame: QFrame
+    manual_status_label: QLabel
+    btn_theme: QPushButton
+    btn_toggle_search: QPushButton
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("✈️ Flight Bot v2.5 - Pro")
@@ -72,8 +96,7 @@ class MainWindow(
         self.db.cleanup_old_data(days=60, telemetry_days=30)
         
         self._init_ui()
-        if hasattr(self, 'search_panel'):
-            self.search_panel.restore_settings()
+        self.search_panel.restore_settings()
         self._setup_shortcuts()
         self._configure_alert_auto_timer()
         
