@@ -45,6 +45,11 @@ hiddenimports = [
     "ui.dialogs",
     "ui.styles",
     "ui.workers",
+    # Package roots kept explicit for PyInstaller module graph stability
+    "app",
+    "app.mainwindow",
+    "scraping",
+    "storage",
     # Refactored package modules (facade-compatible split)
     "app.main_window",
     "app.session_manager",

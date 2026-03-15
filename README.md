@@ -423,7 +423,7 @@ pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 | `FlightBot_v2.5.spec` | 표준 GUI 배포 (호환 프로필) | `pyinstaller --clean FlightBot_v2.5.spec` |
 | `FlightBot_Simple.spec` | 콘솔 로그 확인용 디버그 실행파일 | `pyinstaller --clean FlightBot_Simple.spec` |
 
-> 2026-03-15 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)도 함께 포함합니다.
+> 2026-03-15 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)도 함께 포함합니다.
 
 ### 빌드 결과
 
@@ -487,15 +487,16 @@ playwright install chromium
   - `PlaywrightScraper`, `SearchPanel`, `MainWindow`의 타입 계약을 정리해 Pylance/pyright 기준 `0 errors` 달성
 - 🔤 **인코딩/문서 정합성 점검**
   - tracked `.md`/`.spec`/코드 파일을 다시 점검했고 실제 UTF-8 손상 파일은 발견되지 않음
-  - `scripts/check_tracked_text.py`, `.gitattributes`, `.github/workflows/quality.yml`로 UTF-8/LF/정적검사/테스트를 CI에 연결
+  - `scripts/check_tracked_text.py`, `.gitattributes`, `.github/workflows/quality.yml`로 UTF-8/LF 정책과 `pyright`를 GitHub Actions에서 확인
+  - `pytest -q`는 PyQt 시스템 라이브러리가 준비된 로컬 환경 기준으로 유지 (`libEGL.so.1` 이슈 회피)
 - 📦 **PyInstaller spec 재점검**
-  - `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`에 `ui.styles` facade hiddenimport를 추가해 현재 공개 import 구조와 패키징 기준을 맞춤
+  - `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`에 `ui.styles` facade와 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)를 명시해 현재 공개 import 구조와 패키징 기준을 맞춤
 - 🧹 **저장소 운영 점검**
   - `.gitignore`를 재확인했고, 현재 기준에서는 추가 ignore 규칙 없이도 새 품질 도구/산출물을 안전하게 커버함
 - ✅ **검증**
   - `pyright` -> `0 errors`
-  - `python scripts/check_tracked_text.py` -> `Checked 97 tracked text files: OK`
-  - `pytest -q` -> `56 passed`
+  - `python scripts/check_tracked_text.py` -> `Checked 100 tracked text files: OK`
+  - local `pytest -q` -> `56 passed`
 
 ### v2.5.6 (2026-03-14)
 - 🧩 **1차 코드 분할 리팩토링 마감**
@@ -671,7 +672,7 @@ pyright
 python scripts/check_tracked_text.py
 ```
 
-> 저장소에는 `.gitattributes`, `scripts/check_tracked_text.py`, `.github/workflows/quality.yml`가 포함되어 있어 UTF-8/LF 정책, `pyright`, `pytest`를 CI에서도 함께 점검합니다.
+> 저장소에는 `.gitattributes`, `scripts/check_tracked_text.py`, `.github/workflows/quality.yml`가 포함되어 있어 UTF-8/LF 정책과 `pyright`를 GitHub Actions에서 점검합니다. `pytest -q`는 PyQt 시스템 라이브러리가 준비된 로컬 환경에서 실행하는 기준입니다.
 
 ---
 

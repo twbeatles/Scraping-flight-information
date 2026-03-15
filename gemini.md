@@ -825,17 +825,18 @@ logging.basicConfig(
 2. Type contracts were tightened for `PlaywrightScraper`, split `SearchPanel` mixins, and `MainWindow`.
 3. Verified baseline:
    - `pyright` -> `0 errors`
-   - `pytest -q` -> `56 passed`
+   - local `pytest -q` -> `56 passed`
    - `python scripts/check_tracked_text.py` -> tracked UTF-8 text check passed
 
 ### Packaging and Repository Hygiene
 1. `flight_bot.spec`, `FlightBot_v2.5.spec`, and `FlightBot_Simple.spec` were reviewed again.
-2. `hiddenimports` now explicitly include the `ui.styles` facade alongside existing facade and split-module imports.
+2. `hiddenimports` now explicitly include the `ui.styles` facade and package roots (`app`, `app.mainwindow`, `scraping`, `storage`) alongside existing facade and split-module imports.
 3. Repository guardrails added:
    - `.gitattributes`
    - `scripts/check_tracked_text.py`
    - `.github/workflows/quality.yml`
-4. `.gitignore` was reviewed after the quality-tooling update and no additional ignore entries were needed.
+4. GitHub Actions `Quality` now runs tracked text integrity plus `pyright`; `pytest -q` remains a local verification command because the hosted Ubuntu runner is missing `libEGL.so.1` for the PyQt bootstrap.
+5. `.gitignore` was reviewed after the quality-tooling update and no additional ignore entries were needed.
 
 ## Refactor Update (2026-03-14)
 

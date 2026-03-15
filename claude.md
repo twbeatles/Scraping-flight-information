@@ -1193,18 +1193,19 @@ from ui.components import FilterPanel, ResultTable
   - `app/main_window.py`
 - Verified baseline:
   - `pyright` -> `0 errors`
-  - `pytest -q` -> `56 passed`
+  - local `pytest -q` -> `56 passed`
 
 ### Packaging and Text Integrity
 - All three PyInstaller spec files were reviewed again:
   - `flight_bot.spec`
   - `FlightBot_v2.5.spec`
   - `FlightBot_Simple.spec`
-- `hiddenimports` now explicitly include the `ui.styles` facade in addition to the split modules and existing facade imports.
+- `hiddenimports` now explicitly include the `ui.styles` facade and package roots (`app`, `app.mainwindow`, `scraping`, `storage`) in addition to the split modules and existing facade imports.
 - Text integrity guardrails added:
   - `.gitattributes`
   - `scripts/check_tracked_text.py`
   - `.github/workflows/quality.yml`
+- GitHub Actions `Quality` now runs tracked text integrity plus `pyright`; `pytest -q` remains a local verification command because the hosted Ubuntu runner is missing `libEGL.so.1` for the PyQt bootstrap.
 - `.gitignore` was reviewed after the quality-tooling changes and no extra ignore rules were required.
 
 ## Refactor Update (2026-03-14)
