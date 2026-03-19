@@ -343,13 +343,16 @@ def test_alert_auto_check_worker_uses_alert_cabin_and_emits_hit(monkeypatch):
             self.return_date = None
             self.target_price = 150000
             self.cabin_class = "BUSINESS"
+            self.adults = 2
 
     observed_cabins = []
+    observed_adults = []
     background_modes = []
 
     class _FakeSearcher:
         def search(self, *args, **kwargs):
             observed_cabins.append(kwargs.get("cabin_class"))
+            observed_adults.append(kwargs.get("adults"))
             background_modes.append(kwargs.get("background_mode"))
             return [FlightResult(airline="A", price=120000, departure_time="10:00", arrival_time="12:00")]
 
@@ -367,8 +370,46 @@ def test_alert_auto_check_worker_uses_alert_cabin_and_emits_hit(monkeypatch):
     worker.run()
 
     assert observed_cabins == ["BUSINESS"]
+    assert observed_adults == [2]
     assert background_modes == [True]
     assert len(hits) == 1
+
+
+def test_alert_auto_check_worker_emits_failure_signal(monkeypatch):
+    class _Alert:
+        def __init__(self):
+            self.id = 9
+            self.origin = "ICN"
+            self.destination = "NRT"
+            self.departure_date = (datetime.now() + timedelta(days=7)).strftime("%Y%m%d")
+            self.return_date = None
+            self.target_price = 150000
+            self.cabin_class = "ECONOMY"
+            self.adults = 1
+
+    class _FakeSearcher:
+        def search(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+        def close(self):
+            return None
+
+        def is_manual_mode(self):
+            return False
+
+    monkeypatch.setattr("ui.workers.FlightSearcher", _FakeSearcher)
+
+    worker = AlertAutoCheckWorker([_Alert()])
+    failures = []
+    checked = []
+    worker.alert_check_failed.connect(lambda *args: failures.append(args))
+    worker.alert_checked.connect(lambda *args: checked.append(args))
+    worker.run()
+
+    assert checked == []
+    assert len(failures) == 1
+    assert failures[0][0] == 9
+    assert failures[0][1] == "ICN"
 
 
 def test_alert_auto_check_worker_cancel_closes_active_searcher():

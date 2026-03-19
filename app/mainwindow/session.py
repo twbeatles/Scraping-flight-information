@@ -48,7 +48,7 @@ class SessionMixin:
         
         # 결과 표시
         self.all_results = results
-        self.current_search_params = params
+        self.current_search_params = config.normalize_search_params(params)
         self._apply_filter()
         
         # 검색 조건 복원
@@ -76,7 +76,7 @@ class SessionMixin:
                 return
             
             # 검색 조건 복원
-            self.current_search_params = search_params
+            self.current_search_params = config.normalize_search_params(search_params)
             self.all_results = results
             self.results = results
             
@@ -88,8 +88,8 @@ class SessionMixin:
             
             # 로그 및 상태 표시
             min_price = results[0].price if results else 0
-            origin = search_params.get('origin', '?')
-            dest = search_params.get('dest', '?')
+            origin = self.current_search_params.get('origin', '?')
+            dest = self.current_search_params.get('dest', '?')
             
             # 24시간 경과 여부는 비차단 안내만 표시
             if hours_ago >= 24:

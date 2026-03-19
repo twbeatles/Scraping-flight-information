@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import time
 from typing import cast
 
-from PyQt6.QtCore import QDate, QTimer, Qt
+from PyQt6.QtCore import QDate, QSettings, QTimer, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QButtonGroup, QComboBox, QDateEdit, QRadioButton, QSpinBox, QMessageBox
 
@@ -143,6 +143,51 @@ def test_price_alert_matching_respects_return_date(monkeypatch):
     assert all(alert_id != 2 for alert_id, _ in ctx.db.updated)
 
 
+def test_price_alert_matching_requires_adults(monkeypatch):
+    class _DummyDB:
+        def __init__(self):
+            self.updated = []
+            self.triggered = []
+            self.alerts = [
+                PriceAlert(1, "ICN", "NRT", "20260301", "20260305", 300000, 1, None, None, 0, "now", adults=1),
+                PriceAlert(2, "ICN", "NRT", "20260301", "20260305", 300000, 1, None, None, 0, "now", adults=2),
+            ]
+
+        def get_active_alerts(self):
+            return self.alerts
+
+        def update_alert_check(self, alert_id, current_price):
+            self.updated.append((alert_id, current_price))
+            return True
+
+        def mark_alert_triggered(self, alert_id):
+            self.triggered.append(alert_id)
+            return True
+
+    class _DummyContext:
+        def __init__(self):
+            self.db = _DummyDB()
+            self.log_viewer = _DummyLogViewer()
+            self.current_search_params = {
+                "origin": "ICN",
+                "dest": "NRT",
+                "dep": "20260301",
+                "ret": "20260305",
+                "adults": 2,
+                "cabin_class": "ECONOMY",
+            }
+
+    ctx = _DummyContext()
+    results = [FlightResult(airline="Test", price=250000, departure_time="10:00", arrival_time="12:00")]
+
+    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
+
+    MainWindow._check_price_alerts(ctx, results)
+
+    assert ctx.db.triggered == [2]
+    assert ctx.db.updated == [(2, 250000)]
+
+
 def test_restore_search_panel_round_trip_and_cabin(qapp):
     panel = _build_search_panel()
 
@@ -198,6 +243,111 @@ def test_restore_search_panel_oneway_disables_return_date(qapp):
 
     assert panel.rb_oneway.isChecked()
     assert panel.date_ret.isEnabled() is False
+
+
+def test_restore_search_panel_restores_sel_domestic_route(qapp):
+    class _Prefs:
+        def __init__(self):
+            self._profiles = {}
+            self._presets = {}
+            self._preferred_time = {"departure_start": 0, "departure_end": 24}
+
+        def get_all_profiles(self):
+            return self._profiles
+
+        def get_all_presets(self):
+            return self._presets
+
+        def get_preferred_time(self):
+            return self._preferred_time
+
+        def set_preferred_time(self, start, end):
+            self._preferred_time = {"departure_start": start, "departure_end": end}
+
+        def add_preset(self, code, name):
+            self._presets[code] = name
+
+        def remove_preset(self, code):
+            self._presets.pop(code, None)
+
+        def save_profile(self, name, params):
+            self._profiles[name] = params
+
+        def get_profile(self, name):
+            return self._profiles.get(name, {})
+
+    panel = SearchPanel(_Prefs())
+
+    class _DummyContext:
+        search_panel: object
+
+    ctx = _DummyContext()
+    ctx.search_panel = panel
+
+    params = {
+        "origin": "SEL",
+        "dest": "CJU",
+        "dep": (datetime.now() + timedelta(days=7)).strftime("%Y%m%d"),
+        "ret": (datetime.now() + timedelta(days=10)).strftime("%Y%m%d"),
+        "adults": 2,
+        "cabin_class": "BUSINESS",
+        "is_domestic": True,
+    }
+
+    MainWindow._restore_search_panel_from_params(ctx, params)
+
+    assert panel.rb_domestic.isChecked() is True
+    assert panel.cb_origin.currentData() == "SEL"
+    assert panel.cb_dest.currentData() == "CJU"
+    assert panel.cb_cabin_class.currentData() == "BUSINESS"
+
+
+def test_search_panel_save_restore_settings_round_trips_sel(qapp):
+    class _Prefs:
+        def __init__(self):
+            self._profiles = {}
+            self._presets = {}
+            self._preferred_time = {"departure_start": 0, "departure_end": 24}
+
+        def get_all_profiles(self):
+            return self._profiles
+
+        def get_all_presets(self):
+            return self._presets
+
+        def get_preferred_time(self):
+            return self._preferred_time
+
+        def set_preferred_time(self, start, end):
+            self._preferred_time = {"departure_start": start, "departure_end": end}
+
+        def add_preset(self, code, name):
+            self._presets[code] = name
+
+        def remove_preset(self, code):
+            self._presets.pop(code, None)
+
+        def save_profile(self, name, params):
+            self._profiles[name] = params
+
+        def get_profile(self, name):
+            return self._profiles.get(name, {})
+
+    QSettings("FlightBot", "FlightComparisonBot").clear()
+
+    panel = SearchPanel(_Prefs())
+    panel.rb_domestic.setChecked(True)
+    panel._on_flight_type_changed()
+    panel.cb_origin.setCurrentIndex(panel.cb_origin.findData("SEL"))
+    panel.cb_dest.setCurrentIndex(panel.cb_dest.findData("CJU"))
+    panel.save_settings()
+
+    restored = SearchPanel(_Prefs())
+    restored.restore_settings()
+
+    assert restored.rb_domestic.isChecked() is True
+    assert restored.cb_origin.currentData() == "SEL"
+    assert restored.cb_dest.currentData() == "CJU"
 
 
 def test_search_finished_uses_single_render_path():
@@ -464,6 +614,27 @@ def test_filter_debounce_applies_last_event_once(qapp):
         time.sleep(0.01)
     assert len(ctx.applied) == 1
     assert ctx.applied[0]["start_time"] == 4
+
+
+def test_auto_alert_failure_logs_and_stores_error():
+    class _DummyDB:
+        def __init__(self):
+            self.update_calls = []
+
+        def update_alert_check(self, alert_id, current_price, last_error=""):
+            self.update_calls.append((alert_id, current_price, last_error))
+            return True
+
+    class _DummyContext:
+        def __init__(self):
+            self.db = _DummyDB()
+            self.log_viewer = _DummyLogViewer()
+
+    ctx = _DummyContext()
+    MainWindow._on_auto_alert_check_failed(ctx, 7, "ICN", "NRT", "boom\ntrace")
+
+    assert ctx.db.update_calls == [(7, None, "boom")]
+    assert any("자동 알림 점검 실패" in log for log in ctx.log_viewer.logs)
 
 
 def test_double_click_url_includes_cabin_and_adults(monkeypatch):

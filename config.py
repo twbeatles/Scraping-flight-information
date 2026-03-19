@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import logging
+from datetime import datetime
 from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,8 @@ DOMESTIC_AIRPORTS = {
     "SEL": "서울(도시)",
 }
 DOMESTIC_AIRPORT_CODES = set(DOMESTIC_AIRPORTS.keys())
+SEARCH_PARAMS_SCHEMA_VERSION = 2
+VALID_CABIN_CLASSES = {"ECONOMY", "BUSINESS", "FIRST"}
 
 # 인터파크 검색용 도시 코드 매핑
 # 입력된 공항 코드를 인터파크 시스템이 이해하는 도시 코드로 변환
@@ -67,6 +70,97 @@ AIRLINE_CATEGORIES = {
 # 모든 알려진 항공사 목록 (필터용)
 ALL_AIRLINES = AIRLINE_CATEGORIES["LCC"] + AIRLINE_CATEGORIES["FSC"] + ["기타"]
 
+
+def _extract_airport_code(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if not text:
+        return ""
+    if validate_airport_code(text):
+        return text
+
+    code_chars: list[str] = []
+    for ch in text:
+        if ch.isascii() and ch.isalpha():
+            code_chars.append(ch)
+            if len(code_chars) == 3:
+                break
+        elif code_chars:
+            break
+    candidate = "".join(code_chars)
+    return candidate if validate_airport_code(candidate) else candidate
+
+
+def normalize_search_date(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y%m%d")
+        except ValueError:
+            continue
+    return text
+
+
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off"}:
+            return False
+    return default
+
+
+def infer_is_domestic_route(origin: Any, dest: Any) -> bool:
+    origin_code = _extract_airport_code(origin)
+    dest_code = _extract_airport_code(dest)
+    return origin_code in DOMESTIC_AIRPORT_CODES and dest_code in DOMESTIC_AIRPORT_CODES
+
+
+def normalize_search_params(params: Dict[str, Any] | None) -> Dict[str, Any]:
+    raw = params if isinstance(params, dict) else {}
+
+    origin = _extract_airport_code(raw.get("origin", ""))
+    dest = _extract_airport_code(raw.get("dest", raw.get("destination", "")))
+    dep = normalize_search_date(raw.get("dep", raw.get("departure_date", raw.get("dep_date"))))
+    ret = normalize_search_date(raw.get("ret", raw.get("return_date", raw.get("ret_date"))))
+
+    try:
+        adults = int(raw.get("adults", 1) or 1)
+    except Exception:
+        adults = 1
+    adults = max(1, min(adults, 9))
+
+    cabin_class = str(raw.get("cabin_class", raw.get("cabin", "ECONOMY")) or "ECONOMY").upper()
+    if cabin_class not in VALID_CABIN_CLASSES:
+        cabin_class = "ECONOMY"
+
+    inferred_domestic = infer_is_domestic_route(origin, dest)
+    if "is_domestic" in raw and raw.get("is_domestic") is not None:
+        is_domestic = _coerce_bool(raw.get("is_domestic"), inferred_domestic)
+    else:
+        is_domestic = inferred_domestic
+
+    normalized = {
+        "origin": origin,
+        "dest": dest,
+        "dep": dep or "",
+        "ret": ret,
+        "adults": adults,
+        "cabin_class": cabin_class,
+        "is_domestic": is_domestic,
+    }
+    timestamp = raw.get("timestamp")
+    if timestamp:
+        normalized["timestamp"] = str(timestamp)
+    return normalized
+
 def validate_airport_code(code: str) -> bool:
     """공항/도시 코드 유효성 검사 (3자리 영문)"""
     if not code:
@@ -101,10 +195,10 @@ class PreferenceManager:
             self.filepath = filepath
             
         self.preferences = self._load()
-        
-    def _load(self) -> Dict[str, Any]:
-        """설정 파일 로드 또는 기본값 생성"""
-        default_prefs = {
+
+    def _default_preferences(self) -> Dict[str, Any]:
+        return {
+            "schema_version": SEARCH_PARAMS_SCHEMA_VERSION,
             "custom_presets": {},  # { "Code": "City Name" }
             "search_history": [],  # [ { "origin":..., "dest":..., "date":... } ]
             "last_search": {},     # 마지막 검색 조건
@@ -116,15 +210,128 @@ class PreferenceManager:
             "theme": "dark",        # 테마 설정 (dark/light)
             # 가격 알림 자동 점검 설정
             "alert_auto_check_enabled": False,
-            "alert_auto_check_interval_min": 30
+            "alert_auto_check_interval_min": 30,
+            "max_results": 1000,
         }
+
+    @staticmethod
+    def _has_required_search_fields(params: Dict[str, Any]) -> bool:
+        return bool(params.get("origin") and params.get("dest") and params.get("dep"))
+
+    @staticmethod
+    def _history_key(params: Dict[str, Any]) -> tuple[Any, ...]:
+        return (
+            params.get("origin", ""),
+            params.get("dest", ""),
+            params.get("dep", ""),
+            params.get("ret") or "",
+            int(params.get("adults", 1) or 1),
+            params.get("cabin_class", "ECONOMY"),
+            bool(params.get("is_domestic", False)),
+        )
+
+    def _normalize_preferences_payload(self, raw: Dict[str, Any] | None) -> Dict[str, Any]:
+        default_prefs = self._default_preferences()
+        prefs = dict(default_prefs)
+        raw_dict = raw if isinstance(raw, dict) else {}
+
+        for key, value in raw_dict.items():
+            if key not in prefs:
+                prefs[key] = value
+
+        custom_presets = raw_dict.get("custom_presets", {})
+        normalized_presets: Dict[str, str] = {}
+        if isinstance(custom_presets, dict):
+            for code, name in custom_presets.items():
+                normalized_code = _extract_airport_code(code)
+                if validate_airport_code(normalized_code):
+                    normalized_presets[normalized_code] = str(name or normalized_code).strip()
+        prefs["custom_presets"] = normalized_presets
+
+        history_items: List[Dict[str, Any]] = []
+        raw_history = raw_dict.get("search_history", [])
+        if isinstance(raw_history, list):
+            seen_keys: set[tuple[Any, ...]] = set()
+            for item in raw_history:
+                if not isinstance(item, dict):
+                    continue
+                normalized = normalize_search_params(item)
+                if not self._has_required_search_fields(normalized):
+                    continue
+                key = self._history_key(normalized)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                history_items.append(normalized)
+        prefs["search_history"] = history_items[:20]
+
+        last_search = raw_dict.get("last_search", {})
+        if isinstance(last_search, dict):
+            normalized_last_search = normalize_search_params(last_search)
+            prefs["last_search"] = (
+                normalized_last_search if self._has_required_search_fields(normalized_last_search) else {}
+            )
+
+        profiles = raw_dict.get("saved_profiles", {})
+        normalized_profiles: Dict[str, Dict[str, Any]] = {}
+        if isinstance(profiles, dict):
+            for name, value in profiles.items():
+                if not isinstance(value, dict):
+                    continue
+                normalized = normalize_search_params(value)
+                if self._has_required_search_fields(normalized):
+                    normalized_profiles[str(name)] = normalized
+        prefs["saved_profiles"] = normalized_profiles
+
+        preferred_times = raw_dict.get("preferred_times", {})
+        if isinstance(preferred_times, dict):
+            try:
+                start = int(preferred_times.get("departure_start", 0))
+            except Exception:
+                start = 0
+            try:
+                end = int(preferred_times.get("departure_end", 24))
+            except Exception:
+                end = 24
+            prefs["preferred_times"] = {
+                "departure_start": max(0, min(start, 23)),
+                "departure_end": max(1, min(end, 24)),
+            }
+
+        theme = str(raw_dict.get("theme", default_prefs["theme"]) or default_prefs["theme"]).lower()
+        prefs["theme"] = theme if theme in {"dark", "light"} else default_prefs["theme"]
+
+        try:
+            max_results = int(raw_dict.get("max_results", default_prefs["max_results"]) or default_prefs["max_results"])
+        except Exception:
+            max_results = default_prefs["max_results"]
+        prefs["max_results"] = max(50, min(max_results, 2000))
+
+        prefs["alert_auto_check_enabled"] = _coerce_bool(
+            raw_dict.get("alert_auto_check_enabled", default_prefs["alert_auto_check_enabled"]),
+            default_prefs["alert_auto_check_enabled"],
+        )
+        try:
+            interval_min = int(
+                raw_dict.get("alert_auto_check_interval_min", default_prefs["alert_auto_check_interval_min"])
+                or default_prefs["alert_auto_check_interval_min"]
+            )
+        except Exception:
+            interval_min = default_prefs["alert_auto_check_interval_min"]
+        prefs["alert_auto_check_interval_min"] = max(5, min(interval_min, 1440))
+        prefs["schema_version"] = SEARCH_PARAMS_SCHEMA_VERSION
+        return prefs
+        
+    def _load(self) -> Dict[str, Any]:
+        """설정 파일 로드 또는 기본값 생성"""
+        default_prefs = self._default_preferences()
         
         if not os.path.exists(self.filepath):
             return default_prefs
             
         try:
             with open(self.filepath, 'r', encoding='utf-8') as f:
-                return {**default_prefs, **json.load(f)} # 병합하여 새 키 추가 대응
+                return self._normalize_preferences_payload(json.load(f))
         except Exception as e:
             logger.warning(f"Error loading preferences: {e}")
             return default_prefs
@@ -132,6 +339,7 @@ class PreferenceManager:
     def save(self):
         """설정 파일 저장"""
         try:
+            self.preferences = self._normalize_preferences_payload(self.preferences)
             with open(self.filepath, 'w', encoding='utf-8') as f:
                 json.dump(self.preferences, f, ensure_ascii=False, indent=4)
         except Exception as e:
@@ -153,9 +361,16 @@ class PreferenceManager:
 
     # --- History ---
     def add_history(self, search_info: Dict[str, Any]):
-        # 중복 제거 (맨 앞으로 이동)
-        history = [h for h in self.preferences["search_history"] if h != search_info]
-        history.insert(0, search_info)
+        normalized = normalize_search_params(search_info)
+        if not self._has_required_search_fields(normalized):
+            return
+
+        history = []
+        new_key = self._history_key(normalized)
+        for item in self.preferences["search_history"]:
+            if self._history_key(item) != new_key:
+                history.append(item)
+        history.insert(0, normalized)
         # 최대 20개 유지
         self.preferences["search_history"] = history[:20]
         self.save()
@@ -165,11 +380,15 @@ class PreferenceManager:
 
     # --- Profiles ---
     def save_profile(self, name: str, params: Dict[str, Any]):
-        self.preferences["saved_profiles"][name] = params
+        normalized = normalize_search_params(params)
+        if not self._has_required_search_fields(normalized):
+            return
+        self.preferences["saved_profiles"][name] = normalized
         self.save()
         
     def get_profile(self, name: str) -> Dict[str, Any]:
-        return self.preferences["saved_profiles"].get(name, {})
+        value = self.preferences["saved_profiles"].get(name, {})
+        return normalize_search_params(value) if isinstance(value, dict) else {}
         
     def delete_profile(self, name: str):
         if name in self.preferences["saved_profiles"]:
@@ -177,15 +396,26 @@ class PreferenceManager:
             self.save()
             
     def get_all_profiles(self) -> Dict[str, Any]:
-        return self.preferences.get("saved_profiles", {})
+        profiles = self.preferences.get("saved_profiles", {})
+        if not isinstance(profiles, dict):
+            return {}
+        return {
+            str(name): normalize_search_params(value)
+            for name, value in profiles.items()
+            if isinstance(value, dict)
+        }
 
     # --- Last Search ---
     def save_last_search(self, data: Dict[str, Any]):
-        self.preferences["last_search"] = data
+        normalized = normalize_search_params(data)
+        self.preferences["last_search"] = (
+            normalized if self._has_required_search_fields(normalized) else {}
+        )
         self.save()
         
     def get_last_search(self) -> Dict[str, Any]:
-        return self.preferences.get("last_search", {})
+        value = self.preferences.get("last_search", {})
+        return normalize_search_params(value) if isinstance(value, dict) else {}
         
     # --- Preferred Time ---
     def set_preferred_time(self, start: int, end: int):
@@ -265,30 +495,33 @@ class PreferenceManager:
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 imported = json.load(f)
-            
-            # 현재 설정에 병합
-            for key, value in imported.items():
-                if key in self.preferences:
-                    if isinstance(value, dict) and isinstance(self.preferences[key], dict):
-                        # 딕셔너리는 깊은 병합
-                        self.preferences[key].update(value)
-                    elif isinstance(value, list) and isinstance(self.preferences[key], list):
-                        # 리스트는 중복 제거 후 병합
-                        existing = self.preferences[key]
-                        for item in value:
-                            if item not in existing:
-                                existing.append(item)
-                    else:
-                        self.preferences[key] = value
-                else:
-                    self.preferences[key] = value
 
-            # 검색 히스토리는 항상 리스트/상한(20개)을 보장
-            history = self.preferences.get("search_history", [])
-            if not isinstance(history, list):
-                history = []
-            self.preferences["search_history"] = history[:20]
-            
+            if not isinstance(imported, dict):
+                raise ValueError("Settings payload must be a JSON object")
+
+            merged = dict(self.preferences)
+            imported_presets = imported.get("custom_presets")
+            if isinstance(imported_presets, dict):
+                merged["custom_presets"] = {**self.preferences.get("custom_presets", {}), **imported_presets}
+
+            imported_profiles = imported.get("saved_profiles")
+            if isinstance(imported_profiles, dict):
+                merged["saved_profiles"] = {**self.preferences.get("saved_profiles", {}), **imported_profiles}
+
+            imported_last_search = imported.get("last_search")
+            if isinstance(imported_last_search, dict):
+                merged["last_search"] = imported_last_search
+
+            imported_history = imported.get("search_history")
+            if isinstance(imported_history, list):
+                merged["search_history"] = imported_history + list(self.preferences.get("search_history", []))
+
+            for key, value in imported.items():
+                if key in {"custom_presets", "saved_profiles", "last_search", "search_history"}:
+                    continue
+                merged[key] = value
+
+            self.preferences = self._normalize_preferences_payload(merged)
             self.save()
             logger.info(f"Settings imported from: {filepath}")
             return True

@@ -17,7 +17,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-03-05)
+## 🔄 정합성 업데이트 (2026-03-19)
 
 아래 항목은 코드베이스 최신 구현 기준으로 우선 적용한다.
 
@@ -41,6 +41,15 @@
 18. 국내선 모드(`rb_domestic`)에서는 `origin/dest`가 모두 `config.DOMESTIC_AIRPORT_CODES`에 포함되어야 검색을 허용한다.
 19. `PreferenceManager.import_settings()`는 병합 후 `search_history`를 리스트로 정규화하고 최대 20개로 제한한다.
 20. `storage/db_last_search.py`는 mixin 정의 전용 모듈로 유지하며, 깨진 단독 실행 블록을 포함하지 않는다.
+21. 검색 파라미터 저장/복원 공용 규약은 `origin`, `dest`, `dep`, `ret`, `adults`, `cabin_class`, `is_domestic`를 사용한다.
+22. 구버전 payload에 `is_domestic`가 없으면 `config.DOMESTIC_AIRPORT_CODES` 기준으로 국내선 여부를 추론한다.
+23. `user_preferences.json`과 세션 JSON 루트는 `schema_version = 2`를 사용하며, 구버전 데이터는 load/import 시 정규화 후 다음 저장부터 새 포맷으로 덮어쓴다.
+24. 검색 패널 설정/프로필/세션/히스토리 복원은 `ui.search_panel_params` 공용 helper 경로를 사용하고, 설정 저장은 표시 문자열이 아니라 공항 코드(`currentData`)를 저장한다.
+25. 검색 패널 복원은 국내선/국제선 모드를 먼저 맞춘 뒤 코드 기준으로 콤보를 적용해야 하며, `SEL -> CJU` 같은 국내선 도시코드도 round-trip 되어야 한다.
+26. `storage/last_search_meta`는 `is_domestic`를 저장해야 하며, 구 DB/구 row 복원 시에는 route 기반 추론으로 보완한다.
+27. `PriceAlert` 및 `price_alerts` 스키마는 `adults`, `last_error`를 포함하고, 가격 알림 매칭 기준은 `origin/dest/dep/ret/cabin_class/adults`다.
+28. 자동 가격 알림 실패는 모달을 띄우지 않고 `last_error` + 로그 + 목록 상태(`점검 실패`)로만 노출하며, 다음 성공 시 `last_error`를 비운다.
+29. `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`는 `ui.search_panel_params`를 hiddenimport에 포함해야 한다.
 
 ---
 
@@ -1207,6 +1216,41 @@ from ui.components import FilterPanel, ResultTable
   - `.github/workflows/quality.yml`
 - GitHub Actions `Quality` now runs tracked text integrity plus `pyright`; `pytest -q` remains a local verification command because the hosted Ubuntu runner is missing `libEGL.so.1` for the PyQt bootstrap.
 - `.gitignore` was reviewed after the quality-tooling changes and no extra ignore rules were required.
+
+## Consistency Update (2026-03-19)
+
+### Superseding Notes
+- This section supersedes older restore/alert packaging notes where they differ.
+- Public runtime/import entrypoints remain unchanged:
+  - `python gui_v2.py`
+  - `from database import FlightDatabase`
+  - `from scraper_v2 import FlightSearcher, PlaywrightScraper`
+  - `from ui.dialogs import ...`
+  - `from ui.components import ...`
+  - `from ui.workers import ...`
+
+### Search Param and Restore Baseline
+- Search payloads are normalized through a shared schema:
+  - `origin`, `dest`, `dep`, `ret`, `adults`, `cabin_class`, `is_domestic`
+- `config.normalize_search_params()` is the canonical normalization entrypoint.
+- `ui.search_panel_params` is the shared UI helper for:
+  - search history restore
+  - session load
+  - last-search restore
+  - profile load
+  - settings save/restore
+- `user_preferences.json` and session JSON now carry `schema_version = 2`; legacy payloads without `is_domestic` are normalized on import/load.
+
+### Alert and Packaging Baseline
+- `price_alerts` now persists `adults` and `last_error`.
+- Alert matching uses `origin/dest/dep/ret/cabin_class/adults`.
+- Auto alert background failures update DB/log state without modal popups and preserve the last successful price.
+- All three PyInstaller spec files now include `ui.search_panel_params` in addition to the existing facade/split-module hiddenimports.
+
+### Verified Baseline
+- `pyright` -> `0 errors`
+- local `pytest -q` -> `65 passed`
+- `python scripts/check_tracked_text.py` -> `Checked 100 tracked text files: OK`
 
 ## Refactor Update (2026-03-14)
 

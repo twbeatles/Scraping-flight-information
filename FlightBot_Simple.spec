@@ -98,6 +98,7 @@ hiddenimports = [
     "ui.search_panel_build",
     "ui.search_panel_actions",
     "ui.search_panel_state",
+    "ui.search_panel_params",
     "ui.search_panel_widget",
     "ui.dialogs_base",
     "ui.dialogs_calendar",
@@ -193,4 +194,3 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
-

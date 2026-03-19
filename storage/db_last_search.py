@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
+import config
 from scraper_v2 import FlightResult
 from storage.models import (
     FavoriteItem,
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 class LastSearchMixin:
     def save_last_search_results(self: Any, search_params: Dict[str, Any], results: List[Any]):
         """마지막 검색 결과를 DB에 저장 (프로그램 재시작 시 복원용)"""
+        normalized_params = config.normalize_search_params(search_params)
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
@@ -36,15 +38,16 @@ class LastSearchMixin:
             # 메타데이터 저장
             cursor.execute("""
                 INSERT OR REPLACE INTO last_search_meta 
-                (id, origin, destination, departure_date, return_date, adults, cabin_class, searched_at, result_count)
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, origin, destination, departure_date, return_date, adults, cabin_class, is_domestic, searched_at, result_count)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                search_params.get('origin', ''),
-                search_params.get('dest', ''),
-                search_params.get('dep', ''),
-                search_params.get('ret'),
-                search_params.get('adults', 1),
-                search_params.get('cabin_class', 'ECONOMY'),
+                normalized_params.get('origin', ''),
+                normalized_params.get('dest', ''),
+                normalized_params.get('dep', ''),
+                normalized_params.get('ret'),
+                normalized_params.get('adults', 1),
+                normalized_params.get('cabin_class', 'ECONOMY'),
+                1 if normalized_params.get('is_domestic', False) else 0,
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 len(results)
             ))
@@ -109,14 +112,17 @@ class LastSearchMixin:
                 return {}, [], "", 0
             
             meta = dict(meta_row)
-            search_params = {
-                'origin': meta.get('origin', ''),
-                'dest': meta.get('destination', ''),
-                'dep': meta.get('departure_date', ''),
-                'ret': meta.get('return_date'),
-                'adults': meta.get('adults', 1),
-                'cabin_class': meta.get('cabin_class', 'ECONOMY')
-            }
+            search_params = config.normalize_search_params(
+                {
+                    'origin': meta.get('origin', ''),
+                    'dest': meta.get('destination', ''),
+                    'dep': meta.get('departure_date', ''),
+                    'ret': meta.get('return_date'),
+                    'adults': meta.get('adults', 1),
+                    'cabin_class': meta.get('cabin_class', 'ECONOMY'),
+                    'is_domestic': bool(meta.get('is_domestic', 0)),
+                }
+            )
             searched_at = meta.get('searched_at', '')
             
             # 경과 시간 계산

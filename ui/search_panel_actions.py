@@ -1,6 +1,7 @@
 """Search panel action/validation mixin."""
 
 from ui.search_panel_shared import *
+from ui.search_panel_params import get_panel_search_params
 
 
 class SearchPanelActionsMixin(SearchPanelMixinBase):
@@ -79,19 +80,16 @@ class SearchPanelActionsMixin(SearchPanelMixinBase):
     def _on_search(self) -> None:
         # Save time preference
         self.prefs.set_preferred_time(self.spin_time_start.value(), self.spin_time_end.value())
-        
-        origin_raw = self.cb_origin.currentData() or self.cb_origin.currentText().split(' ')[0].strip()
-        dest_raw = self.cb_dest.currentData() or self.cb_dest.currentText().split(' ')[0].strip()
-        origin_code = origin_raw.strip().upper()
-        dest_code = dest_raw.strip().upper()
-        
+
+        params = get_panel_search_params(self)
+        origin_code = params["origin"]
+        dest_code = params["dest"]
         dep_date = self.date_dep.date()
         ret_date = self.date_ret.date() if self.rb_round.isChecked() else None
-        
-        dep = dep_date.toString("yyyyMMdd")
-        ret = ret_date.toString("yyyyMMdd") if ret_date is not None else None
-        adults = self.spin_adults.value()
-        cabin_class = self.cb_cabin_class.currentData() or "ECONOMY"
+        dep = params["dep"]
+        ret = params["ret"]
+        adults = params["adults"]
+        cabin_class = params["cabin_class"]
         
         # 입력 유효성 검사
         if not origin_code or not dest_code:

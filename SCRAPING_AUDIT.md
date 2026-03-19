@@ -1,13 +1,13 @@
 # Flight Bot v2.5 Scraping Audit
 
 - 작성일: 2026-02-25
-- 최종 갱신: 2026-03-15
+- 최종 갱신: 2026-03-19
 - 대상 저장소: `Scraping-flight-information`
 - 점검 범위: 스크래퍼, 워커, GUI, DB, 패키징, CI, 문서
 
 ---
 
-## 2026-03-15 기준선
+## 2026-03-19 기준선
 
 - 공개 실행 및 import 진입점은 유지된다.
   - `python gui_v2.py`
@@ -18,8 +18,15 @@
   - `from ui.workers import ...`
 - 로컬 품질 기준선:
   - `pyright` -> `0 errors`
-  - `pytest -q` -> `56 passed`
+  - `pytest -q` -> `65 passed`
   - `python scripts/check_tracked_text.py` -> tracked text check passed
+- 검색 파라미터 기준선:
+  - 저장/복원 공용 스키마는 `origin`, `dest`, `dep`, `ret`, `adults`, `cabin_class`, `is_domestic`
+  - `user_preferences.json`과 세션 JSON 루트는 `schema_version = 2`
+  - 구버전 payload에서 `is_domestic`가 없으면 국내선 코드 기준으로 추론해 정규화한다
+- 가격 알림 기준선:
+  - `price_alerts`는 `adults`, `last_error`를 포함한다
+  - 자동 알림 실패는 모달 없이 DB 상태 + 로그에 기록한다
 - GitHub Actions `Quality` 워크플로 기준선:
   - tracked text integrity check 실행
   - `pyright` 실행
@@ -56,6 +63,7 @@
     - `app.mainwindow.ui_bootstrap_sections`
     - `scraping.playwright_*`
     - `ui.search_panel_*`
+    - `ui.search_panel_params`
     - `ui.dialogs_search_*`
     - `ui.dialogs_tools_*`
     - `ui.styles_dark`
@@ -66,7 +74,9 @@
 - `README.md`, `claude.md`, `gemini.md`는 모두 다음 최신 기준으로 맞춘다.
   - GitHub Actions에서는 `pytest`를 돌리지 않는다.
   - `pytest -q`는 로컬 검증 기준이다.
-  - `.spec` 파일은 facade + split modules + package roots 기준으로 유지된다.
+  - `.spec` 파일은 facade + split modules + package roots + `ui.search_panel_params` 기준으로 유지된다.
+  - 검색 파라미터 저장/복원은 `schema_version = 2`와 공용 정규화 규약을 기준으로 설명한다.
+  - 가격 알림 문서는 성인 수/좌석 등급 매칭과 `점검 실패` 상태를 반영한다.
   - `.gitignore`는 현 상태에서 추가 규칙 없이도 주요 산출물을 커버한다.
 
 ## 남아 있는 운영 메모

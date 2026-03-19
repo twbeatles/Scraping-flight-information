@@ -48,7 +48,7 @@
 - **즐겨찾기** - 관심 항공편 저장 및 메모
 - **검색 기록** - 이전 검색 조건 복원
 - **세션 저장/불러오기** - 검색 결과 JSON 파일로 저장
-- **가격 알림** - 목표 가격 이하 도달 시 알림
+- **가격 알림** - 목표 가격 이하 도달 시 알림 (좌석 등급/성인 인원별 관리)
 - **자동 알림 점검(옵션)** - 앱 실행 중 주기 점검(QTimer, 기본 OFF)
 - **CSV/Excel 내보내기** - 결과 파일 저장
 
@@ -207,13 +207,15 @@ python gui_v2.py
 2. **➕ 새 알림 추가** 섹션에서:
    - 출발지/도착지 선택
    - 여행 날짜 설정
+   - **성인 인원** 및 **좌석 등급** 선택
    - 필요 시 **편도 알림** 체크 (귀국일 없이 감시)
    - **목표 가격** 입력 (예: 300,000원)
 3. **🔔 알림 추가** 클릭
-4. 수동 검색 또는 자동 점검 주기에서 목표 가격 이하 발견 시 알림
+4. 같은 `출발/도착/날짜/성인 수/좌석 등급` 조건의 수동 검색 또는 자동 점검 주기에서 목표 가격 이하 발견 시 알림
 
 > ℹ️ v2.5 개선: 설정에서 자동 점검을 활성화하면 앱 실행 중 주기적으로 알림 조건을 확인할 수 있습니다.  
 > 자동 점검은 백그라운드(헤드리스) 검색으로 동작하며 기본값은 **비활성화(OFF)** 입니다.
+> 자동 점검 실패는 팝업 대신 알림 목록 상태(`⚠️ 점검 실패`)와 로그에 기록되며, 다음 성공 시 상태가 자동으로 해제됩니다.
 
 ### 💾 세션 저장 및 불러오기
 
@@ -423,7 +425,7 @@ pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 | `FlightBot_v2.5.spec` | 표준 GUI 배포 (호환 프로필) | `pyinstaller --clean FlightBot_v2.5.spec` |
 | `FlightBot_Simple.spec` | 콘솔 로그 확인용 디버그 실행파일 | `pyinstaller --clean FlightBot_Simple.spec` |
 
-> 2026-03-15 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)도 함께 포함합니다.
+> 2026-03-19 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)과 공용 검색 파라미터 복원 모듈(`ui.search_panel_params`)도 함께 포함합니다.
 
 ### 빌드 결과
 
@@ -480,6 +482,22 @@ playwright install chromium
 ---
 
 ## 📝 변경 로그
+
+### v2.5.8 (2026-03-19)
+- 🔁 **검색 파라미터 저장/복원 규약 통합**
+  - `origin/dest/dep/ret/adults/cabin_class/is_domestic` 공용 규약으로 검색 기록, 프로필, 세션 JSON, 마지막 검색 DB, 설정 복원을 통일
+  - `user_preferences.json`과 세션 JSON은 `schema_version = 2`를 사용하며, 구버전 payload는 로드 시 자동 정규화
+  - 국내선 `SEL -> CJU` 같은 도시코드 경로도 설정/세션/히스토리 복원 시 그대로 round-trip
+- 🔔 **가격 알림 정합성 보강**
+  - 가격 알림이 성인 수와 좌석 등급까지 포함해 저장/매칭되도록 확장
+  - 자동 알림 점검 실패는 팝업 없이 `점검 실패` 상태와 로그에 기록하고, 마지막 성공 가격은 유지
+- 📦 **패키징/문서 동기화**
+  - `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`에 `ui.search_panel_params` hiddenimport 반영
+  - README/가이드 문서/SCRAPING_AUDIT를 2026-03-19 기준 동작으로 갱신
+- ✅ **검증**
+  - `pyright` -> `0 errors`
+  - `python scripts/check_tracked_text.py` -> `Checked 100 tracked text files: OK`
+  - local `pytest -q` -> `65 passed`
 
 ### v2.5.7 (2026-03-15)
 - ✅ **정적 품질 기준선 확정**
@@ -684,6 +702,5 @@ python scripts/check_tracked_text.py
 ---
 
 *Made with ❤️ for travelers*
-
 
 

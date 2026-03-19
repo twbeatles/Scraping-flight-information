@@ -116,6 +116,7 @@ hiddenimports = [
     'ui.search_panel_build',
     'ui.search_panel_actions',
     'ui.search_panel_state',
+    'ui.search_panel_params',
     'ui.search_panel_widget',
     'ui.dialogs_base',
     'ui.dialogs_calendar',
@@ -207,4 +208,3 @@ exe = EXE(
 # 2. 빌드 명령: pyinstaller --clean flight_bot.spec
 # 3. 예상 크기: ~80-120MB (Playwright 포함)
 # 4. 실행 전 Playwright 브라우저 설치 필요: playwright install chromium
-

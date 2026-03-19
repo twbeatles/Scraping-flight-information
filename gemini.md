@@ -34,7 +34,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-03-05)
+## 🔄 정합성 업데이트 (2026-03-19)
 
 최신 코드 기준으로 아래 항목을 우선 적용한다.
 
@@ -54,6 +54,15 @@
 14. 국내선 모드(`rb_domestic`)에서는 출발/도착 코드가 모두 `config.DOMESTIC_AIRPORT_CODES`에 포함되지 않으면 검색을 차단한다.
 15. `PreferenceManager.import_settings()`는 병합 후 `search_history`를 리스트로 정규화하고 최대 20개로 trim한다.
 16. `storage/db_last_search.py`는 mixin 모듈 전용으로 유지하며 깨진 단독 실행 블록을 두지 않는다.
+17. 검색 파라미터 저장/복원 공용 규약은 `origin`, `dest`, `dep`, `ret`, `adults`, `cabin_class`, `is_domestic`다.
+18. 구버전 payload에 `is_domestic`가 없으면 `config.DOMESTIC_AIRPORT_CODES` 기준으로 국내선 여부를 추론한다.
+19. `user_preferences.json`과 세션 JSON 루트는 `schema_version = 2`를 사용하고, 구버전 데이터는 load/import 시 정규화한다.
+20. 검색 패널 설정/프로필/세션/히스토리 복원은 `ui.search_panel_params` 공용 helper를 사용한다.
+21. 설정 저장은 공항 표시 문자열이 아니라 코드(`currentData`)를 저장하며, 복원 시 국내선/국제선 모드를 먼저 맞춘 뒤 코드를 적용한다.
+22. `last_search_meta`는 `is_domestic`를 저장하고, 구 row 복원 시 route 기반 추론으로 보완한다.
+23. `PriceAlert` 및 `price_alerts`는 `adults`, `last_error`를 포함하며 가격 알림 매칭 기준은 `origin/dest/dep/ret/cabin_class/adults`다.
+24. 자동 가격 알림 실패는 모달 대신 DB 상태(`last_error`)와 로그/목록 상태(`점검 실패`)로 노출한다.
+25. PyInstaller spec 3종은 `ui.search_panel_params`를 hiddenimport에 포함해야 한다.
 
 ---
 
@@ -78,7 +87,7 @@ Scraping-flight-information-main-v2/
     └── workers.py         # 백그라운드 스레드 워커 (SearchWorker, MultiSearchWorker)
 ```
 
-- 2026-03-05 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 `hiddenimports`에 facade(`database`, `scraper_v2`, `ui.components/dialogs/workers`)와 분할 모듈(`app.mainwindow.shared`, `scraping.extract_domestic`, `scraping.extract_international`)을 보강한 상태가 기준이다.
+- 2026-03-19 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 `hiddenimports`에 facade(`database`, `scraper_v2`, `ui.components/dialogs/workers`), 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`), 분할 모듈(`app.mainwindow.shared`, `scraping.extract_domestic`, `scraping.extract_international`, `ui.search_panel_params`)을 함께 유지한 상태가 기준이다.
 
 ---
 
@@ -311,6 +320,8 @@ class PriceAlert:        # 가격 알림
     triggered: int
     created_at: str
     cabin_class: str = "ECONOMY"
+    adults: int = 1
+    last_error: str = ""
 ```
 
 **데이터베이스 테이블:**
@@ -319,9 +330,9 @@ class PriceAlert:        # 가격 알림
 | `favorites` | 즐겨찾기 | airline, price, origin, destination, note |
 | `price_history` | 가격 변동 기록 | origin, destination, price, recorded_at |
 | `search_logs` | 검색 로그 | origin, destination, result_count, min_price |
-| `price_alerts` | 가격 알림 | target_price, cabin_class, is_active, triggered |
+| `price_alerts` | 가격 알림 | target_price, cabin_class, adults, is_active, triggered, last_error |
 | `last_search_results` | 마지막 검색 캐시 | 전체 FlightResult 필드 |
-| `last_search_meta` | 마지막 검색 메타데이터 | origin, destination, searched_at |
+| `last_search_meta` | 마지막 검색 메타데이터 | origin, destination, searched_at, is_domestic |
 | `telemetry_events` | 관측성 이벤트 | event_type, success, error_code, selector_name |
 
 **Thread-Safety 패턴:**
@@ -349,7 +360,7 @@ class FlightDatabase:
 | **즐겨찾기** | `add_favorite()`, `get_favorites()`, `remove_favorite()`, `is_favorite()` |
 | **가격 히스토리** | `add_price_history()`, `get_price_history()`, `get_price_trend()` |
 | **검색 로그** | `log_search()`, `get_popular_routes()` |
-| **가격 알림** | `add_price_alert(..., cabin_class)`, `get_active_alerts()`, `mark_alert_triggered()` |
+| **가격 알림** | `add_price_alert(..., cabin_class, adults)`, `get_active_alerts()`, `mark_alert_triggered()`, `update_alert_check(..., last_error)` |
 | **마지막 검색** | `save_last_search_results()`, `get_last_search_results()` |
 | **관측성** | `log_telemetry_event()`, `get_telemetry_summary()`, `get_selector_health()` |
 | **유틸리티** | `close()`, `close_all_connections()`, `get_stats()`, `cleanup_old_data()`, `optimize()` |

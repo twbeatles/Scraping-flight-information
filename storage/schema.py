@@ -94,9 +94,11 @@ class DatabaseSchemaMixin:
                     return_date TEXT,
                     target_price INTEGER NOT NULL,
                     cabin_class TEXT DEFAULT 'ECONOMY',
+                    adults INTEGER DEFAULT 1,
                     is_active INTEGER DEFAULT 1,
                     last_checked TEXT,
                     last_price INTEGER,
+                    last_error TEXT DEFAULT '',
                     triggered INTEGER DEFAULT 0,
                     created_at TEXT NOT NULL
                 )
@@ -135,6 +137,7 @@ class DatabaseSchemaMixin:
                     return_date TEXT,
                     adults INTEGER DEFAULT 1,
                     cabin_class TEXT DEFAULT 'ECONOMY',
+                    is_domestic INTEGER DEFAULT 0,
                     searched_at TEXT NOT NULL,
                     result_count INTEGER DEFAULT 0
                 )
@@ -177,10 +180,16 @@ class DatabaseSchemaMixin:
                     cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
             ensure_column("price_alerts", "cabin_class", "TEXT DEFAULT 'ECONOMY'")
+            ensure_column("price_alerts", "adults", "INTEGER DEFAULT 1")
+            ensure_column("price_alerts", "last_error", "TEXT DEFAULT ''")
             ensure_column("last_search_results", "confidence", "REAL DEFAULT 0.0")
             ensure_column("last_search_results", "extraction_source", "TEXT DEFAULT ''")
+            ensure_column("last_search_meta", "is_domestic", "INTEGER DEFAULT 0")
             ensure_column("favorites", "dedup_key", "TEXT DEFAULT ''")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fav_dedup_key ON favorites(dedup_key)")
+            cursor.execute("UPDATE price_alerts SET adults = 1 WHERE adults IS NULL")
+            cursor.execute("UPDATE price_alerts SET last_error = '' WHERE last_error IS NULL")
+            cursor.execute("UPDATE last_search_meta SET is_domestic = 0 WHERE is_domestic IS NULL")
 
             conn.commit()
         finally:

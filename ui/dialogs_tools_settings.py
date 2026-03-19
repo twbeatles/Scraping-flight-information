@@ -299,8 +299,13 @@ class SettingsDialog(QDialog):
             
             if origin and dest:
                 params = {
-                    "origin": origin, "dest": dest, 
-                    "dep": dep, "ret": ret, "adults": int(adults) if adults else 1
+                    "origin": origin,
+                    "dest": dest,
+                    "dep": dep,
+                    "ret": ret,
+                    "adults": int(adults) if adults else 1,
+                    "cabin_class": "ECONOMY",
+                    "is_domestic": config.infer_is_domestic_route(origin, dest),
                 }
                 self.prefs.save_profile("엑셀 가져옴", params)
                 QMessageBox.information(self, "완료", "'엑셀 가져옴' 프로필로 저장되었습니다.\\n검색 패널에서 불러오세요.")

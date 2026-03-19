@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
+import config
 from scraper_v2 import FlightResult
 from storage.models import (
     FavoriteItem,
@@ -32,17 +33,34 @@ class AlertsMixin:
         return_date: str | None,
         target_price: int,
         cabin_class: str = "ECONOMY",
+        adults: int = 1,
     ) -> int:
         """가격 알림 추가"""
+        normalized_params = config.normalize_search_params(
+            {
+                "origin": origin,
+                "dest": dest,
+                "dep": dep_date,
+                "ret": return_date,
+                "adults": adults,
+                "cabin_class": cabin_class,
+            }
+        )
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO price_alerts 
-                (origin, destination, departure_date, return_date, target_price, cabin_class, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (origin, destination, departure_date, return_date, target_price, cabin_class, adults, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                origin, dest, dep_date, return_date, target_price, (cabin_class or "ECONOMY"),
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                normalized_params.get("origin", ""),
+                normalized_params.get("dest", ""),
+                normalized_params.get("dep", ""),
+                normalized_params.get("ret"),
+                target_price,
+                normalized_params.get("cabin_class", "ECONOMY"),
+                normalized_params.get("adults", 1),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             ))
             conn.commit()
             return cursor.lastrowid
@@ -66,19 +84,34 @@ class AlertsMixin:
             cursor.execute("SELECT * FROM price_alerts ORDER BY created_at DESC")
             rows = cursor.fetchall()
             return [PriceAlert(**dict(row)) for row in rows]
-    def update_alert_check(self: Any, alert_id: int, current_price: int) -> bool:
+    def update_alert_check(
+        self: Any,
+        alert_id: int,
+        current_price: int | None,
+        last_error: str = "",
+    ) -> bool:
         """알림 마지막 체크 시간 및 가격 업데이트"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE price_alerts 
-                SET last_checked = ?, last_price = ?
-                WHERE id = ?
-            """, (
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                current_price,
-                alert_id
-            ))
+            checked_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if current_price is None:
+                cursor.execute(
+                    """
+                    UPDATE price_alerts
+                    SET last_checked = ?, last_error = ?
+                    WHERE id = ?
+                    """,
+                    (checked_at, last_error or "", alert_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE price_alerts
+                    SET last_checked = ?, last_price = ?, last_error = ?
+                    WHERE id = ?
+                    """,
+                    (checked_at, current_price, last_error or "", alert_id),
+                )
             conn.commit()
             return cursor.rowcount > 0
     def mark_alert_triggered(self: Any, alert_id: int) -> bool:
@@ -87,7 +120,7 @@ class AlertsMixin:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE price_alerts 
-                SET triggered = 1, is_active = 0
+                SET triggered = 1, is_active = 0, last_error = ''
                 WHERE id = ?
             """, (alert_id,))
             conn.commit()

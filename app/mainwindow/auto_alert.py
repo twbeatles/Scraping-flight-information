@@ -44,14 +44,22 @@ class AutoAlertMixin:
         )
         self.alert_worker.progress.connect(lambda msg: self.log_viewer.append_log(msg))
         self.alert_worker.alert_checked.connect(self._on_auto_alert_checked)
+        self.alert_worker.alert_check_failed.connect(self._on_auto_alert_check_failed)
         self.alert_worker.alert_hit.connect(self._on_auto_alert_hit)
         self.alert_worker.done.connect(self._on_auto_alert_done)
         self.alert_worker.start()
     def _on_auto_alert_checked(self: Any, alert_id: int, current_price: int):
         try:
-            self.db.update_alert_check(alert_id, current_price)
+            self.db.update_alert_check(alert_id, current_price, last_error="")
         except Exception as e:
             logger.debug(f"Failed to update auto alert check: {e}")
+    def _on_auto_alert_check_failed(self: Any, alert_id: int, origin: str, dest: str, error_message: str):
+        summary = (error_message or "").strip().splitlines()[0] if error_message else "알 수 없는 오류"
+        try:
+            self.db.update_alert_check(alert_id, None, last_error=summary)
+        except Exception as e:
+            logger.debug(f"Failed to update auto alert failure: {e}")
+        self.log_viewer.append_log(f"⚠️ 자동 알림 점검 실패: {origin}->{dest} - {summary}")
     def _on_auto_alert_hit(self: Any, alert_id: int, price: int, target: int, origin: str, dest: str, cabin: str):
         try:
             self.db.mark_alert_triggered(alert_id)

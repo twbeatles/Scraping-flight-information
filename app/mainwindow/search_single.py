@@ -16,15 +16,18 @@ class SearchSingleMixin:
         if not self._guard_manual_browser_for_new_search("새 검색"):
             return
         # Save search params for later use
-        self.current_search_params = {
-            "origin": origin,
-            "dest": dest,
-            "dep": dep,
-            "ret": ret,
-            "adults": adults,
-            "cabin_class": cabin_class,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
-        }
+        self.current_search_params = config.normalize_search_params(
+            {
+                "origin": origin,
+                "dest": dest,
+                "dep": dep,
+                "ret": ret,
+                "adults": adults,
+                "cabin_class": cabin_class,
+                "is_domestic": bool(self.search_panel.rb_domestic.isChecked()),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            }
+        )
         
         # Save to History
         self.prefs.add_history(self.current_search_params)
@@ -149,6 +152,7 @@ class SearchSingleMixin:
             dest = self.current_search_params.get('dest', '').upper()
             dep = self.current_search_params.get('dep', '')
             ret = self.current_search_params.get('ret')
+            adults = int(self.current_search_params.get('adults', 1) or 1)
             cabin = (self.current_search_params.get('cabin_class', 'ECONOMY') or 'ECONOMY').upper()
             min_price = results[0].price if results else 0
             
@@ -163,6 +167,9 @@ class SearchSingleMixin:
                     continue
                 alert_cabin = (getattr(alert, "cabin_class", "ECONOMY") or "ECONOMY").upper()
                 if alert_cabin != cabin:
+                    continue
+                alert_adults = int(getattr(alert, "adults", 1) or 1)
+                if alert_adults != adults:
                     continue
                 
                 # 알림 마지막 체크 시간 및 가격 업데이트

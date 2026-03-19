@@ -3,6 +3,8 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import config
+from app.session_manager import SessionManager
 from config import PreferenceManager
 from database import FlightDatabase
 from scraper_v2 import FlightResult
@@ -74,11 +76,35 @@ def test_last_search_metadata_fields_are_persisted(tmp_path: Path):
         )
     ]
     db.save_last_search_results(search_params, results)
-    _, restored, _, _ = db.get_last_search_results()
+    restored_params, restored, _, _ = db.get_last_search_results()
 
     assert len(restored) == 1
     assert restored[0].confidence == 0.88
     assert restored[0].extraction_source == "international_primary"
+    assert restored_params["is_domestic"] is False
+
+
+def test_last_search_metadata_persists_sel_domestic_route(tmp_path: Path):
+    db = FlightDatabase(db_path=str(tmp_path / "flight_data.db"))
+    search_params = {
+        "origin": "SEL",
+        "dest": "CJU",
+        "dep": "20260301",
+        "ret": "20260305",
+        "adults": 2,
+        "cabin_class": "ECONOMY",
+        "is_domestic": True,
+    }
+    db.save_last_search_results(
+        search_params,
+        [FlightResult(airline="Domestic", price=111000, departure_time="10:00", arrival_time="11:00")],
+    )
+
+    restored_params, _, _, _ = db.get_last_search_results()
+
+    assert restored_params["origin"] == "SEL"
+    assert restored_params["dest"] == "CJU"
+    assert restored_params["is_domestic"] is True
 
 
 def test_close_all_connections_allows_db_file_removal(tmp_path: Path):
@@ -202,4 +228,106 @@ def test_import_settings_trims_search_history_to_20(tmp_path: Path):
 
     assert ok is True
     assert len(prefs.get_history()) == 20
+
+
+def test_preference_manager_normalizes_legacy_search_payloads(tmp_path: Path):
+    pref_path = tmp_path / "prefs.json"
+    pref_path.write_text(
+        json.dumps(
+            {
+                "custom_presets": {"abc": "커스텀"},
+                "last_search": {
+                    "origin": "SEL (서울(도시))",
+                    "dest": "CJU (제주)",
+                    "dep": "2026-03-01",
+                    "ret": "2026-03-05",
+                    "adults": "2",
+                    "cabin_class": "business",
+                },
+                "saved_profiles": {
+                    "legacy": {
+                        "origin": "SEL (서울(도시))",
+                        "dest": "CJU (제주)",
+                        "dep": "2026-03-01",
+                        "ret": "2026-03-05",
+                    }
+                },
+                "search_history": [
+                    {
+                        "origin": "SEL (서울(도시))",
+                        "dest": "CJU (제주)",
+                        "dep": "2026-03-01",
+                        "ret": "2026-03-05",
+                        "timestamp": "2026-03-01 10:00",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    prefs = PreferenceManager(filepath=str(pref_path))
+    last_search = prefs.get_last_search()
+    profile = prefs.get_profile("legacy")
+    history = prefs.get_history()
+
+    assert prefs.preferences["schema_version"] == config.SEARCH_PARAMS_SCHEMA_VERSION
+    assert last_search["origin"] == "SEL"
+    assert last_search["dest"] == "CJU"
+    assert last_search["dep"] == "20260301"
+    assert last_search["cabin_class"] == "BUSINESS"
+    assert last_search["adults"] == 2
+    assert last_search["is_domestic"] is True
+    assert profile["origin"] == "SEL"
+    assert history[0]["origin"] == "SEL"
+
+
+def test_session_manager_load_normalizes_legacy_session_payload(tmp_path: Path):
+    session_path = tmp_path / "legacy_session.json"
+    session_path.write_text(
+        json.dumps(
+            {
+                "saved_at": "2026-03-19T12:00:00",
+                "search_params": {
+                    "origin": "SEL (서울(도시))",
+                    "dest": "CJU (제주)",
+                    "dep": "2026-03-01",
+                    "ret": "2026-03-05",
+                    "adults": "2",
+                },
+                "results": [
+                    {
+                        "airline": "Legacy",
+                        "price": 123000,
+                        "departure_time": "10:00",
+                        "arrival_time": "11:00",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    params, results, saved_at = SessionManager.load_session(str(session_path))
+
+    assert params["origin"] == "SEL"
+    assert params["dest"] == "CJU"
+    assert params["dep"] == "20260301"
+    assert params["is_domestic"] is True
+    assert params["adults"] == 2
+    assert saved_at == "2026-03-19T12:00:00"
+    assert len(results) == 1
+
+
+def test_add_price_alert_persists_adults_and_default_error(tmp_path: Path):
+    db = FlightDatabase(db_path=str(tmp_path / "flight_data.db"))
+
+    db.add_price_alert("ICN", "NRT", "20260320", None, 250000, "BUSINESS", adults=3)
+    alerts = db.get_all_alerts()
+
+    assert len(alerts) == 1
+    assert alerts[0].adults == 3
+    assert alerts[0].last_error == ""
 

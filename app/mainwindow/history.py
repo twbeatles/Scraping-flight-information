@@ -2,6 +2,7 @@
 
 from app.mainwindow.shared import *
 from typing import TYPE_CHECKING, Any
+from ui.search_panel_params import apply_search_params_to_panel
 
 if TYPE_CHECKING:
     from app.main_window import MainWindow
@@ -35,48 +36,8 @@ class HistoryMixin:
     def _restore_search_panel_from_params(self: Any, params: dict):
         """검색 파라미터를 검색 패널 UI에 복원"""
         if not params:
-            return
-
-        sp = self.search_panel
-
-        origin = params.get('origin')
-        if origin:
-            idx = sp.cb_origin.findData(origin)
-            if idx >= 0:
-                sp.cb_origin.setCurrentIndex(idx)
-
-        dest = params.get('dest')
-        if dest:
-            idx = sp.cb_dest.findData(dest)
-            if idx >= 0:
-                sp.cb_dest.setCurrentIndex(idx)
-
-        dep = params.get('dep')
-        if dep:
-            dep_date = QDate.fromString(dep, "yyyyMMdd")
-            if dep_date.isValid():
-                sp.date_dep.setDate(dep_date)
-
-        ret = params.get('ret')
-        if ret:
-            sp.rb_round.setChecked(True)
-            sp._toggle_return_date()
-            ret_date = QDate.fromString(ret, "yyyyMMdd")
-            if ret_date.isValid():
-                sp.date_ret.setDate(ret_date)
-        else:
-            sp.rb_oneway.setChecked(True)
-            sp._toggle_return_date()
-
-        adults = params.get('adults')
-        if adults:
-            sp.spin_adults.setValue(int(adults))
-
-        cabin = params.get('cabin_class')
-        if cabin:
-            idx = sp.cb_cabin_class.findData(cabin)
-            if idx >= 0:
-                sp.cb_cabin_class.setCurrentIndex(idx)
+            return {}
+        return apply_search_params_to_panel(self.search_panel, params)
     def restore_search_from_history(self: Any, item):
         data = item.data(Qt.ItemDataRole.UserRole)
         if not data:

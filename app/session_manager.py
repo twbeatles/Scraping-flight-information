@@ -4,6 +4,8 @@ import json
 import logging
 from datetime import datetime
 
+import config
+
 logger = logging.getLogger(__name__)
 
 class SessionManager:
@@ -41,8 +43,9 @@ class SessionManager:
                     continue
             
             session_data = {
+                "schema_version": config.SEARCH_PARAMS_SCHEMA_VERSION,
                 "saved_at": datetime.now().isoformat(),
-                "search_params": search_params,
+                "search_params": config.normalize_search_params(search_params),
                 "results": serialized_results
             }
             
@@ -87,7 +90,8 @@ class SessionManager:
                 )
                 results.append(flight)
             
-            return data.get("search_params", {}), results, data.get("saved_at", "")
+            params = config.normalize_search_params(data.get("search_params", {}))
+            return params, results, data.get("saved_at", "")
         except Exception as e:
             logging.error(f"Session load error: {e}")
             return {}, [], ""

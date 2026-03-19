@@ -54,3 +54,5 @@ class PriceAlert:
     triggered: int
     created_at: str
     cabin_class: str = "ECONOMY"
+    adults: int = 1
+    last_error: str = ""

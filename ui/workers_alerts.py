@@ -26,6 +26,7 @@ class AlertAutoCheckWorker(QThread):
     """가격 알림 자동 점검 워커"""
     progress = pyqtSignal(str)
     alert_checked = pyqtSignal(int, int)  # alert_id, current_price
+    alert_check_failed = pyqtSignal(int, str, str, str)  # alert_id, origin, dest, error
     alert_hit = pyqtSignal(int, int, int, str, str, str)  # alert_id, price, target, origin, dest, cabin
     done = pyqtSignal(int, int)  # checked_count, hit_count
 
@@ -75,10 +76,11 @@ class AlertAutoCheckWorker(QThread):
             dep_date = getattr(alert, "departure_date", "")
             ret_date = getattr(alert, "return_date", None)
             target_price = int(getattr(alert, "target_price", 0) or 0)
+            adults = int(getattr(alert, "adults", 1) or 1)
             cabin_class = (getattr(alert, "cabin_class", "ECONOMY") or "ECONOMY").upper()
             alert_id = int(getattr(alert, "id", 0) or 0)
 
-            self.progress.emit(f"🔔 자동점검: {origin}->{dest} {dep_date} ({cabin_class})")
+            self.progress.emit(f"🔔 자동점검: {origin}->{dest} {dep_date} ({cabin_class}, 성인 {adults}명)")
             searcher_cls = _searcher_cls()
             try:
                 searcher = searcher_cls(telemetry_callback=self.telemetry_callback)
@@ -86,13 +88,14 @@ class AlertAutoCheckWorker(QThread):
                 searcher = searcher_cls()
             self._set_active_searcher(searcher)
             current_price = 0
+            failure_message = ""
             try:
                 results = searcher.search(
                     origin,
                     dest,
                     dep_date,
                     ret_date,
-                    adults=1,
+                    adults=adults,
                     cabin_class=cabin_class,
                     max_results=self.max_results,
                     progress_callback=lambda _msg: None,
@@ -101,10 +104,14 @@ class AlertAutoCheckWorker(QThread):
                 if results:
                     current_price = min(r.price for r in results)
             except Exception as e:
+                failure_message = str(e)
                 logger.debug(f"Alert auto-check error for {origin}->{dest}: {e}")
             finally:
                 checked += 1
-                self.alert_checked.emit(alert_id, current_price)
+                if failure_message:
+                    self.alert_check_failed.emit(alert_id, origin, dest, failure_message)
+                else:
+                    self.alert_checked.emit(alert_id, current_price)
                 self._clear_active_searcher(searcher)
                 try:
                     searcher.close()

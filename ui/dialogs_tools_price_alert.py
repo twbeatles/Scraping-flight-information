@@ -87,6 +87,14 @@ class PriceAlertDialog(QDialog):
         self.chk_oneway.setToolTip("체크하면 귀국일 없이 편도 노선만 기준으로 알림을 설정합니다.")
         self.chk_oneway.toggled.connect(self._toggle_alert_oneway)
         new_layout.addWidget(self.chk_oneway, 2, 0, 1, 2)
+
+        # 성인 수
+        new_layout.addWidget(QLabel("성인:"), 2, 2)
+        self.spin_adults = QSpinBox()
+        self.spin_adults.setRange(1, 9)
+        self.spin_adults.setValue(1)
+        self.spin_adults.setSuffix(" 명")
+        new_layout.addWidget(self.spin_adults, 2, 3)
         
         # 목표 가격
         new_layout.addWidget(QLabel("목표 가격:"), 3, 0)
@@ -98,17 +106,17 @@ class PriceAlertDialog(QDialog):
         new_layout.addWidget(self.spin_target, 3, 1)
 
         # 좌석 등급
-        new_layout.addWidget(QLabel("좌석 등급:"), 2, 2)
+        new_layout.addWidget(QLabel("좌석 등급:"), 3, 2)
         self.cb_cabin_class = QComboBox()
         self.cb_cabin_class.addItem("💺 이코노미", "ECONOMY")
         self.cb_cabin_class.addItem("💼 비즈니스", "BUSINESS")
         self.cb_cabin_class.addItem("👑 일등석", "FIRST")
-        new_layout.addWidget(self.cb_cabin_class, 2, 3)
+        new_layout.addWidget(self.cb_cabin_class, 3, 3)
         
         # 추가 버튼
         btn_add = QPushButton("🔔 알림 추가")
         btn_add.clicked.connect(self._add_alert)
-        new_layout.addWidget(btn_add, 3, 2, 1, 2)
+        new_layout.addWidget(btn_add, 4, 0, 1, 4)
         
         layout.addWidget(grp_new)
         
@@ -118,9 +126,9 @@ class PriceAlertDialog(QDialog):
         layout.addWidget(alert_label)
         
         self.table = QTableWidget()
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(9)
         self.table.setHorizontalHeaderLabels([
-            "ID", "노선", "출발일", "귀국일", "좌석", "목표가", "현재가", "상태"
+            "ID", "노선", "출발일", "귀국일", "인원", "좌석", "목표가", "현재가", "상태"
         ])
         self.table.setColumnHidden(0, True)  # ID 숨김
         header = self.table.horizontalHeader()
@@ -159,6 +167,7 @@ class PriceAlertDialog(QDialog):
         dep_date = self.date_dep.date()
         ret_date = None if self.chk_oneway.isChecked() else self.date_ret.date()
         target = self.spin_target.value()
+        adults = self.spin_adults.value()
         cabin_class = self.cb_cabin_class.currentData() or "ECONOMY"
 
         if not _validate_route_and_dates(self, origin, dest, dep_date, ret_date):
@@ -168,7 +177,7 @@ class PriceAlertDialog(QDialog):
         ret = ret_date.toString("yyyyMMdd") if ret_date is not None else None
 
         try:
-            alert_id = self.db.add_price_alert(origin, dest, dep, ret, target, cabin_class)
+            alert_id = self.db.add_price_alert(origin, dest, dep, ret, target, cabin_class, adults)
             QMessageBox.information(self, "완료", f"가격 알림이 추가되었습니다. (ID: {alert_id})")
             self._refresh_alerts()
         except Exception as e:
@@ -206,14 +215,17 @@ class PriceAlertDialog(QDialog):
                 ret_str = "-"
             self.table.setItem(i, 3, QTableWidgetItem(ret_str))
 
+            adults = int(getattr(alert, "adults", 1) or 1)
+            self.table.setItem(i, 4, QTableWidgetItem(f"{adults}명"))
+
             cabin_class = getattr(alert, "cabin_class", "ECONOMY") or "ECONOMY"
             cabin_text = {"ECONOMY": "이코노미", "BUSINESS": "비즈니스", "FIRST": "일등석"}.get(cabin_class, cabin_class)
-            self.table.setItem(i, 4, QTableWidgetItem(cabin_text))
+            self.table.setItem(i, 5, QTableWidgetItem(cabin_text))
             
             # 목표 가격
             target_item = QTableWidgetItem(f"{alert.target_price:,}원")
             target_item.setForeground(QColor("#4cc9f0"))
-            self.table.setItem(i, 5, target_item)
+            self.table.setItem(i, 6, target_item)
             
             # 현재 가격
             if alert.last_price:
@@ -224,12 +236,15 @@ class PriceAlertDialog(QDialog):
                     current_item.setForeground(QColor("#f59e0b"))
             else:
                 current_item = QTableWidgetItem("미확인")
-            self.table.setItem(i, 6, current_item)
+            self.table.setItem(i, 7, current_item)
             
             # 상태
             if alert.triggered:
                 status = "✅ 발동됨"
                 color = "#22c55e"
+            elif getattr(alert, "last_error", ""):
+                status = "⚠️ 점검 실패"
+                color = "#f59e0b"
             elif alert.is_active:
                 status = "🔔 활성"
                 color = "#4cc9f0"
@@ -239,7 +254,10 @@ class PriceAlertDialog(QDialog):
             
             status_item = QTableWidgetItem(status)
             status_item.setForeground(QColor(color))
-            self.table.setItem(i, 7, status_item)
+            last_error = getattr(alert, "last_error", "") or ""
+            if last_error:
+                status_item.setToolTip(last_error)
+            self.table.setItem(i, 8, status_item)
     
     def _delete_selected(self):
         """선택된 알림 삭제"""

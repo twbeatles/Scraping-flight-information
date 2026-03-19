@@ -20,8 +20,8 @@ class _FakeDB:
     def __init__(self):
         self.add_calls = []
 
-    def add_price_alert(self, origin, dest, dep, ret, target, cabin_class="ECONOMY"):
-        self.add_calls.append((origin, dest, dep, ret, target, cabin_class))
+    def add_price_alert(self, origin, dest, dep, ret, target, cabin_class="ECONOMY", adults=1):
+        self.add_calls.append((origin, dest, dep, ret, target, cabin_class, adults))
         return 1
 
     def get_all_alerts(self):
@@ -182,6 +182,7 @@ def test_price_alert_oneway_saves_none_return_date(qapp, monkeypatch):
     assert db.add_calls
     assert db.add_calls[0][3] is None
     assert db.add_calls[0][5] == "ECONOMY"
+    assert db.add_calls[0][6] == 1
 
 
 def test_price_alert_rejects_return_before_departure(qapp, monkeypatch):
