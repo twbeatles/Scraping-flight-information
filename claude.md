@@ -2,6 +2,8 @@
 
 이 문서는 Claude AI가 Flight Bot 프로젝트 작업 시 참조해야 하는 상세 기술 가이드입니다.
 
+아래 상세 예시보다 상단의 최신 정합성 업데이트 섹션을 우선한다. 하위 섹션의 예시 코드는 개념 설명용이며 최신 구현과 일부 차이가 있을 수 있다.
+
 ---
 
 ## 🎯 프로젝트 핵심 요약
@@ -17,7 +19,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-03-19)
+## 🔄 정합성 업데이트 (2026-03-24)
 
 아래 항목은 코드베이스 최신 구현 기준으로 우선 적용한다.
 
@@ -36,7 +38,7 @@
 13. 텔레메트리 보존 정책 기본값은 `DB 30일 + JSONL 10MB x 최대 5개 롤링`이다.
 14. 수동 추출 완료/실패는 `ui_manual_extract_finished` 이벤트로 별도 기록한다.
 15. `ParallelSearcher`는 `scraping/parallel.py`에서 로거를 포함해 런타임 예외 없이 동작해야 하며, `scraper_v2.ParallelSearcher` 공개 경로를 유지한다.
-16. 결과 더블클릭 예약 URL은 현재 검색 파라미터의 `cabin_class`/`adults`를 `?cabin=...&adult=...`로 포함한다.
+16. 결과 더블클릭은 선택 항공편 deep link가 아니라 현재 검색 파라미터의 `cabin_class`/`adults`를 포함한 인터파크 검색 URL 재오픈이다.
 17. 검색 기록 복원은 `restore_search_from_history()`의 수동 분기 대신 `_restore_search_panel_from_params()` 단일 경로를 사용한다.
 18. 국내선 모드(`rb_domestic`)에서는 `origin/dest`가 모두 `config.DOMESTIC_AIRPORT_CODES`에 포함되어야 검색을 허용한다.
 19. `PreferenceManager.import_settings()`는 병합 후 `search_history`를 리스트로 정규화하고 최대 20개로 제한한다.
@@ -50,6 +52,15 @@
 27. `PriceAlert` 및 `price_alerts` 스키마는 `adults`, `last_error`를 포함하고, 가격 알림 매칭 기준은 `origin/dest/dep/ret/cabin_class/adults`다.
 28. 자동 가격 알림 실패는 모달을 띄우지 않고 `last_error` + 로그 + 목록 상태(`점검 실패`)로만 노출하며, 다음 성공 시 `last_error`를 비운다.
 29. `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`는 `ui.search_panel_params`를 hiddenimport에 포함해야 한다.
+30. 국제선 추출은 동일 출처 API 우선(`flights/search -> status -> final POST {}`), 실패 시 DOM fallback을 사용한다.
+31. 국제선 DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용하고 `크로스셀링` alt는 버린다.
+32. `FlightResult`는 `benefit_price`, `benefit_label`을 포함하며 국내선 canonical `price`는 계속 기본가다.
+33. `scraping.search_sources`는 내부 source boundary이며 기본 런타임 source는 `InterparkAirSource`다.
+34. `InterparkTicketSource`는 metadata + `NotImplementedError` skeleton까지만 제공한다.
+35. 설정 저장은 `QSettings.sync()`까지 호출해 `SEL -> CJU` 같은 국내선 경로도 즉시 round-trip 되어야 한다.
+36. 로컬/CI 정적 품질 기준선은 `pyright --warnings`다.
+37. 텍스트 무결성 기준선은 `python scripts/check_tracked_text.py --check-lf`이며, UTF-8 BOM과 CRLF를 모두 실패로 취급한다.
+38. 로컬 훅 기준선은 `.pre-commit-config.yaml`의 `check_tracked_text.py --check-lf` + `pyright --warnings`다.
 
 ---
 
@@ -144,6 +155,8 @@ class FlightResult:
     outbound_price: int = 0
     return_price: int = 0
     return_airline: str = ""
+    benefit_price: int = 0
+    benefit_label: str = ""
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

@@ -80,6 +80,7 @@ hiddenimports = [
     "scraping.extract_domestic",
     "scraping.extract_international",
     "scraping.searcher",
+    "scraping.search_sources",
     "scraping.parallel",
     "storage.models",
     "storage.schema",

@@ -1,11 +1,43 @@
 # Flight Bot v2.5 Scraping Audit
 
 - 작성일: 2026-02-25
-- 최종 갱신: 2026-03-19
+- 최종 갱신: 2026-03-24
 - 대상 저장소: `Scraping-flight-information`
 - 점검 범위: 스크래퍼, 워커, GUI, DB, 패키징, CI, 문서
 
 ---
+
+## 2026-03-24 기준선
+
+- 공개 실행 및 import 진입점은 유지된다.
+  - `python gui_v2.py`
+  - `from database import FlightDatabase`
+  - `from scraper_v2 import FlightSearcher, PlaywrightScraper`
+  - `from ui.components import ...`
+  - `from ui.dialogs import ...`
+  - `from ui.workers import ...`
+- 국제선 기준선:
+  - 국제선 추출은 동일 출처 API 우선(`flights/search -> status -> final POST {}`), 실패 시 DOM fallback 사용
+  - DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용하고 `크로스셀링` alt는 버린다
+  - mixed-carrier 왕복은 `airline`, `return_airline`을 모두 채운다
+- 국내선 가격 기준선:
+  - `FlightResult`는 `benefit_price`, `benefit_label`을 포함한다
+  - canonical `price`는 계속 기본가이며, 혜택가는 툴팁/CSV/Excel에 노출한다
+- 내부 구조 기준선:
+  - `scraping.search_sources`가 내부 source boundary를 제공한다
+  - 기본 런타임 source는 `InterparkAirSource`
+  - `InterparkTicketSource`는 skeleton adapter만 제공한다
+- 로컬 품질 기준선:
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `pytest -q --basetemp=.pytest_tmp` -> `72 passed`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 101 tracked text files: OK`
+- GitHub Actions `Quality` 워크플로 기준선:
+  - tracked text integrity check는 `--check-lf`와 BOM 검사를 포함한다
+  - `pyright --warnings` 실행
+  - `pytest`는 실행하지 않음
+- 저장소 운영 기준선:
+  - `.pre-commit-config.yaml`로 로컬 훅에서 `check_tracked_text.py --check-lf`와 `pyright --warnings`를 실행할 수 있다
+  - `.gitignore`는 `.pytest_tmp/`, `.pre-commit-cache/`를 포함해 현재 운영 산출물을 커버한다
 
 ## 2026-03-19 기준선
 
@@ -62,6 +94,7 @@
   - 분리 모듈 포함:
     - `app.mainwindow.ui_bootstrap_sections`
     - `scraping.playwright_*`
+    - `scraping.search_sources`
     - `ui.search_panel_*`
     - `ui.search_panel_params`
     - `ui.dialogs_search_*`
@@ -75,9 +108,10 @@
   - GitHub Actions에서는 `pytest`를 돌리지 않는다.
   - `pytest -q`는 로컬 검증 기준이다.
   - `.spec` 파일은 facade + split modules + package roots + `ui.search_panel_params` 기준으로 유지된다.
+  - 2026-03-24부터는 `scraping.search_sources` hiddenimport도 포함한다.
   - 검색 파라미터 저장/복원은 `schema_version = 2`와 공용 정규화 규약을 기준으로 설명한다.
   - 가격 알림 문서는 성인 수/좌석 등급 매칭과 `점검 실패` 상태를 반영한다.
-  - `.gitignore`는 현 상태에서 추가 규칙 없이도 주요 산출물을 커버한다.
+  - `.gitignore`는 `.pytest_tmp/`, `.pre-commit-cache/`를 포함해 현재 산출물을 커버한다.
 
 ## 남아 있는 운영 메모
 

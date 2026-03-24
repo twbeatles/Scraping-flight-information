@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: check-tracked-text
+        name: check tracked text encoding
+        entry: python scripts/check_tracked_text.py --check-lf
+        language: system
+        pass_filenames: false
+      - id: pyright
+        name: pyright
+        entry: pyright --warnings
+        language: system
+        pass_filenames: false

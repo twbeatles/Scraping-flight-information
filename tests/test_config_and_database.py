@@ -71,6 +71,8 @@ def test_last_search_metadata_fields_are_persisted(tmp_path: Path):
             price=222000,
             departure_time="10:00",
             arrival_time="12:00",
+            benefit_price=210000,
+            benefit_label="삼성카드 5% 할인 적용 시",
             confidence=0.88,
             extraction_source="international_primary",
         )
@@ -81,6 +83,8 @@ def test_last_search_metadata_fields_are_persisted(tmp_path: Path):
     assert len(restored) == 1
     assert restored[0].confidence == 0.88
     assert restored[0].extraction_source == "international_primary"
+    assert restored[0].benefit_price == 210000
+    assert restored[0].benefit_label == "삼성카드 5% 할인 적용 시"
     assert restored_params["is_domestic"] is False
 
 
@@ -319,6 +323,30 @@ def test_session_manager_load_normalizes_legacy_session_payload(tmp_path: Path):
     assert params["adults"] == 2
     assert saved_at == "2026-03-19T12:00:00"
     assert len(results) == 1
+
+
+def test_session_manager_round_trips_benefit_fields(tmp_path: Path):
+    session_path = tmp_path / "benefit_session.json"
+    search_params = {"origin": "GMP", "dest": "CJU", "dep": "20260415", "is_domestic": True}
+    results = [
+        FlightResult(
+            airline="제주항공",
+            price=39900,
+            benefit_price=38930,
+            benefit_label="삼성카드 2.5% 캐시백 적용 시",
+            departure_time="06:15",
+            arrival_time="07:30",
+        )
+    ]
+
+    assert SessionManager.save_session(str(session_path), search_params, results) is True
+
+    restored_params, restored_results, _ = SessionManager.load_session(str(session_path))
+
+    assert restored_params["origin"] == "GMP"
+    assert len(restored_results) == 1
+    assert restored_results[0].benefit_price == 38930
+    assert restored_results[0].benefit_label == "삼성카드 2.5% 캐시백 적용 시"
 
 
 def test_add_price_alert_persists_adults_and_default_error(tmp_path: Path):

@@ -25,9 +25,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Check tracked text encoding
-        run: python scripts/check_tracked_text.py
+        run: python scripts/check_tracked_text.py --check-lf
 
       - name: Run pyright
-        run: pyright
+        run: pyright --warnings
       # PyQt-based pytest coverage stays local because the hosted Ubuntu runner
       # does not provide the native graphics stack the GUI test bootstrap needs.

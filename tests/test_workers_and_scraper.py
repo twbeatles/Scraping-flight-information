@@ -51,7 +51,7 @@ def test_international_dedup_key_preserves_distinct_return_details():
                 return 100
             if script.startswith("window.scrollTo("):
                 return None
-            if "const cards = document.querySelectorAll('li[data-index]');" in script:
+            if "const cards = document.querySelectorAll('li[data-index], div[data-index]');" in script:
                 return [
                     {
                         "airline": "TestAir",
@@ -126,6 +126,93 @@ def test_domestic_topk_combination_matches_naive_ordering():
     ]
 
     assert combined_keys == naive
+
+
+def test_international_api_path_builds_results_without_dom_fallback():
+    class _FakePage:
+        def __init__(self):
+            self.fetch_calls = []
+
+        def evaluate(self, script):
+            if "fetch(" in script and "/status" in script:
+                self.fetch_calls.append("status")
+                return {"status": "COMPLETE", "content": {"listKey": "INTERNATIONAL::abc"}}
+            if "fetch(" in script and '/international/flights/search/v2/INTERNATIONAL::abc' in script:
+                self.fetch_calls.append("final")
+                assert '"POST"' in script
+                return {
+                    "bestFares": [
+                        {
+                            "adultPrice": 359400,
+                            "schedules": [
+                                {
+                                    "carrier": {"name": "제주항공"},
+                                    "totalFlightTime": "PT2H30M",
+                                    "stop": 0,
+                                    "segments": [
+                                        {
+                                            "departure": {"at": "2026-04-15T10:25:00"},
+                                            "arrival": {"at": "2026-04-15T12:55:00"},
+                                            "marketingCarrier": {"name": "제주항공"},
+                                        }
+                                    ],
+                                },
+                                {
+                                    "carrier": {"name": "파라타항공"},
+                                    "totalFlightTime": "PT2H45M",
+                                    "stop": 0,
+                                    "segments": [
+                                        {
+                                            "departure": {"at": "2026-04-18T13:30:00"},
+                                            "arrival": {"at": "2026-04-18T16:15:00"},
+                                            "marketingCarrier": {"name": "파라타항공"},
+                                        }
+                                    ],
+                                },
+                            ],
+                            "fares": [{"adultPrice": 359400}],
+                        }
+                    ],
+                    "contents": [],
+                }
+            if "fetch(" in script and "/flights/search/AIRPORT:ICN-AIRPORT:NRT/2026-04-15/AIRPORT:NRT-AIRPORT:ICN/2026-04-18" in script:
+                self.fetch_calls.append("initial")
+                assert "cabins=BUSINESS" in script
+                return {"key": "INTERNATIONAL::abc", "data": {}}
+            if "const cards = document.querySelectorAll('li[data-index], div[data-index]');" in script:
+                raise AssertionError("DOM fallback should not run when API succeeds")
+            if "const candidates = document.querySelectorAll(" in script:
+                raise AssertionError("Fallback DOM parser should not run when API succeeds")
+            if script == "document.body.scrollHeight":
+                return 100
+            if script.startswith("window.scrollTo("):
+                return None
+            raise AssertionError(f"Unexpected script: {script[:120]}")
+
+        def wait_for_timeout(self, _timeout):
+            return None
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = _FakePage()
+    cast(Any, scraper)._last_search_context = {
+        "origin": "ICN",
+        "destination": "NRT",
+        "departure_date": "20260415",
+        "return_date": "20260418",
+        "adults": 1,
+        "cabin_class": "BUSINESS",
+        "child": 0,
+        "infant": 0,
+        "is_domestic": False,
+    }
+
+    results = scraper._extract_prices()
+
+    assert len(results) == 1
+    assert results[0].price == 359400
+    assert results[0].airline == "제주항공"
+    assert results[0].return_airline == "파라타항공"
+    assert results[0].extraction_source == "international_api"
 
 
 def test_build_interpark_search_url_normalizes_hyphenated_dates():

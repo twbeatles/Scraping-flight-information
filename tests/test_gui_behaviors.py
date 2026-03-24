@@ -4,7 +4,16 @@ from typing import cast
 
 from PyQt6.QtCore import QDate, QSettings, QTimer, Qt
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QButtonGroup, QComboBox, QDateEdit, QRadioButton, QSpinBox, QMessageBox
+from PyQt6.QtWidgets import (
+    QApplication,
+    QButtonGroup,
+    QComboBox,
+    QDateEdit,
+    QFileDialog,
+    QMessageBox,
+    QRadioButton,
+    QSpinBox,
+)
 
 from database import PriceAlert
 from gui_v2 import MainWindow
@@ -664,6 +673,48 @@ def test_double_click_url_includes_cabin_and_adults(monkeypatch):
     assert len(opened_urls) == 1
     assert "/c:SEL-c:TYO-20260301/c:TYO-c:SEL-20260305" in opened_urls[0]
     assert "?cabin=BUSINESS&infant=0&child=0&adult=2" in opened_urls[0]
+    assert any("현재 조건 검색 열기" in log for log in ctx.log_viewer.logs)
+
+
+def test_result_table_price_tooltip_and_csv_include_benefit(tmp_path, qapp, monkeypatch):
+    table = ResultTable()
+    results = [
+        FlightResult(
+            airline="제주항공",
+            price=39900,
+            benefit_price=38930,
+            benefit_label="삼성카드 2.5% 캐시백 적용 시",
+            departure_time="06:15",
+            arrival_time="07:30",
+        )
+    ]
+    table.update_data(results)
+
+    price_item = table.item(0, 1)
+    assert price_item is not None
+    assert "기본가: 39,900원" in price_item.toolTip()
+    assert "혜택가: 38,930원" in price_item.toolTip()
+    assert "혜택 정보: 삼성카드 2.5% 캐시백 적용 시" in price_item.toolTip()
+
+    output_path = tmp_path / "benefit.csv"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(output_path), "CSV Files (*.csv)"),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Ok,
+    )
+
+    table.export_to_csv()
+    content = output_path.read_text(encoding="utf-8-sig")
+
+    assert "혜택가" in content
+    assert "혜택 정보" in content
+    assert "38930" in content
+    assert "삼성카드 2.5% 캐시백 적용 시" in content
 
 
 def test_restore_search_from_history_restores_cabin_class(monkeypatch):

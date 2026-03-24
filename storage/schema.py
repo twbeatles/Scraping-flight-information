@@ -122,6 +122,8 @@ class DatabaseSchemaMixin:
                     outbound_price INTEGER DEFAULT 0,
                     return_price INTEGER DEFAULT 0,
                     return_airline TEXT,
+                    benefit_price INTEGER DEFAULT 0,
+                    benefit_label TEXT DEFAULT '',
                     confidence REAL DEFAULT 0.0,
                     extraction_source TEXT DEFAULT ''
                 )
@@ -184,6 +186,8 @@ class DatabaseSchemaMixin:
             ensure_column("price_alerts", "last_error", "TEXT DEFAULT ''")
             ensure_column("last_search_results", "confidence", "REAL DEFAULT 0.0")
             ensure_column("last_search_results", "extraction_source", "TEXT DEFAULT ''")
+            ensure_column("last_search_results", "benefit_price", "INTEGER DEFAULT 0")
+            ensure_column("last_search_results", "benefit_label", "TEXT DEFAULT ''")
             ensure_column("last_search_meta", "is_domestic", "INTEGER DEFAULT 0")
             ensure_column("favorites", "dedup_key", "TEXT DEFAULT ''")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fav_dedup_key ON favorites(dedup_key)")

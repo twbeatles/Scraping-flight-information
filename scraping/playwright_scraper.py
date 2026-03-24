@@ -57,6 +57,7 @@ class PlaywrightScraper:
         self._no_scroll_count: int = 0
         self._no_new_count: int = 0
         self._bottom_count: int = 0
+        self._last_search_context: Dict[str, Any] = {}
 
     def _emit_telemetry(self, event_type: str, success: bool = True, **kwargs) -> None:
         if not self.telemetry_callback:

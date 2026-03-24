@@ -2,6 +2,8 @@
 
 이 문서는 Gemini AI가 Flight Bot 프로젝트와 상호작용할 때 참조해야 하는 포괄적인 가이드라인입니다.
 
+아래 상세 예시보다 상단의 최신 정합성 업데이트 섹션을 우선한다. 하위 섹션의 예시 코드는 개념 설명용이며 최신 구현과 일부 차이가 있을 수 있다.
+
 ---
 
 ## 📋 프로젝트 개요
@@ -34,7 +36,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-03-19)
+## 🔄 정합성 업데이트 (2026-03-24)
 
 최신 코드 기준으로 아래 항목을 우선 적용한다.
 
@@ -49,7 +51,7 @@
 9. 다중/날짜/자동알림 검색은 `background_mode=True`(헤드리스, non-persistent)로 실행한다.
 10. `AlertAutoCheckWorker.cancel()`은 활성 검색기를 즉시 close한다.
 11. `ParallelSearcher`는 `scraping/parallel.py` 로거 정의를 포함해 런타임 예외 없이 동작해야 하며, `scraper_v2.ParallelSearcher` 공개 경로를 유지한다.
-12. 결과 더블클릭 예약 URL은 현재 검색 파라미터의 `cabin_class`/`adults`를 `?cabin=...&adult=...`로 포함한다.
+12. 결과 더블클릭은 선택 항공편 deep link가 아니라 현재 검색 파라미터의 `cabin_class`/`adults`를 포함한 인터파크 검색 URL 재오픈이다.
 13. 검색 기록 복원은 `_restore_search_panel_from_params()` 단일 복원 경로를 사용해 `cabin_class`를 포함한다.
 14. 국내선 모드(`rb_domestic`)에서는 출발/도착 코드가 모두 `config.DOMESTIC_AIRPORT_CODES`에 포함되지 않으면 검색을 차단한다.
 15. `PreferenceManager.import_settings()`는 병합 후 `search_history`를 리스트로 정규화하고 최대 20개로 trim한다.
@@ -63,6 +65,15 @@
 23. `PriceAlert` 및 `price_alerts`는 `adults`, `last_error`를 포함하며 가격 알림 매칭 기준은 `origin/dest/dep/ret/cabin_class/adults`다.
 24. 자동 가격 알림 실패는 모달 대신 DB 상태(`last_error`)와 로그/목록 상태(`점검 실패`)로 노출한다.
 25. PyInstaller spec 3종은 `ui.search_panel_params`를 hiddenimport에 포함해야 한다.
+26. 국제선 추출은 동일 출처 API 우선(`flights/search -> status -> final POST {}`), 실패 시 DOM fallback을 사용한다.
+27. 국제선 DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용하고 `크로스셀링` alt는 버린다.
+28. `FlightResult`는 `benefit_price`, `benefit_label`을 포함하며 국내선 canonical `price`는 계속 기본가다.
+29. `scraping.search_sources`는 내부 source boundary이며 기본 런타임 source는 `InterparkAirSource`다.
+30. `InterparkTicketSource`는 metadata + `NotImplementedError` skeleton까지만 제공한다.
+31. 설정 저장은 `QSettings.sync()`까지 호출해 `SEL -> CJU` 같은 국내선 경로도 즉시 round-trip 되어야 한다.
+32. 로컬/CI 정적 품질 기준선은 `pyright --warnings`다.
+33. 텍스트 무결성 기준선은 `python scripts/check_tracked_text.py --check-lf`이며, UTF-8 BOM과 CRLF를 모두 실패로 취급한다.
+34. 로컬 훅 기준선은 `.pre-commit-config.yaml`의 `check_tracked_text.py --check-lf` + `pyright --warnings`다.
 
 ---
 
@@ -184,6 +195,8 @@ class FlightResult:
     outbound_price: int = 0   # 가는편 가격
     return_price: int = 0     # 오는편 가격
     return_airline: str = ""  # 오는편 항공사 (교차 항공사 시)
+    benefit_price: int = 0
+    benefit_label: str = ""
     confidence: float = 0.0
     extraction_source: str = ""
     

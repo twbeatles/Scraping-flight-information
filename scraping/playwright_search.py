@@ -76,6 +76,17 @@ def run_search(
     )
     if cabin not in ["ECONOMY", "BUSINESS", "FIRST"]:
         cabin = "ECONOMY"
+    scraper._last_search_context = {
+        "origin": origin_upper,
+        "destination": destination_upper,
+        "departure_date": departure_date,
+        "return_date": normalized_return_date,
+        "adults": adults,
+        "cabin_class": cabin,
+        "child": 0,
+        "infant": 0,
+        "is_domestic": is_domestic,
+    }
 
     try:
         for attempt_idx in range(start_attempt, max_attempts):
@@ -174,7 +185,9 @@ def run_search(
 
                 if not found_data:
                     log("데이터가 충분히 로드되지 않았습니다.")
-                    if background_mode:
+                    if not is_domestic:
+                        log("🌍 국제선은 DOM 대기 실패 시에도 API 우선 추출을 시도합니다.")
+                    elif background_mode:
                         log("백그라운드 모드에서는 수동 모드 전환 없이 종료합니다.")
                         break
 
@@ -190,8 +203,13 @@ def run_search(
                         results = domestic_round_trip
                         break
 
-                if found_data:
-                    log("데이터 준비 완료! 추출 시작")
+                can_attempt_extraction = found_data or not is_domestic
+
+                if can_attempt_extraction:
+                    if found_data:
+                        log("데이터 준비 완료! 추출 시작")
+                    else:
+                        log("DOM 준비 신호 없이 국제선 API/DOM 추출을 시도합니다.")
                     time_module.sleep(scraper_config.SEARCH_PAGE_STABILIZE_SECONDS)
 
                     if is_domestic:

@@ -50,7 +50,7 @@ class UiBootstrapMixin:
         )
 
     def _on_table_double_click(self: Any, row, col):
-        """테이블 더블클릭 - 예약 페이지 열기"""
+        """테이블 더블클릭 - 현재 조건 검색 페이지 다시 열기."""
         flight = self.table.get_flight_at_row(row)
         if not flight:
             return
@@ -81,6 +81,6 @@ class UiBootstrapMixin:
         )
 
         webbrowser.open(url)
-        self.log_viewer.append_log(f"브라우저에서 예약 페이지 열기: {flight.airline}")
+        self.log_viewer.append_log(f"브라우저에서 현재 조건 검색 열기: {flight.airline}")
 
     # --- Favorites Tab ---

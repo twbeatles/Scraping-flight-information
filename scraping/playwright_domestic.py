@@ -81,6 +81,8 @@ def combine_domestic_round_trip(
                 outbound_price=outbound["price"],
                 return_price=returning["price"],
                 return_airline=returning["airline"],
+                benefit_price=_coerce_int(outbound.get("benefitPrice")) + _coerce_int(returning.get("benefitPrice")),
+                benefit_label=_combine_benefit_labels(outbound, returning),
                 confidence=0.8,
                 extraction_source="domestic_combined",
             )
@@ -203,6 +205,8 @@ def build_domestic_results(
         arr_time = item.get("arrTime", "") or ""
         airline = item.get("airline", "Unknown") or "Unknown"
         stops = int(item.get("stops", 0) or 0)
+        benefit_price = _coerce_int(item.get("benefitPrice"))
+        benefit_label = str(item.get("benefitLabel", "") or "")
 
         if price <= 0 or not dep_time or not arr_time:
             continue
@@ -224,6 +228,8 @@ def build_domestic_results(
                 return_arrival_time="",
                 return_stops=0,
                 is_round_trip=False,
+                benefit_price=benefit_price,
+                benefit_label=benefit_label,
                 confidence=confidence,
                 extraction_source=extraction_source,
             )
@@ -252,3 +258,26 @@ def extract_domestic_prices(scraper: "PlaywrightScraper") -> List[FlightResult]:
     except Exception as exc:
         logger.error("Domestic extraction error: %s", exc, exc_info=True)
         return []
+
+
+def _coerce_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _combine_benefit_labels(outbound: Dict[str, Any], returning: Dict[str, Any]) -> str:
+    parts: list[str] = []
+    outbound_price = _coerce_int(outbound.get("benefitPrice"))
+    return_price = _coerce_int(returning.get("benefitPrice"))
+    outbound_label = str(outbound.get("benefitLabel", "") or "").strip()
+    return_label = str(returning.get("benefitLabel", "") or "").strip()
+
+    if outbound_price > 0:
+        label = outbound_label or "혜택가"
+        parts.append(f"가는편 {label}: {outbound_price:,}원")
+    if return_price > 0:
+        label = return_label or "혜택가"
+        parts.append(f"오는편 {label}: {return_price:,}원")
+    return " | ".join(parts)

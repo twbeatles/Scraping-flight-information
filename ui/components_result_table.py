@@ -153,6 +153,16 @@ class ResultTable(QTableWidget):
             price_item = QTableWidgetItem(price_text)
             price_item.setData(Qt.ItemDataRole.UserRole, flight.price)
             price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            tooltip_lines = [f"기본가: {flight.price:,}원"]
+            if hasattr(flight, 'outbound_price') and flight.outbound_price > 0:
+                tooltip_lines.append(
+                    f"구성: {flight.outbound_price:,}원 + {flight.return_price:,}원"
+                )
+            if getattr(flight, 'benefit_price', 0) > 0:
+                tooltip_lines.append(f"혜택가: {flight.benefit_price:,}원")
+            if getattr(flight, 'benefit_label', ''):
+                tooltip_lines.append(f"혜택 정보: {flight.benefit_label}")
+            price_item.setToolTip("\n".join(tooltip_lines))
             
             # Color coding based on price position
             ratio = (flight.price - min_price) / price_range if price_range else 0
@@ -286,8 +296,22 @@ class ResultTable(QTableWidget):
             ws.title = "검색 결과"
             
             # 헤더
-            headers = ["항공사", "오는편 항공사", "가격", "가는편 출발", "가는편 도착", "경유",
-                       "오는편 출발", "오는편 도착", "경유", "출처", "가는편 가격", "오는편 가격"]
+            headers = [
+                "항공사",
+                "오는편 항공사",
+                "가격",
+                "혜택가",
+                "혜택 정보",
+                "가는편 출발",
+                "가는편 도착",
+                "경유",
+                "오는편 출발",
+                "오는편 도착",
+                "경유",
+                "출처",
+                "가는편 가격",
+                "오는편 가격",
+            ]
             ws.append(headers)
             
             # 데이터
@@ -296,6 +320,8 @@ class ResultTable(QTableWidget):
                     flight.airline,
                     getattr(flight, 'return_airline', ''),
                     flight.price,
+                    getattr(flight, 'benefit_price', 0),
+                    getattr(flight, 'benefit_label', ''),
                     flight.departure_time,
                     flight.arrival_time,
                     flight.stops,
@@ -337,13 +363,29 @@ class ResultTable(QTableWidget):
         try:
             with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.writer(f)
-                writer.writerow(["항공사", "오는편 항공사", "가격", "가는편 출발", "가는편 도착", "경유",
-                               "오는편 출발", "오는편 도착", "경유", "출처", "가는편 가격", "오는편 가격"])
+                writer.writerow([
+                    "항공사",
+                    "오는편 항공사",
+                    "가격",
+                    "혜택가",
+                    "혜택 정보",
+                    "가는편 출발",
+                    "가는편 도착",
+                    "경유",
+                    "오는편 출발",
+                    "오는편 도착",
+                    "경유",
+                    "출처",
+                    "가는편 가격",
+                    "오는편 가격",
+                ])
                 for flight in self.results_data:
                     writer.writerow([
                         flight.airline,
                         getattr(flight, 'return_airline', ''),
                         flight.price,
+                        getattr(flight, 'benefit_price', 0),
+                        getattr(flight, 'benefit_label', ''),
                         flight.departure_time,
                         flight.arrival_time,
                         flight.stops,

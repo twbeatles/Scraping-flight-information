@@ -24,5 +24,7 @@
   ],
   "pythonVersion": "3.10",
   "typeCheckingMode": "standard",
-  "reportMissingTypeStubs": "none"
+  "reportMissingTypeStubs": "none",
+  "reportInvalidStringEscapeSequence": "error",
+  "reportOptionalMemberAccess": "error"
 }

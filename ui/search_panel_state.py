@@ -73,6 +73,7 @@ class SearchPanelStateMixin(SearchPanelMixinBase):
         settings.setValue("cabin_class", params.get("cabin_class", "ECONOMY"))
         settings.setValue("is_roundtrip", bool(params.get("ret")))
         settings.setValue("is_domestic", params.get("is_domestic", False))
+        settings.sync()
     
     def restore_settings(self) -> None:
         """저장된 입력값 복원 (프로그램 시작 시 호출)"""
@@ -82,9 +83,13 @@ class SearchPanelStateMixin(SearchPanelMixinBase):
             "dest": settings.value("dest", ""),
             "dep": settings.value("dep_date", ""),
             "ret": settings.value("ret_date", ""),
-            "adults": settings.value("adults", 1),
+            "adults": settings.value("adults", 1, int),
             "cabin_class": settings.value("cabin_class", "ECONOMY"),
-            "is_domestic": settings.value("is_domestic", None),
+            "is_domestic": (
+                settings.value("is_domestic", False, bool)
+                if settings.contains("is_domestic")
+                else None
+            ),
         }
         normalized = config.normalize_search_params(payload)
         if not normalized.get("origin") or not normalized.get("dest") or not normalized.get("dep"):

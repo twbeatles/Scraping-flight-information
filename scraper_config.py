@@ -27,6 +27,7 @@ DOMESTIC_COMBINATION_TOP_N = 150
 INTERNATIONAL_MAX_SCROLLS = 20
 SELECTOR_HEALTH_WINDOW = 200
 INTERPARK_SEARCH_URL_BASE = "https://travel.interpark.com/air/search"
+INTERPARK_AIR_API_BASE = "https://travel.interpark.com/air/air-api/inpark-air-web-api"
 
 
 def normalize_interpark_date(date_text: str | None) -> str:
@@ -42,6 +43,12 @@ def normalize_interpark_date(date_text: str | None) -> str:
             continue
 
     raise ValueError(f"Unsupported Interpark date format: {date_text}")
+
+
+def normalize_interpark_api_date(date_text: str | None) -> str:
+    """Convert supported dates to Interpark API's dashed format."""
+    compact = normalize_interpark_date(date_text)
+    return datetime.strptime(compact, "%Y%m%d").strftime("%Y-%m-%d")
 
 
 def resolve_interpark_location(code: str) -> tuple[str, str]:
@@ -82,6 +89,37 @@ def build_interpark_search_url(
     return (
         f"{INTERPARK_SEARCH_URL_BASE}/{route}"
         f"?cabin={safe_cabin}&infant={int(infant)}&child={int(child)}&adult={safe_adults}"
+    )
+
+
+def build_interpark_international_api_search_url(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: str | None = None,
+    *,
+    cabin: str = "ECONOMY",
+    adults: int = 1,
+    infant: int = 0,
+    child: int = 0,
+) -> str:
+    """Build the current Interpark international search API URL."""
+
+    origin_code = (origin or "").strip().upper()
+    dest_code = (destination or "").strip().upper()
+    departure = normalize_interpark_api_date(departure_date)
+    returning = normalize_interpark_api_date(return_date) if return_date else ""
+    safe_cabin = (cabin or "ECONOMY").upper()
+    safe_adults = max(1, int(adults or 1))
+
+    route = f"AIRPORT:{origin_code}-AIRPORT:{dest_code}/{departure}"
+    if returning:
+        route = f"{route}/AIRPORT:{dest_code}-AIRPORT:{origin_code}/{returning}"
+
+    return (
+        f"{INTERPARK_AIR_API_BASE}/flights/search/{route}"
+        f"?adult={safe_adults}&child={int(child)}&infant={int(infant)}"
+        f"&cabins={safe_cabin}&freeBaggageOnly=false"
     )
 
 # === 결과 대기 selector 후보 (DOM 변경 대응) ===
@@ -160,6 +198,32 @@ class ScraperScripts:
                 return 0;
             }};
 
+            const readBenefit = (text, airline, basePrice) => {{
+                const matches = Array.from(text.matchAll(boundaryPricePattern));
+                if (matches.length < 2) {{
+                    return {{ benefitPrice: 0, benefitLabel: '' }};
+                }}
+
+                const finalMatch = matches[matches.length - 1];
+                const benefitPrice = parseInt(finalMatch[1].replace(/,/g, ''), 10);
+                if (!benefitPrice || benefitPrice === basePrice) {{
+                    return {{ benefitPrice: 0, benefitLabel: '' }};
+                }}
+
+                const firstMatch = matches[0];
+                const firstEnd = (firstMatch.index || 0) + firstMatch[0].length;
+                const finalStart = finalMatch.index || 0;
+                let benefitLabel = normalize(text.slice(firstEnd, finalStart));
+                if (airline && benefitLabel.startsWith(airline)) {{
+                    benefitLabel = normalize(benefitLabel.slice(airline.length));
+                }}
+                benefitLabel = benefitLabel.replace(/^[\\s:|·,/-]+/, '').replace(/[\\s:|·,/-]+$/, '');
+                return {{
+                    benefitPrice,
+                    benefitLabel,
+                }};
+            }};
+
             const readAirline = (button, text) => {{
                 const texts = Array.from(button.querySelectorAll('p, span, div'))
                     .map((node) => normalize(node.textContent))
@@ -204,14 +268,17 @@ class ScraperScripts:
                     const price = readPrice(btn);
                     if (price < 1000 || price > 10000000) continue;
                     if (text.includes('이벤트') || text.includes('프로모션')) continue;
+                    const benefit = readBenefit(text, airline, price);
 
                     results.push({{
                         airline: airline,
                         price: price,
+                        benefitPrice: benefit.benefitPrice,
+                        benefitLabel: benefit.benefitLabel,
                         depTime: timeMatch[1],
                         arrTime: timeMatch[2],
                         stops: readStops(text),
-                        key: `${{airline}}_${{timeMatch[1]}}_${{timeMatch[2]}}_${{price}}`
+                        key: `${{airline}}_${{timeMatch[1]}}_${{timeMatch[2]}}_${{price}}_${{benefit.benefitPrice}}`
                     }});
                 }} catch (e) {{ }}
             }}
@@ -230,56 +297,135 @@ class ScraperScripts:
         return f"""
         () => {{
             const results = [];
-            const cards = document.querySelectorAll('li[data-index]');
-            
+            const cards = document.querySelectorAll('li[data-index], div[data-index]');
+            const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+            const exactPricePattern = /^(\\d{{1,3}}(?:,\\d{{3}}){{1,2}})\\s*원$/;
+            const boundaryPricePattern = /(?:^|[^0-9,])(\\d{{1,3}}(?:,\\d{{3}}){{1,2}})\\s*원/g;
+
+            const readPrice = (card) => {{
+                const nodes = [card, ...card.querySelectorAll('p, span, div, strong, em')];
+                for (const node of nodes) {{
+                    const text = normalize(node.textContent);
+                    if (!text) continue;
+                    const exactMatch = text.match(exactPricePattern);
+                    if (exactMatch) {{
+                        return parseInt(exactMatch[1].replace(/,/g, ''), 10);
+                    }}
+                }}
+
+                const fallbackMatches = Array.from(
+                    normalize(card.textContent).matchAll(boundaryPricePattern)
+                );
+                if (fallbackMatches.length > 0) {{
+                    return parseInt(fallbackMatches[0][1].replace(/,/g, ''), 10);
+                }}
+                return 0;
+            }};
+
+            const readTimes = (card) => {{
+                const ordered = [];
+                const pushTime = (value) => {{
+                    if (!value) return;
+                    if (ordered.length === 0 || ordered[ordered.length - 1] !== value) {{
+                        ordered.push(value);
+                    }}
+                }};
+
+                const nodes = [card, ...card.querySelectorAll('p, span, div, strong, em')];
+                for (const node of nodes) {{
+                    const text = normalize(node.textContent);
+                    if (!text) continue;
+                    const rangeMatch = text.match(/^(\\d{{2}}:\\d{{2}})\\s*-\\s*(\\d{{2}}:\\d{{2}})$/);
+                    if (rangeMatch) {{
+                        pushTime(rangeMatch[1]);
+                        pushTime(rangeMatch[2]);
+                        continue;
+                    }}
+                    if (/^\\d{{2}}:\\d{{2}}$/.test(text)) {{
+                        pushTime(text);
+                    }}
+                }}
+
+                if (ordered.length >= 2) {{
+                    return ordered;
+                }}
+
+                const cardText = normalize(card.textContent);
+                const rangeMatches = cardText.match(/{REGEX_TIME}/g) || [];
+                for (const raw of rangeMatches) {{
+                    const parts = raw.match(/{REGEX_TIME}/);
+                    if (parts && parts.length >= 3) {{
+                        pushTime(parts[1]);
+                        pushTime(parts[2]);
+                    }}
+                }}
+                return ordered;
+            }};
+
+            const readAirlines = (card) => {{
+                const logoNames = Array.from(card.querySelectorAll('img[alt$="로고"]'))
+                    .map((img) => normalize((img.getAttribute('alt') || '').replace(/\\s*로고$/, '')))
+                    .filter(Boolean);
+
+                const unique = [];
+                for (const name of logoNames) {{
+                    if (!unique.includes(name)) {{
+                        unique.push(name);
+                    }}
+                }}
+                return unique;
+            }};
+
+            const readStops = (text, isRoundTrip) => {{
+                const stopMatches = Array.from(text.matchAll(/{REGEX_STOPS}/g))
+                    .map((match) => parseInt(match[1], 10) || 0);
+                const directCount = (text.match(/직항/g) || []).length;
+
+                let outbound = 0;
+                let inbound = 0;
+
+                if (stopMatches.length > 0) {{
+                    outbound = stopMatches[0];
+                }} else if (text.includes('경유')) {{
+                    outbound = 1;
+                }}
+
+                if (isRoundTrip) {{
+                    if (stopMatches.length > 1) {{
+                        inbound = stopMatches[1];
+                    }} else if (directCount >= 2) {{
+                        inbound = 0;
+                    }} else if (directCount === 0 && text.includes('경유')) {{
+                        inbound = outbound || 1;
+                    }}
+                }}
+
+                return {{ outbound, inbound }};
+            }};
+
             for (const card of cards) {{
                 try {{
-                    const allSpans = Array.from(card.querySelectorAll('span'));
-                    const priceEl = allSpans.find(el => /^[0-9,]+\\s*원$/.test(el.textContent.trim()));
-                    if (!priceEl) continue;
-                    
-                    const price = parseInt(priceEl.textContent.replace(/[^0-9]/g, ''));
-                    
-                    // 시간 추출 (HH:MM 형식)
-                    const timeSpans = allSpans.filter(el => /^\\d{{2}}:\\d{{2}}$/.test(el.textContent.trim()));
-                    const times = timeSpans.map(el => el.textContent.trim());
-                    
-                    if (times.length < 2) continue;
-                    
-                    // 항공사 로고 alt 텍스트
-                    const logoImgs = card.querySelectorAll('img[alt$="로고"]');
-                    let airline = "기타";
-                    if (logoImgs.length > 0) {{
-                        airline = logoImgs[0].alt.replace(' 로고', '');
-                    }}
-                    
-                    const cardText = card.textContent;
-                    let stops = 0;
-                    let retStops = 0;
-                    
-                    const stopMatches = cardText.match(/{REGEX_STOPS}/g);
-                    
-                    if (stopMatches) {{
-                        stops = parseInt(stopMatches[0].replace(/[^0-9]/g, ''));
-                        retStops = (stopMatches.length > 1) ? parseInt(stopMatches[1].replace(/[^0-9]/g, '')) : stops;
-                    }} else if (cardText.includes("직항")) {{
-                        stops = 0; retStops = 0;
-                    }} else {{
-                        stops = 1; retStops = 1;
-                    }}
+                    const price = readPrice(card);
+                    if (price < 1000) continue;
 
-                    // 왕복 여부 판단 (시간이 4개 이상이면 왕복)
+                    const times = readTimes(card);
+                    if (times.length < 2) continue;
                     const isRoundTrip = times.length >= 4;
+                    const airlines = readAirlines(card);
+                    const airline = airlines[0] || "기타";
+                    const returnAirline = isRoundTrip ? (airlines[1] || airline) : '';
+                    const stops = readStops(normalize(card.textContent), isRoundTrip);
 
                     results.push({{
                         airline: airline,
+                        returnAirline: returnAirline,
                         price: price,
                         depTime: times[0],
                         arrTime: times[1],
-                        stops: stops,
+                        stops: stops.outbound,
                         retDepTime: isRoundTrip ? times[2] : '',
                         retArrTime: isRoundTrip ? times[3] : '',
-                        retStops: isRoundTrip ? retStops : 0,
+                        retStops: isRoundTrip ? stops.inbound : 0,
                         isRoundTrip: isRoundTrip
                     }});
                 }} catch (e) {{ }}
@@ -324,13 +470,28 @@ class ScraperScripts:
             const candidates = document.querySelectorAll(
                 'li[data-index], div[data-index], li[class*="result"], div[class*="result"], li[class*="ticket"], div[class*="ticket"]'
             );
+            const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+            const boundaryPricePattern = /(?:^|[^0-9,])(\\d{{1,3}}(?:,\\d{{3}}){{1,2}})\\s*원/g;
+
+            const readAirlines = (card) => {{
+                const logoNames = Array.from(card.querySelectorAll('img[alt$="로고"]'))
+                    .map((img) => normalize((img.getAttribute('alt') || '').replace(/\\s*로고$/, '')))
+                    .filter(Boolean);
+                const unique = [];
+                for (const name of logoNames) {{
+                    if (!unique.includes(name)) {{
+                        unique.push(name);
+                    }}
+                }}
+                return unique;
+            }};
 
             for (const card of candidates) {{
                 try {{
-                    const text = card.textContent || '';
-                    const priceMatch = text.match(/{REGEX_PRICE}/);
-                    if (!priceMatch) continue;
-                    const price = parseInt(priceMatch[1].replace(/[^0-9]/g, ''));
+                    const text = normalize(card.textContent);
+                    const priceMatches = Array.from(text.matchAll(boundaryPricePattern));
+                    if (priceMatches.length === 0) continue;
+                    const price = parseInt(priceMatches[0][1].replace(/,/g, ''), 10);
 
                     const timeMatches = text.match(/{REGEX_TIME}/g) || [];
                     const times = [];
@@ -342,11 +503,10 @@ class ScraperScripts:
                     }}
                     if (times.length < 2) continue;
 
-                    let airline = "기타";
-                    const logoImgs = card.querySelectorAll('img[alt]');
-                    if (logoImgs.length > 0) {{
-                        airline = logoImgs[0].alt.replace(' 로고', '').trim();
-                    }}
+                    const isRoundTrip = times.length >= 4;
+                    const airlines = readAirlines(card);
+                    const airline = airlines[0] || "기타";
+                    const returnAirline = isRoundTrip ? (airlines[1] || airline) : '';
 
                     let stops = 0;
                     let retStops = 0;
@@ -364,9 +524,9 @@ class ScraperScripts:
                         retStops = 1;
                     }}
 
-                    const isRoundTrip = times.length >= 4;
                     results.push({{
                         airline: airline,
+                        returnAirline: returnAirline,
                         price: price,
                         depTime: times[0],
                         arrTime: times[1],

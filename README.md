@@ -32,6 +32,7 @@
 
 ### ✨ 검색 기능
 - **국내선/국제선** 항공권 검색
+- **국제선 API-first 추출** - 인터파크 동일 출처 API 우선, DOM fallback 보조
 - **왕복/편도** 검색 지원
 - **좌석 등급** 선택 (이코노미/비즈니스/일등석)
 - **다중 목적지** 동시 검색 (최대 5개 목적지 비교)
@@ -40,6 +41,7 @@
 
 ### 📊 분석 기능
 - **실시간 가격 비교** (최대 1,000개 결과)
+- **국내선 기본가 + 혜택가 분리 표시** - 본문은 기본가, 툴팁/CSV/Excel은 혜택가 포함
 - **가격 색상 코딩** (녹색: 저가 ~20%, 노랑: 중간, 빨강: 고가 80%~)
 - **캘린더뷰** - 날짜별 최저가 시각화
 - **필터링** - 직항/경유, 항공사 유형(LCC/FSC), 시간대, 가격대
@@ -138,7 +140,7 @@ python gui_v2.py
 
 | 작업 | 방법 |
 |------|------|
-| 예약 페이지 열기 | 결과 행 **더블클릭** (현재 검색의 `cabin`/`adult` 파라미터 포함) |
+| 현재 조건 검색 열기 | 결과 행 **더블클릭** (현재 검색의 `cabin`/`adult` 파라미터 포함) |
 | 즐겨찾기 추가 | 행 **우클릭** → "⭐ 즐겨찾기 추가" |
 | 정보 복사 | 행 **우클릭** → "📋 정보 복사" |
 | 정렬 | 컬럼 헤더 클릭 (가격, 시간 등) |
@@ -249,7 +251,7 @@ python gui_v2.py
 | `F5` | 결과 새로고침 (필터 재적용) |
 | `Escape` | 검색 취소 / 다이얼로그 닫기 |
 | `Ctrl+F` | 필터 영역으로 포커스 이동 |
-| `더블클릭` | 해당 항공편 예약 페이지 열기 (`cabin`/`adult` 쿼리 포함) |
+| `더블클릭` | 현재 조건으로 인터파크 검색 다시 열기 (`cabin`/`adult` 쿼리 포함) |
 
 > 💡 **⌨️** 버튼을 클릭하면 단축키 목록을 볼 수 있습니다.
 
@@ -265,6 +267,7 @@ Scraping-flight-information/
 ├─ config.py
 ├─ scraper_config.py
 ├─ requirements.txt
+├─ .pre-commit-config.yaml    # 로컬 품질 훅
 ├─ flight_bot.spec
 ├─ FlightBot_v2.5.spec
 ├─ FlightBot_Simple.spec
@@ -328,6 +331,7 @@ Scraping-flight-information/
 │  ├─ extract_domestic.py
 │  ├─ extract_international.py
 │  ├─ searcher.py
+│  ├─ search_sources.py
 │  └─ parallel.py
 ├─ storage/
 │  ├─ models.py
@@ -425,13 +429,13 @@ pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 | `FlightBot_v2.5.spec` | 표준 GUI 배포 (호환 프로필) | `pyinstaller --clean FlightBot_v2.5.spec` |
 | `FlightBot_Simple.spec` | 콘솔 로그 확인용 디버그 실행파일 | `pyinstaller --clean FlightBot_Simple.spec` |
 
-> 2026-03-19 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)과 공용 검색 파라미터 복원 모듈(`ui.search_panel_params`)도 함께 포함합니다.
+> 2026-03-24 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)과 공용 검색 파라미터 복원 모듈(`ui.search_panel_params`), 내부 source registry 모듈(`scraping.search_sources`)도 함께 포함합니다.
 
 ### 빌드 결과
 
-- `dist/FlightBot_v2.5/` 폴더 생성
-- `FlightBot_v2.5.exe` 실행 파일
-- 예상 크기: 80-120MB (Playwright 포함)
+- `dist/FlightBot_v2.5.exe` 단일 실행 파일 생성
+- `build/flight_bot/` 아래에 PyInstaller 중간 산출물 생성
+- 예상 크기: 약 70-90MB (Playwright 포함)
 
 ### 빌드 후 필수 작업
 
@@ -482,6 +486,28 @@ playwright install chromium
 ---
 
 ## 📝 변경 로그
+
+### v2.5.9 (2026-03-24)
+- 🌍 **인터파크 국제선 안정화**
+  - 국제선 검색을 동일 출처 API 우선(`flights/search -> status -> final POST {}`)으로 전환하고, 실패 시에만 DOM fallback 사용
+  - mixed-carrier 왕복 결과에서 `airline + return_airline`을 일관되게 채우도록 정규화
+  - DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용해 `크로스셀링` 오염을 차단
+- 🇰🇷 **국내선 가격 품질 보강**
+  - `FlightResult`에 `benefit_price`, `benefit_label`을 추가해 기본가와 혜택가를 분리 저장
+  - 결과 툴팁, CSV, Excel export에 혜택가/혜택 정보를 함께 노출
+- 🔁 **런타임/문서/패키징 정합성**
+  - 내부 `scraping.search_sources` 경계와 `InterparkTicketSource` skeleton 추가
+  - 검색 패널 `save_settings()` 즉시 flush로 `SEL -> CJU` 국내선 round-trip 복원 고정
+  - 더블클릭 문구를 실제 동작에 맞게 `현재 조건으로 인터파크 검색 다시 열기`로 통일
+  - `.spec` 3종에 `scraping.search_sources` hiddenimport 반영
+- ✅ **품질 가드레일**
+  - `pyright --warnings` 기준 `0 errors, 0 warnings`
+  - `python scripts/check_tracked_text.py --check-lf` 기준 UTF-8/BOM/LF 점검 통과
+  - `.pre-commit-config.yaml`, `.pytest_tmp/`, `.pre-commit-cache/` 운영 규칙 추가
+- ✅ **검증**
+  - `pytest -q --basetemp=.pytest_tmp` -> `72 passed`
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 101 tracked text files: OK`
 
 ### v2.5.8 (2026-03-19)
 - 🔁 **검색 파라미터 저장/복원 규약 통합**
@@ -544,7 +570,7 @@ playwright install chromium
 ### v2.5.4 (2026-03-05)
 - 🛠️ **구현 정합성 패치 일괄 적용**
   - `scraping/parallel.py`에 로거 정의 추가로 `ParallelSearcher` 런타임 `NameError` 제거 (public API 유지)
-  - 결과 더블클릭 예약 URL에 `?cabin={...}&adult={...}` 반영
+  - 결과 더블클릭 시 현재 조건 검색 URL에 `?cabin={...}&adult={...}` 반영
   - 검색 기록 복원을 `_restore_search_panel_from_params()` 경로로 통합하여 `cabin_class` 복원 보장
   - 국내선 모드에서 비국내 코드 수동 입력 시 검색 하드 차단
   - 설정 import 후 `search_history`를 리스트로 정규화하고 최대 20개로 trim
@@ -684,13 +710,16 @@ python gui_v2.py
 pytest -q
 
 # 정적 타입 검사 (Pylance/pyright 기준)
-pyright
+pyright --warnings
+
+# 로컬 품질 훅 설치 (선택)
+pre-commit install
 
 # tracked text 인코딩 검사
-python scripts/check_tracked_text.py
+python scripts/check_tracked_text.py --check-lf
 ```
 
-> 저장소에는 `.gitattributes`, `scripts/check_tracked_text.py`, `.github/workflows/quality.yml`가 포함되어 있어 UTF-8/LF 정책과 `pyright`를 GitHub Actions에서 점검합니다. `pytest -q`는 PyQt 시스템 라이브러리가 준비된 로컬 환경에서 실행하는 기준입니다.
+> 저장소에는 `.gitattributes`, `scripts/check_tracked_text.py`, `.github/workflows/quality.yml`, `.pre-commit-config.yaml`가 포함되어 있어 UTF-8/LF 정책과 `pyright --warnings`를 GitHub Actions 및 로컬 훅에서 점검합니다. `pytest -q`는 PyQt 시스템 라이브러리가 준비된 로컬 환경에서 실행하는 기준입니다.
 
 ---
 
@@ -702,5 +731,3 @@ python scripts/check_tracked_text.py
 ---
 
 *Made with ❤️ for travelers*
-
-

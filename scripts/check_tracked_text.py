@@ -51,6 +51,9 @@ def validate_file(path: Path, repo_root: Path, *, check_lf: bool) -> list[str]:
     rel_path = path.relative_to(repo_root)
     issues: list[str] = []
 
+    if data.startswith(b"\xef\xbb\xbf"):
+        issues.append(f"{rel_path}: contains UTF-8 BOM")
+
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:

@@ -85,6 +85,8 @@ class SessionManager:
                     outbound_price=r.get("outbound_price", 0),
                     return_price=r.get("return_price", 0),
                     return_airline=r.get("return_airline", ""),
+                    benefit_price=r.get("benefit_price", 0),
+                    benefit_label=r.get("benefit_label", ""),
                     confidence=float(r.get("confidence", 0.0) or 0.0),
                     extraction_source=r.get("extraction_source", ""),
                 )
