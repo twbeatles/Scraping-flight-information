@@ -92,6 +92,7 @@ hiddenimports = [
     'scraping.models',
     'scraping.playwright_scraper',
     'scraping.playwright_browser',
+    'scraping.playwright_api',
     'scraping.playwright_search',
     'scraping.playwright_domestic',
     'scraping.playwright_results',

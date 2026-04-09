@@ -78,14 +78,22 @@ class FlightSearcher:
 
         results = self.source.extract_manual()
         for result in results:
-            result.confidence = 0.5
-            result.extraction_source = "manual_extract"
+            if not result.extraction_source:
+                result.extraction_source = "manual_extract"
+            if result.extraction_source == "manual_extract":
+                result.confidence = 0.5
         results.sort(key=lambda item: item.price if item.price > 0 else float("inf"))
         self.last_results = results
         return results
 
     def is_manual_mode(self) -> bool:
         return self.source.is_manual_mode()
+
+    def get_manual_reason(self) -> str:
+        scraper = getattr(self.source, "scraper", None)
+        if scraper is None:
+            return ""
+        return str(getattr(scraper, "_manual_reason", "") or "")
 
     def close(self) -> None:
         self.source.close()

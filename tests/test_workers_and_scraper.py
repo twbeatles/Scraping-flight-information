@@ -1,10 +1,12 @@
 import threading
 import time
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Any, cast
 
 import scraper_config
 from scraper_v2 import FlightResult, PlaywrightScraper, ParallelSearcher
+from scraping.playwright_search import _handle_domestic_round_trip
 from ui.workers import AlertAutoCheckWorker, DateRangeWorker, MultiSearchWorker
 
 
@@ -84,7 +86,8 @@ def test_international_dedup_key_preserves_distinct_return_details():
             return None
 
     scraper = PlaywrightScraper()
-    cast(Any, scraper).page = _FakePage()
+    page = _FakePage()
+    cast(Any, scraper).page = page
 
     results = scraper._extract_prices()
 
@@ -128,57 +131,96 @@ def test_domestic_topk_combination_matches_naive_ordering():
     assert combined_keys == naive
 
 
-def test_international_api_path_builds_results_without_dom_fallback():
+def test_international_api_path_paginates_and_builds_results_without_dom_fallback():
     class _FakePage:
         def __init__(self):
             self.fetch_calls = []
+            self.result_calls = 0
 
         def evaluate(self, script):
+            if "performance.getEntriesByType('resource')" in script and "INTERNATIONAL::" in script:
+                return ["INTERNATIONAL::abc"]
             if "fetch(" in script and "/status" in script:
                 self.fetch_calls.append("status")
                 return {"status": "COMPLETE", "content": {"listKey": "INTERNATIONAL::abc"}}
             if "fetch(" in script and '/international/flights/search/v2/INTERNATIONAL::abc' in script:
-                self.fetch_calls.append("final")
+                self.result_calls += 1
+                self.fetch_calls.append(f"final-{self.result_calls}")
                 assert '"POST"' in script
+                if self.result_calls == 1:
+                    shared_item = {
+                        "adultPrice": 359400,
+                        "schedules": [
+                            {
+                                "carrier": {"name": "제주항공"},
+                                "totalFlightTime": "PT2H30M",
+                                "stop": 0,
+                                "segments": [
+                                    {
+                                        "departure": {"at": "2026-04-15T10:25:00"},
+                                        "arrival": {"at": "2026-04-15T12:55:00"},
+                                        "marketingCarrier": {"name": "제주항공"},
+                                    }
+                                ],
+                            },
+                            {
+                                "carrier": {"name": "파라타항공"},
+                                "totalFlightTime": "PT2H45M",
+                                "stop": 0,
+                                "segments": [
+                                    {
+                                        "departure": {"at": "2026-04-18T13:30:00"},
+                                        "arrival": {"at": "2026-04-18T16:15:00"},
+                                        "marketingCarrier": {"name": "파라타항공"},
+                                    }
+                                ],
+                            },
+                        ],
+                        "fares": [{"adultPrice": 359400}],
+                    }
+                    return {
+                        "page": {"currentPage": 1, "pageSize": 20, "totalCount": 40},
+                        "bestFares": [shared_item],
+                        "contents": [shared_item],
+                    }
                 return {
-                    "bestFares": [
+                    "page": {"currentPage": 2, "pageSize": 20, "totalCount": 40},
+                    "bestFares": [],
+                    "contents": [
                         {
-                            "adultPrice": 359400,
+                            "adultPrice": 489100,
                             "schedules": [
                                 {
-                                    "carrier": {"name": "제주항공"},
+                                    "carrier": {"name": "대한항공"},
+                                    "totalFlightTime": "PT2H20M",
+                                    "stop": 0,
+                                    "segments": [
+                                        {
+                                            "departure": {"at": "2026-04-15T08:10:00"},
+                                            "arrival": {"at": "2026-04-15T10:30:00"},
+                                            "marketingCarrier": {"name": "대한항공"},
+                                        }
+                                    ],
+                                },
+                                {
+                                    "carrier": {"name": "진에어"},
                                     "totalFlightTime": "PT2H30M",
                                     "stop": 0,
                                     "segments": [
                                         {
-                                            "departure": {"at": "2026-04-15T10:25:00"},
-                                            "arrival": {"at": "2026-04-15T12:55:00"},
-                                            "marketingCarrier": {"name": "제주항공"},
-                                        }
-                                    ],
-                                },
-                                {
-                                    "carrier": {"name": "파라타항공"},
-                                    "totalFlightTime": "PT2H45M",
-                                    "stop": 0,
-                                    "segments": [
-                                        {
-                                            "departure": {"at": "2026-04-18T13:30:00"},
-                                            "arrival": {"at": "2026-04-18T16:15:00"},
-                                            "marketingCarrier": {"name": "파라타항공"},
+                                            "departure": {"at": "2026-04-18T18:00:00"},
+                                            "arrival": {"at": "2026-04-18T20:30:00"},
+                                            "marketingCarrier": {"name": "진에어"},
                                         }
                                     ],
                                 },
                             ],
-                            "fares": [{"adultPrice": 359400}],
+                            "fares": [{"adultPrice": 489100}],
                         }
                     ],
-                    "contents": [],
                 }
             if "fetch(" in script and "/flights/search/AIRPORT:ICN-AIRPORT:NRT/2026-04-15/AIRPORT:NRT-AIRPORT:ICN/2026-04-18" in script:
-                self.fetch_calls.append("initial")
-                assert "cabins=BUSINESS" in script
-                return {"key": "INTERNATIONAL::abc", "data": {}}
+                raise AssertionError("existing search key should prevent rebuilding the initial search request")
             if "const cards = document.querySelectorAll('li[data-index], div[data-index]');" in script:
                 raise AssertionError("DOM fallback should not run when API succeeds")
             if "const candidates = document.querySelectorAll(" in script:
@@ -193,7 +235,8 @@ def test_international_api_path_builds_results_without_dom_fallback():
             return None
 
     scraper = PlaywrightScraper()
-    cast(Any, scraper).page = _FakePage()
+    page = _FakePage()
+    cast(Any, scraper).page = page
     cast(Any, scraper)._last_search_context = {
         "origin": "ICN",
         "destination": "NRT",
@@ -208,11 +251,268 @@ def test_international_api_path_builds_results_without_dom_fallback():
 
     results = scraper._extract_prices()
 
-    assert len(results) == 1
+    assert len(results) == 2
     assert results[0].price == 359400
     assert results[0].airline == "제주항공"
     assert results[0].return_airline == "파라타항공"
     assert results[0].extraction_source == "international_api"
+    assert scraper._search_metrics["api_total_count"] == 40
+    assert scraper._search_metrics["fetched_pages"] == 2
+    assert scraper._search_metrics["api_item_count"] == 2
+    assert page.fetch_calls == ["status", "final-1", "final-2"]
+
+
+def test_domestic_api_path_paginates_and_normalizes_results():
+    class _FakePage:
+        def __init__(self):
+            self.fetch_calls = 0
+
+        def evaluate(self, script):
+            if "performance.getEntriesByType('resource')" in script and "DOMESTIC::" in script:
+                return ["DOMESTIC::outbound"]
+            if "fetch(" in script and "/domestic/flights/search/DOMESTIC::outbound" in script:
+                self.fetch_calls += 1
+                if self.fetch_calls == 1:
+                    return {
+                        "page": {"currentPage": 1, "pageSize": 20, "totalCount": 45},
+                        "items": [
+                            {
+                                "key": "F1",
+                                "schedule": {
+                                    "marketingCarrier": "7C",
+                                    "flightNumber": "7C123",
+                                    "departureAt": "2026-05-15T07:30:00",
+                                    "arrivalAt": "2026-05-15T08:40:00",
+                                },
+                                "seatAvailability": 7,
+                                "fares": [
+                                    {
+                                        "totalPrice": 35000,
+                                        "benefits": [
+                                            {
+                                                "discountedPrice": 33000,
+                                                "cardCashback": {
+                                                    "cardName": "KB국민",
+                                                    "rate": 10,
+                                                },
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                if self.fetch_calls == 2:
+                    return {
+                        "page": {"currentPage": 2, "pageSize": 20, "totalCount": 45},
+                        "items": [
+                            {
+                                "key": "F2",
+                                "schedule": {
+                                    "marketingCarrier": "KE",
+                                    "flightNumber": "KE1001",
+                                    "departureAt": "2026-05-15T09:00:00",
+                                    "arrivalAt": "2026-05-15T10:10:00",
+                                },
+                                "seatAvailability": 3,
+                                "fares": [{"totalPrice": 42000, "benefits": []}],
+                            }
+                        ],
+                    }
+                return {
+                    "page": {"currentPage": 3, "pageSize": 20, "totalCount": 45},
+                    "items": [
+                        {
+                            "key": "F3",
+                            "schedule": {
+                                "marketingCarrier": "LJ",
+                                "flightNumber": "LJ201",
+                                "departureAt": "2026-05-15T11:15:00",
+                                "arrivalAt": "2026-05-15T12:20:00",
+                            },
+                            "seatAvailability": 9,
+                            "fares": [{"totalPrice": 39000, "benefits": []}],
+                        }
+                    ],
+                }
+            if "const candidates = document.querySelectorAll(" in script:
+                raise AssertionError("DOM fallback should not run when domestic API succeeds")
+            raise AssertionError(f"Unexpected script: {script[:120]}")
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = _FakePage()
+    cast(Any, scraper)._last_search_context = {
+        "origin": "GMP",
+        "destination": "CJU",
+        "departure_date": "20260515",
+        "return_date": None,
+        "adults": 1,
+        "cabin_class": "ECONOMY",
+        "child": 0,
+        "infant": 0,
+        "is_domestic": True,
+    }
+
+    results = scraper._extract_domestic_prices()
+
+    assert [result.price for result in results] == [35000, 39000, 42000]
+    assert all(result.extraction_source == "domestic_api" for result in results)
+    assert results[0].airline == "제주항공"
+    assert results[0].flight_number == "7C123"
+    assert results[0].benefit_price == 33000
+    assert results[0].benefit_label == "KB국민 10% 캐시백 적용 시"
+    assert results[1].airline == "진에어"
+    assert results[2].airline == "대한항공"
+    assert scraper._search_metrics["api_total_count"] == 45
+    assert scraper._search_metrics["fetched_pages"] == 3
+    assert scraper._search_metrics["api_item_count"] == 3
+
+
+def test_domestic_round_trip_return_key_missing_falls_back_to_dom(monkeypatch):
+    class _FakePage:
+        def evaluate(self, _script):
+            return True
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = _FakePage()
+    outbound = [
+        {
+            "airline": "제주항공",
+            "price": 30000,
+            "depTime": "07:30",
+            "arrTime": "08:40",
+            "stops": 0,
+            "flightNumber": "7C123",
+        }
+    ]
+    inbound = [
+        {
+            "airline": "대한항공",
+            "price": 45000,
+            "depTime": "18:10",
+            "arrTime": "19:20",
+            "stops": 0,
+            "flightNumber": "KE2001",
+        }
+    ]
+    key_iter = iter(["DOMESTIC::outbound", "DOMESTIC::outbound"])
+
+    monkeypatch.setattr("scraping.playwright_search.find_latest_search_key", lambda *_args, **_kwargs: next(key_iter))
+    monkeypatch.setattr(
+        scraper,
+        "_extract_domestic_api_flights_data",
+        lambda **kwargs: (
+            outbound,
+            {"total_count": len(outbound), "fetched_pages": 1},
+        ),
+    )
+    monkeypatch.setattr(scraper, "_wait_for_domestic_return_view", lambda: True)
+    monkeypatch.setattr(scraper, "_extract_domestic_dom_flights_data", lambda: inbound)
+
+    logs = []
+    results = _handle_domestic_round_trip(
+        scraper,
+        logs.append,
+        max_results=5,
+        background_mode=False,
+        time_module=SimpleNamespace(sleep=lambda *_args, **_kwargs: None),
+    )
+
+    assert results is not None
+    assert len(results) == 1
+    assert results[0].price == 75000
+    assert results[0].return_airline == "대한항공"
+    assert scraper._manual_reason == "domestic_return_key_missing"
+    assert scraper._search_metrics["api_total_count"] == 2
+    assert scraper._search_metrics["fetched_pages"] == 1
+    assert scraper._search_metrics["api_item_count"] == 2
+
+
+def test_international_dom_fallback_detects_virtualized_index_gap():
+    class _FakePage:
+        def __init__(self):
+            self.primary_calls = 0
+            self.index_calls = 0
+            self.advance_calls = 0
+
+        def evaluate(self, script):
+            if "performance.getEntriesByType('resource')" in script and "INTERNATIONAL::" in script:
+                return []
+            if "fetch(" in script:
+                return {}
+            if "const cards = document.querySelectorAll('li[data-index], div[data-index]');" in script:
+                self.primary_calls += 1
+                if self.primary_calls == 1:
+                    return [
+                        {
+                            "airline": "제주항공",
+                            "price": 100000,
+                            "depTime": "10:00",
+                            "arrTime": "12:00",
+                            "stops": 0,
+                            "retDepTime": "15:00",
+                            "retArrTime": "17:00",
+                            "retStops": 0,
+                            "isRoundTrip": True,
+                        }
+                    ]
+                if self.primary_calls == 2:
+                    return [
+                        {
+                            "airline": "대한항공",
+                            "price": 120000,
+                            "depTime": "11:00",
+                            "arrTime": "13:00",
+                            "stops": 0,
+                            "retDepTime": "18:00",
+                            "retArrTime": "20:00",
+                            "retStops": 0,
+                            "isRoundTrip": True,
+                        }
+                    ]
+                return []
+            if "Array.from(document.querySelectorAll('li[data-index], div[data-index]'))" in script:
+                self.index_calls += 1
+                if self.index_calls == 1:
+                    return list(range(0, 9))
+                return list(range(15, 31))
+            if "const cards = Array.from(document.querySelectorAll('li[data-index], div[data-index]'));" in script:
+                self.advance_calls += 1
+                return {
+                    "advanced": self.advance_calls < 3,
+                    "atEnd": self.advance_calls >= 3,
+                    "scrollTop": self.advance_calls * 100,
+                    "maxTop": 300,
+                    "mode": "container",
+                }
+            if "const candidates = document.querySelectorAll(" in script:
+                return []
+            raise AssertionError(f"Unexpected script: {script[:120]}")
+
+        def wait_for_timeout(self, _timeout):
+            return None
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = _FakePage()
+    cast(Any, scraper)._last_search_context = {
+        "origin": "ICN",
+        "destination": "NRT",
+        "departure_date": "20260415",
+        "return_date": "20260418",
+        "adults": 1,
+        "cabin_class": "ECONOMY",
+        "child": 0,
+        "infant": 0,
+        "is_domestic": False,
+    }
+
+    results = scraper._extract_prices()
+
+    assert len(results) == 2
+    assert scraper._search_metrics["dom_gap_detected"] is True
+    assert 0 in scraper._search_metrics["dom_seen_indices"]
+    assert 30 in scraper._search_metrics["dom_seen_indices"]
+    assert scraper._manual_reason == "dom_fallback_gap_risk"
 
 
 def test_build_interpark_search_url_normalizes_hyphenated_dates():
@@ -556,7 +856,7 @@ def test_playwright_search_retries_on_network_error(monkeypatch):
     assert page.calls == 2
 
 
-def test_domestic_one_way_search_uses_scrolling_extractor(monkeypatch):
+def test_domestic_one_way_search_uses_api_first_extractor(monkeypatch):
     class _FakePage:
         def __init__(self):
             self.urls = []
@@ -577,14 +877,15 @@ def test_domestic_one_way_search_uses_scrolling_extractor(monkeypatch):
     page = _FakePage()
     scraper = PlaywrightScraper()
     calls = {"domestic": 0}
-    domestic_entries = [
-        {
-            "airline": "테스트항공",
-            "price": 30000 + i,
-            "depTime": f"{i % 24:02d}:{(i * 5) % 60:02d}",
-            "arrTime": f"{(i + 1) % 24:02d}:{(i * 5 + 30) % 60:02d}",
-            "stops": 0,
-        }
+    domestic_results = [
+        FlightResult(
+            airline="테스트항공",
+            price=30000 + i,
+            departure_time=f"{i % 24:02d}:{(i * 5) % 60:02d}",
+            arrival_time=f"{(i + 1) % 24:02d}:{(i * 5 + 30) % 60:02d}",
+            extraction_source="domestic_api",
+            confidence=0.9,
+        )
         for i in range(25)
     ]
 
@@ -593,11 +894,11 @@ def test_domestic_one_way_search_uses_scrolling_extractor(monkeypatch):
 
     def _fake_domestic_extract():
         calls["domestic"] += 1
-        return domestic_entries
+        return domestic_results
 
     monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
     monkeypatch.setattr(scraper, "_wait_for_results", lambda *_args, **_kwargs: {"found": True, "selector": 'button:has-text("원")'})
-    monkeypatch.setattr(scraper, "_extract_domestic_flights_data", _fake_domestic_extract)
+    monkeypatch.setattr(scraper, "_extract_domestic_prices", _fake_domestic_extract)
     monkeypatch.setattr(scraper, "close", lambda: None)
     monkeypatch.setattr("scraping.playwright_scraper.time.sleep", lambda *_args, **_kwargs: None)
 
@@ -605,7 +906,7 @@ def test_domestic_one_way_search_uses_scrolling_extractor(monkeypatch):
 
     assert calls["domestic"] == 1
     assert len(results) == 25
-    assert all(result.extraction_source == "domestic_scroll" for result in results)
+    assert all(result.extraction_source == "domestic_api" for result in results)
     assert page.urls
     assert "20260301" in page.urls[0]
     assert "2026-03-01" not in page.urls[0]

@@ -438,6 +438,9 @@ def test_result_table_copy_row_info_uses_sorted_visual_row(qapp):
 
 def test_manual_extract_logs_success_event_and_uses_search_finished(monkeypatch):
     class _DummySearcher:
+        def get_manual_reason(self):
+            return "international_api_failed"
+
         def extract_manual(self):
             return [FlightResult(airline="Manual", price=111000, departure_time="09:00", arrival_time="11:00")]
 
@@ -464,10 +467,14 @@ def test_manual_extract_logs_success_event_and_uses_search_finished(monkeypatch)
     assert ctx.events[0]["success"] is True
     assert ctx.events[0]["manual_mode"] is True
     assert ctx.events[0]["result_count"] == 1
+    assert ctx.events[0]["details"]["manual_reason"] == "international_api_failed"
 
 
 def test_manual_extract_logs_failure_event_when_no_result(monkeypatch):
     class _DummySearcher:
+        def get_manual_reason(self):
+            return "domestic_return_key_missing"
+
         def extract_manual(self):
             return []
 
@@ -495,6 +502,74 @@ def test_manual_extract_logs_failure_event_when_no_result(monkeypatch):
     assert ctx.events[0]["event_type"] == "ui_manual_extract_finished"
     assert ctx.events[0]["success"] is False
     assert ctx.events[0]["error_code"] == "MANUAL_NO_RESULT"
+    assert ctx.events[0]["details"]["manual_reason"] == "domestic_return_key_missing"
+
+
+def test_activate_manual_mode_logs_manual_reason(monkeypatch):
+    class _DummySearcher:
+        def get_manual_reason(self):
+            return "international_api_failed"
+
+    class _DummySearchPanel:
+        def __init__(self):
+            self.searching = None
+
+        def set_searching(self, value):
+            self.searching = value
+
+    class _DummyFrame:
+        def __init__(self):
+            self.visible = None
+
+        def setVisible(self, value):
+            self.visible = value
+
+    class _DummyLabel:
+        def __init__(self):
+            self.text = ""
+
+        def setText(self, value):
+            self.text = value
+
+    class _DummyProgressBar:
+        def __init__(self):
+            self.value = None
+            self.format = ""
+
+        def setRange(self, *_args):
+            return None
+
+        def setValue(self, value):
+            self.value = value
+
+        def setFormat(self, value):
+            self.format = value
+
+    class _DummyContext:
+        def __init__(self):
+            self.current_search_params = {"origin": "ICN", "dest": "NRT"}
+            self.search_panel = _DummySearchPanel()
+            self.manual_frame = _DummyFrame()
+            self.manual_status_label = _DummyLabel()
+            self.progress_bar = _DummyProgressBar()
+            self.log_viewer = _DummyLogViewer()
+            self.events = []
+            self.active_searcher = None
+
+        def _emit_telemetry_event(self, payload):
+            self.events.append(payload)
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
+
+    ctx = _DummyContext()
+    MainWindow._activate_manual_mode(ctx, _DummySearcher())
+
+    assert ctx.active_searcher is not None
+    assert ctx.search_panel.searching is False
+    assert ctx.manual_frame.visible is True
+    assert ctx.events[0]["event_type"] == "manual_mode_activated"
+    assert ctx.events[0]["details"]["manual_reason"] == "international_api_failed"
+    assert any("international_api_failed" in log for log in ctx.log_viewer.logs)
 
 
 def test_flight_type_change_preserves_custom_origin_preset(qapp):

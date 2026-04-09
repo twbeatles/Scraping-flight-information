@@ -1,11 +1,42 @@
 # Flight Bot v2.5 Scraping Audit
 
 - 작성일: 2026-02-25
-- 최종 갱신: 2026-03-24
+- 최종 갱신: 2026-04-09
 - 대상 저장소: `Scraping-flight-information`
 - 점검 범위: 스크래퍼, 워커, GUI, DB, 패키징, CI, 문서
 
 ---
+
+## 2026-04-09 기준선
+
+- 공개 실행 및 import 진입점은 유지된다.
+  - `python gui_v2.py`
+  - `from database import FlightDatabase`
+  - `from scraper_v2 import FlightSearcher, PlaywrightScraper`
+  - `from ui.components import ...`
+  - `from ui.dialogs import ...`
+  - `from ui.workers import ...`
+- 국제선 기준선:
+  - 국제선 추출은 동일 출처 API 우선(`flights/search -> status -> final POST`)이며 `page.totalCount/pageSize` 기준 전 페이지를 순회한다
+  - `bestFares + contents`를 합친 뒤 dedupe하고, API 성공 시 DOM fallback을 타지 않는다
+  - DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용하고 `크로스셀링` alt를 버리며, 실제 scrollable container를 찾아 점진 스크롤한다
+- 국내선 기준선:
+  - 국내선도 `DOMESTIC::key` 기반 paging API 우선으로 추출한다
+  - 왕복은 가는편/오는편 각각 최신 search key를 다시 감지해 API를 호출한다
+  - 오는편 key를 잡지 못한 경우에만 `domestic_return_key_missing`을 남기고 DOM fallback으로 제한 전환한다
+  - `FlightResult` canonical `price`는 계속 기본가이며 `benefit_price`, `benefit_label`을 함께 채운다
+- 관측성 기준선:
+  - 검색 telemetry/details에 `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`, `manual_reason`를 남긴다
+  - UI `manual_mode_activated`, `ui_manual_extract_finished` 이벤트도 `manual_reason`를 포함한다
+- 패키징 기준선:
+  - PyInstaller spec 3종은 facade 경로, package roots, split modules와 함께 `scraping.playwright_api` hiddenimport를 포함한다
+  - `pyinstaller --clean FlightBot_v2.5.spec` 빌드가 성공했고 산출물은 `dist/FlightBot_v2.5.exe`다
+- 로컬 품질 기준선:
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `pytest -q` -> `76 passed`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 104 tracked text files: OK`
+- 저장소 운영 기준선:
+  - `.gitignore`는 현재 `build/`, `dist/`, `logs/`, `playwright_profile/`, `.pytest_tmp/`를 이미 커버하므로 2026-04-09 기준 추가 수정이 필요하지 않았다
 
 ## 2026-03-24 기준선
 
@@ -94,6 +125,7 @@
   - 분리 모듈 포함:
     - `app.mainwindow.ui_bootstrap_sections`
     - `scraping.playwright_*`
+    - `scraping.playwright_api`
     - `scraping.search_sources`
     - `ui.search_panel_*`
     - `ui.search_panel_params`
@@ -108,10 +140,10 @@
   - GitHub Actions에서는 `pytest`를 돌리지 않는다.
   - `pytest -q`는 로컬 검증 기준이다.
   - `.spec` 파일은 facade + split modules + package roots + `ui.search_panel_params` 기준으로 유지된다.
-  - 2026-03-24부터는 `scraping.search_sources` hiddenimport도 포함한다.
+  - 2026-04-09부터는 `scraping.playwright_api`, `scraping.search_sources` hiddenimport도 포함한다.
   - 검색 파라미터 저장/복원은 `schema_version = 2`와 공용 정규화 규약을 기준으로 설명한다.
   - 가격 알림 문서는 성인 수/좌석 등급 매칭과 `점검 실패` 상태를 반영한다.
-  - `.gitignore`는 `.pytest_tmp/`, `.pre-commit-cache/`를 포함해 현재 산출물을 커버한다.
+  - `.gitignore`는 `.pytest_tmp/`, `.pre-commit-cache/`, `build/`, `dist/`, `playwright_profile/`, `logs/`를 포함해 현재 산출물을 커버한다.
 
 ## 남아 있는 운영 메모
 

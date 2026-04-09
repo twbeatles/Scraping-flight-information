@@ -32,7 +32,7 @@
 
 ### ✨ 검색 기능
 - **국내선/국제선** 항공권 검색
-- **국제선 API-first 추출** - 인터파크 동일 출처 API 우선, DOM fallback 보조
+- **국내선/국제선 API-first 추출** - 인터파크 동일 출처 paging API 우선, DOM fallback은 비상 경로로만 사용
 - **왕복/편도** 검색 지원
 - **좌석 등급** 선택 (이코노미/비즈니스/일등석)
 - **다중 목적지** 동시 검색 (최대 5개 목적지 비교)
@@ -429,7 +429,7 @@ pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 | `FlightBot_v2.5.spec` | 표준 GUI 배포 (호환 프로필) | `pyinstaller --clean FlightBot_v2.5.spec` |
 | `FlightBot_Simple.spec` | 콘솔 로그 확인용 디버그 실행파일 | `pyinstaller --clean FlightBot_Simple.spec` |
 
-> 2026-03-24 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)과 공용 검색 파라미터 복원 모듈(`ui.search_panel_params`), 내부 source registry 모듈(`scraping.search_sources`)도 함께 포함합니다.
+> 2026-04-09 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `scraping.playwright_api`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)과 공용 검색 파라미터 복원 모듈(`ui.search_panel_params`), 내부 source registry 모듈(`scraping.search_sources`)도 함께 포함합니다.
 
 ### 빌드 결과
 
@@ -508,6 +508,25 @@ playwright install chromium
   - `pytest -q --basetemp=.pytest_tmp` -> `72 passed`
   - `pyright --warnings` -> `0 errors, 0 warnings`
   - `python scripts/check_tracked_text.py --check-lf` -> `Checked 101 tracked text files: OK`
+
+### v2.5.10 (2026-04-09)
+- 🌍 **인터파크 API-first 수집 보강**
+  - 국제선은 기존 `status -> final POST` 경로를 `page.totalCount/pageSize` 기준 전 페이지 순회로 확장
+  - `bestFares + contents`를 하나의 dedupe bucket으로 합쳐 API 성공 시 DOM fallback 없이 결과를 정규화
+- 🇰🇷 **국내선 API-first 전환**
+  - 국내선 편도/왕복 모두 `DOMESTIC::key` 기반 paging API 우선 수집으로 전환
+  - `schedule`, `fares.totalPrice`, `benefits.discountedPrice/cardCashback`를 `FlightResult` 스키마에 맞게 정규화
+  - 왕복에서 오는편 search key를 못 잡으면 `domestic_return_key_missing`을 남기고 DOM fallback으로 제한 전환
+- 🧭 **DOM fallback 및 관측성 보강**
+  - 국제선 DOM fallback은 실제 scrollable container를 찾아 viewport 단위로 점진 스크롤
+  - 검색 telemetry에 `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`, `manual_reason` 추가
+  - 수동 모드/수동 추출 UI telemetry에도 `manual_reason`를 함께 기록
+- ✅ **회귀 테스트 보강**
+  - 국제선 API pagination + dedupe, 국내선 API pagination/정규화, 국내선 왕복 return key fallback 케이스 추가
+  - `pytest -q` -> `76 passed`
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 104 tracked text files: OK`
+  - `pyinstaller --clean FlightBot_v2.5.spec` -> `dist/FlightBot_v2.5.exe` 생성
 
 ### v2.5.8 (2026-03-19)
 - 🔁 **검색 파라미터 저장/복원 규약 통합**

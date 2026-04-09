@@ -19,7 +19,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-03-24)
+## 🔄 정합성 업데이트 (2026-04-09)
 
 아래 항목은 코드베이스 최신 구현 기준으로 우선 적용한다.
 
@@ -52,15 +52,19 @@
 27. `PriceAlert` 및 `price_alerts` 스키마는 `adults`, `last_error`를 포함하고, 가격 알림 매칭 기준은 `origin/dest/dep/ret/cabin_class/adults`다.
 28. 자동 가격 알림 실패는 모달을 띄우지 않고 `last_error` + 로그 + 목록 상태(`점검 실패`)로만 노출하며, 다음 성공 시 `last_error`를 비운다.
 29. `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`는 `ui.search_panel_params`를 hiddenimport에 포함해야 한다.
-30. 국제선 추출은 동일 출처 API 우선(`flights/search -> status -> final POST {}`), 실패 시 DOM fallback을 사용한다.
-31. 국제선 DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용하고 `크로스셀링` alt는 버린다.
-32. `FlightResult`는 `benefit_price`, `benefit_label`을 포함하며 국내선 canonical `price`는 계속 기본가다.
-33. `scraping.search_sources`는 내부 source boundary이며 기본 런타임 source는 `InterparkAirSource`다.
-34. `InterparkTicketSource`는 metadata + `NotImplementedError` skeleton까지만 제공한다.
-35. 설정 저장은 `QSettings.sync()`까지 호출해 `SEL -> CJU` 같은 국내선 경로도 즉시 round-trip 되어야 한다.
-36. 로컬/CI 정적 품질 기준선은 `pyright --warnings`다.
-37. 텍스트 무결성 기준선은 `python scripts/check_tracked_text.py --check-lf`이며, UTF-8 BOM과 CRLF를 모두 실패로 취급한다.
-38. 로컬 훅 기준선은 `.pre-commit-config.yaml`의 `check_tracked_text.py --check-lf` + `pyright --warnings`다.
+30. 국제선 추출은 동일 출처 API 우선(`flights/search -> status -> final POST`)이며, `page.totalCount/pageSize` 기준 전 페이지를 순회한 뒤에만 결과를 정렬/제한한다.
+31. 국내선 추출도 `DOMESTIC::key` 기반 paging API 우선이며, DOM 스크롤은 API 실패 또는 오는편 key 미확인 시 비상 fallback으로만 사용한다.
+32. 국제선 DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용하고 `크로스셀링` alt는 버리며, 실제 scrollable container를 찾아 점진 스크롤한다.
+33. `FlightResult`는 `benefit_price`, `benefit_label`을 포함하며 국내선 canonical `price`는 계속 기본가다.
+34. 검색 telemetry/details에는 `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`, `manual_reason`를 남긴다.
+35. 수동 모드 및 수동 추출 UI telemetry는 `manual_reason`를 함께 기록한다.
+36. PyInstaller spec 3종은 `ui.search_panel_params`와 함께 `scraping.playwright_api`, `scraping.search_sources` hiddenimport를 유지해야 한다.
+37. `scraping.search_sources`는 내부 source boundary이며 기본 런타임 source는 `InterparkAirSource`다.
+38. `InterparkTicketSource`는 metadata + `NotImplementedError` skeleton까지만 제공한다.
+39. 설정 저장은 `QSettings.sync()`까지 호출해 `SEL -> CJU` 같은 국내선 경로도 즉시 round-trip 되어야 한다.
+40. 로컬/CI 정적 품질 기준선은 `pyright --warnings`다.
+41. 텍스트 무결성 기준선은 `python scripts/check_tracked_text.py --check-lf`이며, UTF-8 BOM과 CRLF를 모두 실패로 취급한다.
+42. 로컬 훅 기준선은 `.pre-commit-config.yaml`의 `check_tracked_text.py --check-lf` + `pyright --warnings`다.
 
 ---
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
@@ -14,6 +14,7 @@ import scraper_config
 from scraper_config import ScraperScripts
 from scraping.errors import BrowserInitError, DataExtractionError, NetworkError
 from scraping.models import FlightResult
+from scraping.playwright_api import find_latest_search_key
 
 if TYPE_CHECKING:
     from scraping.playwright_scraper import PlaywrightScraper
@@ -48,6 +49,8 @@ def run_search(
 
     results: List[FlightResult] = []
     scraper.manual_mode = False
+    scraper._manual_reason = ""
+    scraper._search_metrics = {}
     scraper._current_route = f"{origin.upper()}->{destination.upper()}"
     max_attempts = max(int(scraper_config.MAX_RETRY_COUNT), 1)
     start_attempt = max(int(retry_count or 0), 0)
@@ -92,6 +95,8 @@ def run_search(
         for attempt_idx in range(start_attempt, max_attempts):
             attempt_no = attempt_idx + 1
             scraper.manual_mode = False
+            scraper._manual_reason = ""
+            scraper._search_metrics = {}
 
             scraper.close()
             scraper.manual_mode = False
@@ -219,11 +224,16 @@ def run_search(
                         results = scraper._extract_prices()
 
                     if not results:
+                        if not scraper._manual_reason:
+                            scraper._manual_reason = (
+                                "domestic_api_failed" if is_domestic else "international_api_failed"
+                            )
                         raise DataExtractionError("자동 추출 결과가 없습니다.")
                 else:
                     log("데이터가 충분히 로드되지 않았습니다.")
                     if background_mode:
                         break
+                    scraper._manual_reason = "international_api_failed" if not is_domestic else "domestic_api_failed"
                     scraper.manual_mode = True
                     break
 
@@ -262,12 +272,20 @@ def run_search(
                     scraper.manual_mode = False
                 else:
                     log(f"⚠️ {exc} - 수동 모드로 전환")
+                    if not scraper._manual_reason:
+                        scraper._manual_reason = (
+                            "domestic_api_failed" if is_domestic else "international_api_failed"
+                        )
                     scraper.manual_mode = True
                 break
             except Exception as exc:
                 logger.error("Playwright error: %s", exc, exc_info=True)
                 if emit:
                     emit(f"오류 발생: {exc}")
+                if not scraper._manual_reason and not background_mode:
+                    scraper._manual_reason = (
+                        "domestic_api_failed" if is_domestic else "international_api_failed"
+                    )
                 scraper.manual_mode = False if background_mode else True
                 break
     finally:
@@ -288,7 +306,12 @@ def run_search(
             duration_ms=int(elapsed_time * 1000),
             extraction_source=results[0].extraction_source if results else "",
             confidence=results[0].confidence if results else 0.0,
-            details={"attempt": attempt_no, "background_mode": background_mode},
+            details={
+                "attempt": attempt_no,
+                "background_mode": background_mode,
+                "manual_reason": scraper._manual_reason,
+                **(scraper._search_metrics or {}),
+            },
         )
 
     return results
@@ -306,7 +329,14 @@ def _handle_domestic_round_trip(
     log("🇰🇷 국내선 왕복: 가는편/오는편 분리 수집 시작")
     try:
         log("1단계: 가는편 목록 추출 중...")
-        outbound_flights = scraper._extract_domestic_flights_data()
+        outbound_key = find_latest_search_key(scraper, trip_kind="domestic")
+        outbound_flights, outbound_meta = scraper._extract_domestic_api_flights_data(search_key=outbound_key)
+        if not outbound_flights:
+            outbound_flights = scraper._extract_domestic_flights_data()
+            outbound_meta = {
+                "total_count": len(outbound_flights),
+                "fetched_pages": 0,
+            }
         log(f"가는편 {len(outbound_flights)}개 발견")
 
         if not outbound_flights:
@@ -368,8 +398,31 @@ def _handle_domestic_round_trip(
 
         log("4단계: 오는편 목록 추출 중...")
         time_module.sleep(scraper_config.DOMESTIC_RETURN_POST_CLICK_SETTLE_SECONDS)
-        return_flights = scraper._extract_domestic_flights_data()
+        return_key = find_latest_search_key(scraper, trip_kind="domestic")
+        return_flights: List[Dict[str, Any]] = []
+        return_meta = {"total_count": 0, "fetched_pages": 0}
+        if return_key and return_key != outbound_key:
+            return_flights, return_meta = scraper._extract_domestic_api_flights_data(search_key=return_key)
+        else:
+            scraper._manual_reason = "domestic_return_key_missing"
+
+        if not return_flights:
+            return_flights = scraper._extract_domestic_dom_flights_data()
+            if return_flights and scraper._manual_reason == "domestic_return_key_missing":
+                return_meta = {
+                    "total_count": len(return_flights),
+                    "fetched_pages": 0,
+                }
         log(f"오는편 {len(return_flights)}개 발견")
+        scraper._search_metrics.update(
+            {
+                "api_total_count": int(outbound_meta.get("total_count", 0) or 0)
+                + int(return_meta.get("total_count", 0) or 0),
+                "fetched_pages": int(outbound_meta.get("fetched_pages", 0) or 0)
+                + int(return_meta.get("fetched_pages", 0) or 0),
+                "api_item_count": len(outbound_flights) + len(return_flights),
+            }
+        )
 
         log("5단계: 가는편/오는편 조합 중...")
         if outbound_flights and return_flights:

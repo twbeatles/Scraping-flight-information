@@ -5,17 +5,31 @@ from __future__ import annotations
 import heapq
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 import scraper_config
 from scraper_config import ScraperScripts
 from scraping.models import FlightResult
+from scraping.playwright_api import find_latest_search_key, page_fetch_json
 
 if TYPE_CHECKING:
     from scraping.playwright_scraper import PlaywrightScraper
 
 
 logger = logging.getLogger("ScraperV2")
+
+
+DOMESTIC_CARRIER_NAMES = {
+    "KE": "대한항공",
+    "OZ": "아시아나항공",
+    "7C": "제주항공",
+    "LJ": "진에어",
+    "TW": "티웨이항공",
+    "BX": "에어부산",
+    "RS": "에어서울",
+    "ZE": "이스타항공",
+    "YP": "에어프레미아",
+}
 
 
 def combine_domestic_round_trip(
@@ -102,6 +116,203 @@ def combine_domestic_round_trip(
 
 
 def extract_domestic_flights_data(scraper: "PlaywrightScraper") -> list:
+    """Collect domestic flight items, preferring the paged API over DOM scraping."""
+
+    items, metadata = extract_domestic_api_flights_data(scraper)
+    if items:
+        scraper._search_metrics.update(
+            {
+                "api_total_count": _coerce_int(metadata.get("total_count")),
+                "fetched_pages": _coerce_int(metadata.get("fetched_pages")),
+                "api_item_count": len(items),
+            }
+        )
+        return items
+
+    if not getattr(scraper, "_manual_reason", ""):
+        scraper._manual_reason = "domestic_api_failed"
+    return extract_domestic_dom_flights_data(scraper)
+
+
+def extract_domestic_api_flights_data(
+    scraper: "PlaywrightScraper",
+    *,
+    search_key: str | None = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    if not scraper.page:
+        return [], {"total_count": 0, "fetched_pages": 0}
+
+    key = str(search_key or "").strip() or find_latest_search_key(scraper, trip_kind="domestic")
+    if not key:
+        logger.info("국내선 API search key를 찾지 못했습니다.")
+        return [], {"total_count": 0, "fetched_pages": 0}
+
+    context = getattr(scraper, "_last_search_context", {}) or {}
+    cabin = str(context.get("cabin_class", "ECONOMY") or "ECONOMY").upper()
+    page_size = 20
+    page_number = 1
+    total_pages = 1
+    total_count = 0
+    seen: Dict[str, Dict[str, Any]] = {}
+
+    while page_number <= total_pages:
+        payload = _fetch_domestic_search_page(scraper, key, page_number=page_number, page_size=page_size, cabin=cabin)
+        if not payload:
+            break
+
+        page_meta = payload.get("page")
+        if isinstance(page_meta, dict):
+            page_size = max(_coerce_int(page_meta.get("pageSize")), page_size)
+            total_count = max(total_count, _coerce_int(page_meta.get("totalCount")))
+            total_pages = max((total_count + page_size - 1) // page_size, page_number)
+
+        items = payload.get("items")
+        if not isinstance(items, list) or not items:
+            break
+
+        for item in items:
+            normalized = _normalize_domestic_api_item(item)
+            if not normalized:
+                continue
+            seen[normalized["key"]] = normalized
+
+        page_number += 1
+
+    return (
+        sorted(seen.values(), key=lambda item: item.get("price", float("inf"))),
+        {
+            "total_count": total_count,
+            "fetched_pages": max(page_number - 1, 0),
+        },
+    )
+
+
+def _fetch_domestic_search_page(
+    scraper: "PlaywrightScraper",
+    search_key: str,
+    *,
+    page_number: int,
+    page_size: int,
+    cabin: str,
+) -> Dict[str, Any]:
+    url = f"{scraper_config.INTERPARK_AIR_API_BASE}/domestic/flights/search/{search_key}"
+    payload = page_fetch_json(
+        scraper,
+        url,
+        method="POST",
+        body={
+            "pageNumber": page_number,
+            "pageSize": page_size,
+            "filter": {
+                "byAirline": None,
+                "byDepartureTimes": None,
+                "byPaymentMethods": None,
+                "byDiscountTypes": None,
+                "byCabins": [cabin],
+            },
+        },
+    )
+    return payload if isinstance(payload, dict) else {}
+
+
+def _normalize_domestic_api_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(item, dict):
+        return {}
+
+    schedule = item.get("schedule")
+    if not isinstance(schedule, dict):
+        return {}
+
+    dep_time = _iso_timestamp_to_hhmm(schedule.get("departureAt"))
+    arr_time = _iso_timestamp_to_hhmm(schedule.get("arrivalAt"))
+    if not dep_time or not arr_time:
+        return {}
+
+    fares = item.get("fares")
+    if not isinstance(fares, list) or not fares:
+        return {}
+
+    best_price = 0
+    best_benefit_price = 0
+    best_benefit_label = ""
+    for fare in fares:
+        if not isinstance(fare, dict):
+            continue
+        total_price = _coerce_int(fare.get("totalPrice"))
+        if total_price <= 0:
+            continue
+        benefit_price, benefit_label = _extract_domestic_benefit(fare)
+        if best_price == 0 or total_price < best_price:
+            best_price = total_price
+            best_benefit_price = benefit_price
+            best_benefit_label = benefit_label
+
+    if best_price <= 0:
+        return {}
+
+    carrier_code = str(schedule.get("marketingCarrier", "") or "").upper()
+    airline = DOMESTIC_CARRIER_NAMES.get(carrier_code, carrier_code or "Unknown")
+    flight_number = str(schedule.get("flightNumber", "") or "")
+    key = str(item.get("key") or item.get("id") or f"{carrier_code}_{dep_time}_{arr_time}_{best_price}")
+
+    return {
+        "key": key,
+        "airline": airline,
+        "price": best_price,
+        "benefitPrice": best_benefit_price,
+        "benefitLabel": best_benefit_label,
+        "depTime": dep_time,
+        "arrTime": arr_time,
+        "stops": 0,
+        "flightNumber": flight_number,
+        "seatAvailability": _coerce_int(item.get("seatAvailability")),
+        "discountType": str(item.get("discountType", "") or ""),
+    }
+
+
+def _extract_domestic_benefit(fare: Dict[str, Any]) -> Tuple[int, str]:
+    benefits = fare.get("benefits")
+    if not isinstance(benefits, list):
+        return 0, ""
+
+    best_price = 0
+    best_label = ""
+    for benefit in benefits:
+        if not isinstance(benefit, dict):
+            continue
+        discounted_price = _coerce_int(benefit.get("discountedPrice"))
+        if discounted_price <= 0:
+            continue
+
+        cashback = benefit.get("cardCashback")
+        if isinstance(cashback, dict):
+            card_name = str(cashback.get("cardName", "") or "").strip()
+            rate = cashback.get("rate")
+            amount = _coerce_int(cashback.get("amount"))
+            if rate:
+                label = f"{card_name} {rate}% 캐시백 적용 시".strip()
+            elif amount > 0:
+                label = f"{card_name} {amount:,}원 캐시백 적용 시".strip()
+            else:
+                label = f"{card_name} 혜택가".strip()
+        else:
+            label = "혜택가"
+
+        if best_price == 0 or discounted_price < best_price:
+            best_price = discounted_price
+            best_label = label
+
+    return best_price, best_label
+
+
+def _iso_timestamp_to_hhmm(value: Any) -> str:
+    text = str(value or "").strip()
+    if len(text) >= 16 and "T" in text:
+        return text[11:16]
+    return ""
+
+
+def extract_domestic_dom_flights_data(scraper: "PlaywrightScraper") -> list:
     """Collect domestic flight cards while scrolling."""
 
     if not scraper.page:
@@ -205,6 +416,7 @@ def build_domestic_results(
         arr_time = item.get("arrTime", "") or ""
         airline = item.get("airline", "Unknown") or "Unknown"
         stops = int(item.get("stops", 0) or 0)
+        flight_number = str(item.get("flightNumber", "") or "")
         benefit_price = _coerce_int(item.get("benefitPrice"))
         benefit_label = str(item.get("benefitLabel", "") or "")
 
@@ -223,6 +435,7 @@ def build_domestic_results(
                 departure_time=dep_time,
                 arrival_time=arr_time,
                 stops=stops,
+                flight_number=flight_number,
                 source=source,
                 return_departure_time="",
                 return_arrival_time="",
@@ -250,8 +463,8 @@ def extract_domestic_prices(scraper: "PlaywrightScraper") -> List[FlightResult]:
         results = build_domestic_results(
             extracted,
             source="Interpark (국내선)",
-            extraction_source="domestic_scroll",
-            confidence=0.75,
+            extraction_source="domestic_api" if any(item.get("flightNumber") for item in extracted) else "domestic_scroll",
+            confidence=0.9 if any(item.get("flightNumber") for item in extracted) else 0.75,
         )
         logger.info("🇰🇷 국내선 추출 완료: %s개", len(results))
         return results

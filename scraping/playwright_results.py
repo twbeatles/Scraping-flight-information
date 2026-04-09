@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
@@ -10,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 import scraper_config
 from scraper_config import ScraperScripts
 from scraping.models import FlightResult
+from scraping.playwright_api import find_latest_search_key, page_fetch_json
 
 if TYPE_CHECKING:
     from scraping.playwright_scraper import PlaywrightScraper
@@ -57,18 +57,21 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
         if not context or context.get("is_domestic"):
             return []
 
-        search_url = scraper_config.build_interpark_international_api_search_url(
-            context.get("origin", ""),
-            context.get("destination", ""),
-            context.get("departure_date", ""),
-            context.get("return_date"),
-            cabin=context.get("cabin_class", "ECONOMY"),
-            adults=context.get("adults", 1),
-            child=context.get("child", 0),
-            infant=context.get("infant", 0),
-        )
-        initial = _page_fetch_json(scraper, search_url)
-        search_key = str(initial.get("key") or "").strip()
+        search_key = find_latest_search_key(scraper, trip_kind="international")
+        initial: Dict[str, Any] = {}
+        if not search_key:
+            search_url = scraper_config.build_interpark_international_api_search_url(
+                context.get("origin", ""),
+                context.get("destination", ""),
+                context.get("departure_date", ""),
+                context.get("return_date"),
+                cabin=context.get("cabin_class", "ECONOMY"),
+                adults=context.get("adults", 1),
+                child=context.get("child", 0),
+                infant=context.get("infant", 0),
+            )
+            initial = page_fetch_json(scraper, search_url)
+            search_key = str(initial.get("key") or "").strip()
         if not search_key:
             logger.info("국제선 API search key를 찾지 못했습니다: %s", initial)
             return []
@@ -80,7 +83,7 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
         status_payload: Dict[str, Any] = {}
 
         for attempt in range(max_polls):
-            status_payload = _page_fetch_json(scraper, status_url)
+            status_payload = page_fetch_json(scraper, status_url)
             if str(status_payload.get("status") or "").upper() == "COMPLETE":
                 break
             if status_payload.get("code"):
@@ -92,18 +95,25 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
                 logger.info("국제선 API status polling timeout: %s", search_key)
                 return []
 
-        result_url = (
-            f"{scraper_config.INTERPARK_AIR_API_BASE}/international/flights/search/v2/{search_key}"
-        )
-        payload = _page_fetch_json(scraper, result_url, method="POST", body={})
+        payloads = _fetch_international_result_pages(scraper, search_key)
+        if not payloads:
+            return []
+
         items: List[Dict[str, Any]] = []
-        for bucket in ("bestFares", "contents"):
-            value = payload.get(bucket)
-            if isinstance(value, list):
-                items.extend(item for item in value if isinstance(item, dict))
+        fetched_pages = 0
+        api_total_count = 0
+        for payload in payloads:
+            page_meta = payload.get("page")
+            if isinstance(page_meta, dict):
+                fetched_pages = max(fetched_pages, _coerce_int(page_meta.get("currentPage")))
+                api_total_count = max(api_total_count, _coerce_int(page_meta.get("totalCount")))
+            for bucket in ("bestFares", "contents"):
+                value = payload.get(bucket)
+                if isinstance(value, list):
+                    items.extend(item for item in value if isinstance(item, dict))
 
         if not items:
-            logger.info("국제선 API 결과 payload shape mismatch: %s", list(payload.keys())[:10])
+            logger.info("국제선 API 결과 payload shape mismatch: %s", list(payloads[0].keys())[:10])
             return []
 
         normalized: Dict[str, FlightResult] = {}
@@ -112,6 +122,13 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
             if result is None:
                 continue
             normalized[_result_unique_key(result)] = result
+        scraper._search_metrics.update(
+            {
+                "api_total_count": api_total_count,
+                "fetched_pages": fetched_pages,
+                "api_item_count": len(normalized),
+            }
+        )
         return sorted(
             normalized.values(),
             key=lambda item: item.price if item.price > 0 else float("inf"),
@@ -129,9 +146,10 @@ def _extract_international_prices_from_dom(scraper: "PlaywrightScraper") -> List
     max_scrolls = scraper_config.INTERNATIONAL_MAX_SCROLLS
     pause_time = scraper_config.SCROLL_PAUSE_TIME
     logger.info("📜 점진적 추출 시작 (최대 %s회 스크롤)...", max_scrolls)
+    seen_indices: set[int] = set()
+    stalled_iterations = 0
 
     try:
-        previous_height = 0
         for index in range(max_scrolls):
             step_results = scraper.page.evaluate(ScraperScripts.get_international_prices_script())
             step_source = "international_primary"
@@ -157,21 +175,30 @@ def _extract_international_prices_from_dom(scraper: "PlaywrightScraper") -> List
                 all_results_dict[unique_key] = item
                 current_count += 1
 
+            current_indices = _read_current_result_indices(scraper)
+            before_index_count = len(seen_indices)
+            seen_indices.update(current_indices)
+            new_index_count = len(seen_indices) - before_index_count
+
             logger.info(
-                "🧭 스크롤 %s: 새 결과 %s개 추가 (총 %s개)",
+                "🧭 스크롤 %s: 새 결과 %s개 추가 (총 %s개, index %s개)",
                 index + 1,
                 current_count,
                 len(all_results_dict),
+                len(seen_indices),
             )
 
-            scraper.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            scroll_state = _advance_results_scroll(scraper)
             scraper.page.wait_for_timeout(pause_time * 1000)
 
-            new_height = scraper.page.evaluate("document.body.scrollHeight")
-            if new_height == previous_height and index > 2:
+            if current_count == 0 and new_index_count == 0:
+                stalled_iterations += 1
+            else:
+                stalled_iterations = 0
+
+            if (not scroll_state.get("advanced", False) and stalled_iterations >= 2) or stalled_iterations >= 4:
                 logger.info("🧭 더 이상 새 콘텐츠가 로드되지 않습니다.")
                 break
-            previous_height = new_height
     except Exception as exc:
         logger.error("Extraction error: %s", exc, exc_info=True)
 
@@ -182,52 +209,127 @@ def _extract_international_prices_from_dom(scraper: "PlaywrightScraper") -> List
             item.setdefault("confidence", 0.6)
             all_results_dict[_browser_item_unique_key(item)] = item
 
+    sorted_indices = sorted(seen_indices)
+    dom_gap_detected = any(
+        sorted_indices[idx] - sorted_indices[idx - 1] > 1
+        for idx in range(1, len(sorted_indices))
+    )
+    scraper._search_metrics.update(
+        {
+            "dom_seen_indices": sorted_indices,
+            "dom_gap_detected": dom_gap_detected,
+        }
+    )
+    if dom_gap_detected and not getattr(scraper, "_manual_reason", ""):
+        scraper._manual_reason = "dom_fallback_gap_risk"
+
     return _build_international_results(all_results_dict.values())
 
 
-def _page_fetch_json(
+def _fetch_international_result_pages(
     scraper: "PlaywrightScraper",
-    url: str,
-    *,
-    method: str = "GET",
-    body: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    if not scraper.page:
-        return {}
+    search_key: str,
+) -> List[Dict[str, Any]]:
+    result_url = (
+        f"{scraper_config.INTERPARK_AIR_API_BASE}/international/flights/search/v2/{search_key}"
+    )
+    first_payload = page_fetch_json(
+        scraper,
+        result_url,
+        method="POST",
+        body={"pageNumber": 1, "pageSize": 20, "filter": {}},
+    )
+    if not isinstance(first_payload, dict):
+        return []
 
-    method_json = json.dumps(method.upper())
-    url_json = json.dumps(url)
-    body_expr = "undefined" if body is None else json.dumps(json.dumps(body, ensure_ascii=False))
-    headers_expr = "{}" if body is None else '{"content-type":"application/json"}'
-    script = f"""
-    async () => {{
-        try {{
-            const response = await fetch({url_json}, {{
-                method: {method_json},
-                credentials: 'include',
-                headers: {headers_expr},
-                body: {body_expr} === undefined ? undefined : JSON.parse({body_expr}),
-            }});
-            const text = await response.text();
-            try {{
-                return JSON.parse(text || "{{}}");
-            }} catch (error) {{
-                return {{
-                    status: response.status,
-                    ok: response.ok,
-                    raw: text,
-                }};
-            }}
-        }} catch (error) {{
-            return {{
-                ok: false,
-                error: String(error),
-            }};
-        }}
-    }}
+    payloads = [first_payload]
+    page_meta = first_payload.get("page")
+    if not isinstance(page_meta, dict):
+        return payloads
+
+    total_count = _coerce_int(page_meta.get("totalCount"))
+    page_size = max(_coerce_int(page_meta.get("pageSize")), 20)
+    total_pages = max((total_count + page_size - 1) // page_size, 1)
+
+    for page_number in range(2, total_pages + 1):
+        payload = page_fetch_json(
+            scraper,
+            result_url,
+            method="POST",
+            body={"pageNumber": page_number, "pageSize": page_size, "filter": {}},
+        )
+        if not isinstance(payload, dict) or not payload:
+            break
+        payloads.append(payload)
+
+    return payloads
+
+
+def _read_current_result_indices(scraper: "PlaywrightScraper") -> List[int]:
+    if not scraper.page:
+        return []
+
+    script = """
+    () => Array.from(document.querySelectorAll('li[data-index], div[data-index]'))
+        .map((node) => Number(node.getAttribute('data-index')))
+        .filter((value) => Number.isFinite(value))
     """
     result = scraper.page.evaluate(script)
-    return result if isinstance(result, dict) else {}
+    if not isinstance(result, list):
+        return []
+    return sorted({int(item) for item in result if isinstance(item, (int, float))})
+
+
+def _advance_results_scroll(scraper: "PlaywrightScraper") -> Dict[str, Any]:
+    if not scraper.page:
+        return {"advanced": False, "atEnd": True}
+
+    script = """
+    () => {
+        const cards = Array.from(document.querySelectorAll('li[data-index], div[data-index]'));
+        const candidates = Array.from(document.querySelectorAll('*'))
+            .filter((el) => {
+                const style = getComputedStyle(el);
+                const overflowY = style.overflowY;
+                return (
+                    (overflowY === 'auto' || overflowY === 'scroll') &&
+                    el.scrollHeight > el.clientHeight + 20 &&
+                    cards.some((card) => el.contains(card))
+                );
+            })
+            .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
+
+        const target = candidates[0];
+        if (target) {
+            const maxTop = Math.max(0, target.scrollHeight - target.clientHeight);
+            const beforeTop = target.scrollTop;
+            const nextTop = Math.min(maxTop, beforeTop + Math.max(Math.floor(target.clientHeight * 0.8), 320));
+            target.scrollTop = nextTop;
+            target.dispatchEvent(new Event('scroll', { bubbles: true }));
+            return {
+                advanced: nextTop !== beforeTop,
+                atEnd: nextTop >= maxTop,
+                scrollTop: nextTop,
+                maxTop,
+                mode: 'container',
+            };
+        }
+
+        const beforeY = window.scrollY;
+        const maxY = Math.max(0, document.body.scrollHeight - window.innerHeight);
+        const nextY = Math.min(maxY, beforeY + Math.max(Math.floor(window.innerHeight * 0.8), 320));
+        window.scrollTo(0, nextY);
+        return {
+            advanced: nextY !== beforeY,
+            atEnd: nextY >= maxY,
+            scrollTop: nextY,
+            maxTop: maxY,
+            mode: 'window',
+        };
+    }
+    """
+    result = scraper.page.evaluate(script)
+    return result if isinstance(result, dict) else {"advanced": False, "atEnd": True}
 
 
 def _normalize_international_api_item(item: Dict[str, Any]) -> Optional[FlightResult]:

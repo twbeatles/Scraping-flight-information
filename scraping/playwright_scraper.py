@@ -18,6 +18,8 @@ from scraping.playwright_browser import (
 from scraping.playwright_domestic import (
     build_domestic_results,
     combine_domestic_round_trip,
+    extract_domestic_api_flights_data,
+    extract_domestic_dom_flights_data,
     extract_domestic_flights_data,
     extract_domestic_prices,
 )
@@ -58,6 +60,8 @@ class PlaywrightScraper:
         self._no_new_count: int = 0
         self._bottom_count: int = 0
         self._last_search_context: Dict[str, Any] = {}
+        self._manual_reason: str = ""
+        self._search_metrics: Dict[str, Any] = {}
 
     def _emit_telemetry(self, event_type: str, success: bool = True, **kwargs) -> None:
         if not self.telemetry_callback:
@@ -151,6 +155,16 @@ class PlaywrightScraper:
     def _extract_domestic_flights_data(self) -> list:
         return extract_domestic_flights_data(self)
 
+    def _extract_domestic_api_flights_data(
+        self,
+        *,
+        search_key: str | None = None,
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        return extract_domestic_api_flights_data(self, search_key=search_key)
+
+    def _extract_domestic_dom_flights_data(self) -> list:
+        return extract_domestic_dom_flights_data(self)
+
     @staticmethod
     def _build_domestic_results(
         items: List[Dict[str, Any]],
@@ -176,6 +190,9 @@ class PlaywrightScraper:
         if self._last_is_domestic:
             return self._extract_domestic_prices()
         return self._extract_prices()
+
+    def get_manual_reason(self) -> str:
+        return self._manual_reason
 
     def close(self) -> None:
         close_resources(self)

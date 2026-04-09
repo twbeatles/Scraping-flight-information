@@ -36,7 +36,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-03-24)
+## 🔄 정합성 업데이트 (2026-04-09)
 
 최신 코드 기준으로 아래 항목을 우선 적용한다.
 
@@ -64,16 +64,20 @@
 22. `last_search_meta`는 `is_domestic`를 저장하고, 구 row 복원 시 route 기반 추론으로 보완한다.
 23. `PriceAlert` 및 `price_alerts`는 `adults`, `last_error`를 포함하며 가격 알림 매칭 기준은 `origin/dest/dep/ret/cabin_class/adults`다.
 24. 자동 가격 알림 실패는 모달 대신 DB 상태(`last_error`)와 로그/목록 상태(`점검 실패`)로 노출한다.
-25. PyInstaller spec 3종은 `ui.search_panel_params`를 hiddenimport에 포함해야 한다.
-26. 국제선 추출은 동일 출처 API 우선(`flights/search -> status -> final POST {}`), 실패 시 DOM fallback을 사용한다.
-27. 국제선 DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용하고 `크로스셀링` alt는 버린다.
-28. `FlightResult`는 `benefit_price`, `benefit_label`을 포함하며 국내선 canonical `price`는 계속 기본가다.
-29. `scraping.search_sources`는 내부 source boundary이며 기본 런타임 source는 `InterparkAirSource`다.
-30. `InterparkTicketSource`는 metadata + `NotImplementedError` skeleton까지만 제공한다.
-31. 설정 저장은 `QSettings.sync()`까지 호출해 `SEL -> CJU` 같은 국내선 경로도 즉시 round-trip 되어야 한다.
-32. 로컬/CI 정적 품질 기준선은 `pyright --warnings`다.
-33. 텍스트 무결성 기준선은 `python scripts/check_tracked_text.py --check-lf`이며, UTF-8 BOM과 CRLF를 모두 실패로 취급한다.
-34. 로컬 훅 기준선은 `.pre-commit-config.yaml`의 `check_tracked_text.py --check-lf` + `pyright --warnings`다.
+25. PyInstaller spec 3종은 `ui.search_panel_params`뿐 아니라 `scraping.playwright_api`, `scraping.search_sources`도 hiddenimport에 포함해야 한다.
+26. 국제선 추출은 동일 출처 API 우선(`flights/search -> status -> final POST`)이며 `page.totalCount/pageSize` 기준 전 페이지를 순회한다.
+27. 국제선 API 결과는 `bestFares + contents`를 합쳐 dedupe하고, API 성공 시 DOM fallback을 사용하지 않는다.
+28. 국제선 DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용하고 `크로스셀링` alt는 버리며, 실제 scrollable container를 찾아 점진 스크롤한다.
+29. 국내선도 `DOMESTIC::key` 기반 paging API 우선이며, 오는편 key를 못 잡았을 때만 `domestic_return_key_missing`과 함께 DOM fallback을 사용한다.
+30. `FlightResult`는 `benefit_price`, `benefit_label`을 포함하며 국내선 canonical `price`는 계속 기본가다.
+31. 검색 telemetry/details에는 `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`, `manual_reason`를 남긴다.
+32. 수동 모드 및 수동 추출 UI telemetry도 `manual_reason`를 함께 기록한다.
+33. `scraping.search_sources`는 내부 source boundary이며 기본 런타임 source는 `InterparkAirSource`다.
+34. `InterparkTicketSource`는 metadata + `NotImplementedError` skeleton까지만 제공한다.
+35. 설정 저장은 `QSettings.sync()`까지 호출해 `SEL -> CJU` 같은 국내선 경로도 즉시 round-trip 되어야 한다.
+36. 로컬/CI 정적 품질 기준선은 `pyright --warnings`다.
+37. 텍스트 무결성 기준선은 `python scripts/check_tracked_text.py --check-lf`이며, UTF-8 BOM과 CRLF를 모두 실패로 취급한다.
+38. 로컬 훅 기준선은 `.pre-commit-config.yaml`의 `check_tracked_text.py --check-lf` + `pyright --warnings`다.
 
 ---
 
@@ -98,7 +102,7 @@ Scraping-flight-information-main-v2/
     └── workers.py         # 백그라운드 스레드 워커 (SearchWorker, MultiSearchWorker)
 ```
 
-- 2026-03-19 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 `hiddenimports`에 facade(`database`, `scraper_v2`, `ui.components/dialogs/workers`), 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`), 분할 모듈(`app.mainwindow.shared`, `scraping.extract_domestic`, `scraping.extract_international`, `ui.search_panel_params`)을 함께 유지한 상태가 기준이다.
+- 2026-04-09 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 `hiddenimports`에 facade(`database`, `scraper_v2`, `ui.components/dialogs/workers`), 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`), 분할 모듈(`app.mainwindow.shared`, `scraping.playwright_api`, `scraping.extract_domestic`, `scraping.extract_international`, `ui.search_panel_params`)을 함께 유지한 상태가 기준이다.
 
 ---
 

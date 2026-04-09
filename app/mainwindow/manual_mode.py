@@ -11,6 +11,12 @@ class ManualModeMixin:
     def _activate_manual_mode(self: Any, searcher):
         self.active_searcher = searcher
         self.search_panel.set_searching(False)
+        manual_reason = ""
+        if hasattr(searcher, "get_manual_reason"):
+            try:
+                manual_reason = str(searcher.get_manual_reason() or "")
+            except Exception:
+                manual_reason = ""
         if hasattr(self, "_emit_telemetry_event"):
             self._emit_telemetry_event(
                 {
@@ -19,6 +25,7 @@ class ManualModeMixin:
                     "route": f"{self.current_search_params.get('origin', '')}->{self.current_search_params.get('dest', '')}",
                     "manual_mode": True,
                     "error_code": "AUTO_EXTRACTION_FAILED",
+                    "details": {"manual_reason": manual_reason},
                 }
             )
         
@@ -28,7 +35,10 @@ class ManualModeMixin:
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(50)
         self.progress_bar.setFormat("수동 모드 대기 중...")
-        self.log_viewer.append_log("수동 모드로 전환됨.")
+        if manual_reason:
+            self.log_viewer.append_log(f"수동 모드로 전환됨. 사유: {manual_reason}")
+        else:
+            self.log_viewer.append_log("수동 모드로 전환됨.")
         
         QMessageBox.warning(self, "수동 모드 전환", 
                             "자동 추출에 실패했습니다.\n"
@@ -38,6 +48,12 @@ class ManualModeMixin:
             return
 
         route = f"{self.current_search_params.get('origin', '')}->{self.current_search_params.get('dest', '')}"
+        manual_reason = ""
+        if hasattr(self.active_searcher, "get_manual_reason"):
+            try:
+                manual_reason = str(self.active_searcher.get_manual_reason() or "")
+            except Exception:
+                manual_reason = ""
         try:
             self.log_viewer.append_log("수동 추출 시도...")
             results = self.active_searcher.extract_manual()
@@ -52,6 +68,7 @@ class ManualModeMixin:
                             "result_count": len(results),
                             "extraction_source": getattr(results[0], "extraction_source", ""),
                             "confidence": getattr(results[0], "confidence", 0.0),
+                            "details": {"manual_reason": manual_reason},
                         }
                     )
                 self._search_finished(results)
@@ -65,6 +82,7 @@ class ManualModeMixin:
                             "manual_mode": True,
                             "result_count": 0,
                             "error_code": "MANUAL_NO_RESULT",
+                            "details": {"manual_reason": manual_reason},
                         }
                     )
                 self.log_viewer.append_log("수동 추출 실패: 데이터 없음")
@@ -79,7 +97,7 @@ class ManualModeMixin:
                         "manual_mode": True,
                         "result_count": 0,
                         "error_code": "MANUAL_EXTRACT_ERROR",
-                        "details": {"message": str(e)},
+                        "details": {"message": str(e), "manual_reason": manual_reason},
                     }
                 )
             QMessageBox.critical(self, "오류", str(e))
@@ -106,6 +124,5 @@ class ManualModeMixin:
         finally:
             self.active_searcher = None
             self.manual_frame.setVisible(False)
-
 
 
