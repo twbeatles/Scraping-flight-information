@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QCalendarWidget, QGroupBox, QListWidget, QListWidgetItem, QFrame,
     QMessageBox, QDateEdit, QSpinBox, QCheckBox, QScrollArea, QGridLayout,
     QWidget, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QTabWidget, QFileDialog, QInputDialog
+    QTabWidget, QFileDialog, QInputDialog, QRadioButton, QButtonGroup
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QDate, QSettings
 from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QAction
@@ -21,6 +21,7 @@ except ImportError:
 import config
 from ui.styles import MODERN_THEME
 from ui.components_primitives import NoWheelSpinBox, NoWheelComboBox, NoWheelDateEdit
+from ui.airport_options import get_airport_options, populate_airport_combo
 
 logger = logging.getLogger(__name__)
 
@@ -42,14 +43,26 @@ class MultiDestDialog(QDialog):
         
         # Instructions
         layout.addWidget(QLabel("여러 목적지를 선택하여 한 번에 비교 검색합니다."))
+
+        # Flight Type
+        type_layout = QHBoxLayout()
+        type_layout.addWidget(QLabel("노선:"))
+        self.rb_domestic = QRadioButton("🇰🇷 국내선")
+        self.rb_intl = QRadioButton("✈️ 국제선")
+        self.rb_intl.setChecked(True)
+        self.flight_type_group = QButtonGroup(self)
+        self.flight_type_group.addButton(self.rb_domestic)
+        self.flight_type_group.addButton(self.rb_intl)
+        self.flight_type_group.buttonClicked.connect(self._refresh_airports)
+        type_layout.addWidget(self.rb_domestic)
+        type_layout.addWidget(self.rb_intl)
+        type_layout.addStretch()
+        layout.addLayout(type_layout)
         
         # Origin
         origin_layout = QHBoxLayout()
         origin_layout.addWidget(QLabel("출발지:"))
         self.cb_origin = QComboBox()
-        for code, name in config.AIRPORTS.items():
-            self.cb_origin.addItem(f"{code} ({name})", code)
-        self.cb_origin.setCurrentIndex(0)
         self.cb_origin.currentIndexChanged.connect(self._on_origin_changed)
         origin_layout.addWidget(self.cb_origin)
         layout.addLayout(origin_layout)
@@ -60,21 +73,9 @@ class MultiDestDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         dest_widget = QWidget()
-        dest_layout = QGridLayout(dest_widget)
+        self.dest_layout = QGridLayout(dest_widget)
         
         self.dest_checkboxes = {}
-        all_presets = self.prefs.get_all_presets() if self.prefs else config.AIRPORTS
-        
-        row, col = 0, 0
-        for code, name in all_presets.items():
-            cb = QCheckBox(f"{code} ({name})")
-            cb.setProperty("code", code)
-            self.dest_checkboxes[code] = cb
-            dest_layout.addWidget(cb, row, col)
-            col += 1
-            if col >= 3:
-                col = 0
-                row += 1
         
         scroll.setWidget(dest_widget)
         layout.addWidget(scroll, 1)
@@ -133,7 +134,7 @@ class MultiDestDialog(QDialog):
         action_layout.addWidget(btn_search)
         
         layout.addLayout(action_layout)
-        self._on_origin_changed()
+        self._refresh_airports()
     
     def _toggle_all(self, checked):
         for cb in self.dest_checkboxes.values():
@@ -148,6 +149,42 @@ class MultiDestDialog(QDialog):
             if is_origin:
                 cb.setChecked(False)
             cb.setEnabled(not is_origin)
+
+    def _refresh_airports(self):
+        checked_codes = {
+            code for code, cb in self.dest_checkboxes.items() if cb.isChecked()
+        }
+        is_domestic = self.rb_domestic.isChecked()
+        current_origin = self.cb_origin.currentData()
+        populate_airport_combo(
+            self.cb_origin,
+            self.prefs,
+            is_domestic=is_domestic,
+            include_presets=True,
+            current_code=str(current_origin or ""),
+            default_code="GMP" if is_domestic else "ICN",
+        )
+
+        while self.dest_layout.count():
+            item = self.dest_layout.takeAt(0)
+            if item is not None:
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+
+        self.dest_checkboxes = {}
+        row, col = 0, 0
+        for code, name in get_airport_options(self.prefs, is_domestic=is_domestic, include_presets=True):
+            cb = QCheckBox(f"{code} ({name})")
+            cb.setProperty("code", code)
+            cb.setChecked(code in checked_codes)
+            self.dest_checkboxes[code] = cb
+            self.dest_layout.addWidget(cb, row, col)
+            col += 1
+            if col >= 3:
+                col = 0
+                row += 1
+        self._on_origin_changed()
     
     def _on_search(self):
         selected = [code for code, cb in self.dest_checkboxes.items() if cb.isEnabled() and cb.isChecked()]
@@ -171,6 +208,13 @@ class MultiDestDialog(QDialog):
         if origin in selected:
             QMessageBox.warning(self, "선택 오류", "출발지는 도착지 목록에 포함할 수 없습니다.")
             return
+
+        if self.rb_domestic.isChecked():
+            if origin not in config.DOMESTIC_AIRPORT_CODES or any(
+                dest not in config.DOMESTIC_AIRPORT_CODES for dest in selected
+            ):
+                QMessageBox.warning(self, "입력 오류", "국내선 모드에서는 국내 공항/도시 코드만 사용할 수 있습니다.")
+                return
 
         if not _validate_route_and_dates(self, origin, selected[0], dep_date, ret_date):
             return

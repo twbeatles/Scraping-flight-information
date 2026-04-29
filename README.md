@@ -218,6 +218,7 @@ python gui_v2.py
 > ℹ️ v2.5 개선: 설정에서 자동 점검을 활성화하면 앱 실행 중 주기적으로 알림 조건을 확인할 수 있습니다.  
 > 자동 점검은 백그라운드(헤드리스) 검색으로 동작하며 기본값은 **비활성화(OFF)** 입니다.
 > 자동 점검 실패는 팝업 대신 알림 목록 상태(`⚠️ 점검 실패`)와 로그에 기록되며, 다음 성공 시 상태가 자동으로 해제됩니다.
+> 검색은 정상 완료됐지만 조건에 맞는 항공권이 0건이면 `결과 없음` 상태로 구분 표시되며, 다음 가격 확인 성공 시 자동 해제됩니다.
 
 ### 💾 세션 저장 및 불러오기
 
@@ -240,6 +241,14 @@ python gui_v2.py
 | CSV | 결과 헤더의 **📥 CSV 저장** 클릭 |
 | Excel | 테이블 우클릭 → **📊 Excel로 내보내기** |
 | 클립보드 | 결과 헤더의 **📋 복사** 클릭 |
+
+> CSV/Excel 내보내기는 기본가, 혜택가, 혜택 정보, 왕복 항공사, 가는편/오는편 분리 가격을 동일한 컬럼 구조로 저장합니다.
+
+### 📚 고급 검색 요약 기록
+
+- 다중 목적지 검색 완료 시 목적지별 최저가 요약이 검색 기록 탭에 저장됩니다.
+- 날짜 범위 검색 완료 시 날짜별 최저가 요약이 검색 기록 탭에 저장됩니다.
+- 고급 검색 기록은 요약 확인용이며, 전체 raw 결과의 재시작 복원/세션 저장 대상은 아닙니다.
 
 ---
 
@@ -317,6 +326,8 @@ Scraping-flight-information/
 │  ├─ dialogs_tools_settings.py
 │  ├─ workers.py              # public facade
 │  ├─ workers_*.py
+│  ├─ airport_options.py      # 공항 콤보 옵션 공용 helper
+│  ├─ export_helpers.py       # CSV/Excel export 공용 helper
 │  ├─ styles.py               # theme facade
 │  ├─ styles_dark.py
 │  └─ styles_light.py
@@ -364,6 +375,8 @@ Scraping-flight-information/
 | `ui/dialogs.py`, `ui/dialogs_search.py`, `ui/dialogs_tools.py` | 다이얼로그 facade 레이어 |
 | `ui/dialogs_search_*.py`, `ui/dialogs_tools_*.py` | 검색/도구 다이얼로그 세부 구현 |
 | `ui/workers.py` | 워커 facade (`SearchWorker`, `MultiSearchWorker` 등) |
+| `ui/airport_options.py` | 기본 검색/고급 다이얼로그의 공항 콤보 옵션 생성 공용 helper |
+| `ui/export_helpers.py` | 메인/테이블/설정 CSV·Excel export 컬럼 공용 helper |
 | `ui/styles.py`, `ui/styles_dark.py`, `ui/styles_light.py` | 테마 facade + 개별 테마 정의 |
 
 > 2026-03-14 기준: 외부 import 경로는 그대로 유지하고, 길어진 구현만 내부 모듈로 분리하는 1차 구조 정리를 적용했습니다.
@@ -429,7 +442,7 @@ pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 | `FlightBot_v2.5.spec` | 표준 GUI 배포 (호환 프로필) | `pyinstaller --clean FlightBot_v2.5.spec` |
 | `FlightBot_Simple.spec` | 콘솔 로그 확인용 디버그 실행파일 | `pyinstaller --clean FlightBot_Simple.spec` |
 
-> 2026-04-09 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `scraping.playwright_api`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)과 공용 검색 파라미터 복원 모듈(`ui.search_panel_params`), 내부 source registry 모듈(`scraping.search_sources`)도 함께 포함합니다.
+> 2026-04-29 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `scraping.playwright_api`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)과 공용 검색 파라미터 복원 모듈(`ui.search_panel_params`), 공항 옵션/export helper(`ui.airport_options`, `ui.export_helpers`), 내부 source registry 모듈(`scraping.search_sources`)도 함께 포함합니다.
 
 ### 빌드 결과
 
@@ -487,6 +500,47 @@ playwright install chromium
 
 ## 📝 변경 로그
 
+### v2.5.11 (2026-04-29)
+- 🧭 **도시코드/국내선 UI 정합성**
+  - `SEL -> CJU` 검색 URL을 도시코드 prefix(`c:SEL`)로 생성하도록 보정
+  - 기본 검색 패널과 고급 다이얼로그의 공항 목록 생성 경로를 공용화
+  - 다중 목적지/날짜 범위/가격 알림 다이얼로그에 국내선/국제선 모드 선택 추가
+- 📤 **내보내기 통합**
+  - CSV/Excel export 컬럼을 공용 helper로 통합
+  - 모든 export 경로에서 혜택가/혜택 정보/왕복 항공사/분리 가격 필드 유지
+- 🔔 **자동 알림 상태 개선**
+  - 자동 점검의 검색 실패와 0건 결과를 구분
+  - 0건 결과는 `결과 없음` 상태로 표시하고 다음 성공 시 해제
+- 📚 **고급 검색 요약 기록**
+  - 다중 목적지/날짜 범위 검색 완료 시 요약 히스토리를 최대 20개까지 저장
+  - DB 검색 로그에도 고급 검색 요약 row 기록
+- ✅ **회귀 테스트 보강**
+  - SEL URL, export helper, 고급 다이얼로그 공항 정책, 자동 알림 결과 없음, 국내선 dedup, 고급 히스토리 테스트 추가
+- ✅ **검증**
+  - `pytest -q` -> `87 passed`
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 105 tracked text files: OK`
+  - `pyinstaller --clean FlightBot_v2.5.spec` -> `dist/FlightBot_v2.5.exe` 생성
+
+### v2.5.10 (2026-04-09)
+- 🌍 **인터파크 API-first 수집 보강**
+  - 국제선은 기존 `status -> final POST` 경로를 `page.totalCount/pageSize` 기준 전 페이지 순회로 확장
+  - `bestFares + contents`를 하나의 dedupe bucket으로 합쳐 API 성공 시 DOM fallback 없이 결과를 정규화
+- 🇰🇷 **국내선 API-first 전환**
+  - 국내선 편도/왕복 모두 `DOMESTIC::key` 기반 paging API 우선 수집으로 전환
+  - `schedule`, `fares.totalPrice`, `benefits.discountedPrice/cardCashback`를 `FlightResult` 스키마에 맞게 정규화
+  - 왕복에서 오는편 search key를 못 잡으면 `domestic_return_key_missing`을 남기고 DOM fallback으로 제한 전환
+- 🧭 **DOM fallback 및 관측성 보강**
+  - 국제선 DOM fallback은 실제 scrollable container를 찾아 viewport 단위로 점진 스크롤
+  - 검색 telemetry에 `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`, `manual_reason` 추가
+  - 수동 모드/수동 추출 UI telemetry에도 `manual_reason`를 함께 기록
+- ✅ **회귀 테스트 보강**
+  - 국제선 API pagination + dedupe, 국내선 API pagination/정규화, 국내선 왕복 return key fallback 케이스 추가
+  - `pytest -q` -> `76 passed`
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 104 tracked text files: OK`
+  - `pyinstaller --clean FlightBot_v2.5.spec` -> `dist/FlightBot_v2.5.exe` 생성
+
 ### v2.5.9 (2026-03-24)
 - 🌍 **인터파크 국제선 안정화**
   - 국제선 검색을 동일 출처 API 우선(`flights/search -> status -> final POST {}`)으로 전환하고, 실패 시에만 DOM fallback 사용
@@ -508,25 +562,6 @@ playwright install chromium
   - `pytest -q --basetemp=.pytest_tmp` -> `72 passed`
   - `pyright --warnings` -> `0 errors, 0 warnings`
   - `python scripts/check_tracked_text.py --check-lf` -> `Checked 101 tracked text files: OK`
-
-### v2.5.10 (2026-04-09)
-- 🌍 **인터파크 API-first 수집 보강**
-  - 국제선은 기존 `status -> final POST` 경로를 `page.totalCount/pageSize` 기준 전 페이지 순회로 확장
-  - `bestFares + contents`를 하나의 dedupe bucket으로 합쳐 API 성공 시 DOM fallback 없이 결과를 정규화
-- 🇰🇷 **국내선 API-first 전환**
-  - 국내선 편도/왕복 모두 `DOMESTIC::key` 기반 paging API 우선 수집으로 전환
-  - `schedule`, `fares.totalPrice`, `benefits.discountedPrice/cardCashback`를 `FlightResult` 스키마에 맞게 정규화
-  - 왕복에서 오는편 search key를 못 잡으면 `domestic_return_key_missing`을 남기고 DOM fallback으로 제한 전환
-- 🧭 **DOM fallback 및 관측성 보강**
-  - 국제선 DOM fallback은 실제 scrollable container를 찾아 viewport 단위로 점진 스크롤
-  - 검색 telemetry에 `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`, `manual_reason` 추가
-  - 수동 모드/수동 추출 UI telemetry에도 `manual_reason`를 함께 기록
-- ✅ **회귀 테스트 보강**
-  - 국제선 API pagination + dedupe, 국내선 API pagination/정규화, 국내선 왕복 return key fallback 케이스 추가
-  - `pytest -q` -> `76 passed`
-  - `pyright --warnings` -> `0 errors, 0 warnings`
-  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 104 tracked text files: OK`
-  - `pyinstaller --clean FlightBot_v2.5.spec` -> `dist/FlightBot_v2.5.exe` 생성
 
 ### v2.5.8 (2026-03-19)
 - 🔁 **검색 파라미터 저장/복원 규약 통합**

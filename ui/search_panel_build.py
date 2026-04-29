@@ -1,6 +1,7 @@
 """Search panel UI construction mixin."""
 
 from ui.search_panel_shared import *
+from ui.airport_options import populate_airport_combo
 
 
 class SearchPanelBuildMixin(SearchPanelMixinBase):
@@ -207,26 +208,13 @@ class SearchPanelBuildMixin(SearchPanelMixinBase):
     ) -> QComboBox:
         cb = QComboBox()
         cb.setEditable(True) 
-        
-        # Standard Airports
-        for code, name in config.AIRPORTS.items():
-            cb.addItem(f"{code} ({name})", code)
-            
-        # Custom Presets
-        if include_presets:
-            try:
-                presets = self.prefs.get_all_presets()
-                # cb.clear()  <-- Don't clear, append. But avoid duplicates.
-                # Already added standard airports above.
-                for code, name in presets.items():
-                     if code not in config.AIRPORTS:
-                        cb.addItem(f"{code} ({name})", code)
-            except Exception as e:
-                logger.warning(f"Failed to load presets: {e}")
-
-        index = cb.findData(default_code)
-        if index >= 0:
-            cb.setCurrentIndex(index)
+        populate_airport_combo(
+            cb,
+            self.prefs,
+            is_domestic=False,
+            include_presets=include_presets,
+            default_code=default_code,
+        )
         return cb
 
     def _labeled_widget(self, label_text: str, widget: QWidget) -> QWidget:

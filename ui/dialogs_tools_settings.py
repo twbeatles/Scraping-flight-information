@@ -24,6 +24,7 @@ import config
 from ui.styles import MODERN_THEME
 from ui.components_primitives import NoWheelSpinBox, NoWheelComboBox, NoWheelDateEdit
 from ui.dialogs_base import _validate_route_and_dates
+from ui.export_helpers import export_flights_to_excel
 
 logger = logging.getLogger(__name__)
 class SettingsDialog(QDialog):
@@ -327,30 +328,7 @@ class SettingsDialog(QDialog):
         if not fname: return
         
         try:
-            if openpyxl is None:
-                raise RuntimeError("openpyxl is unavailable")
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            if ws is None:
-                raise RuntimeError("worksheet initialization failed")
-            ws.title = "검색결과"
-            
-            # Header
-            headers = ["항공사", "가격", "출발", "도착", "경유", "복귀 출발", "복귀 도착", "복귀 경유", "출처"]
-            ws.append(headers)
-            
-            for f in main_win.all_results:
-                row = [
-                    f.airline, f.price, 
-                    f.departure_time, f.arrival_time, f.stops,
-                    getattr(f, 'return_departure_time', '-'), 
-                    getattr(f, 'return_arrival_time', '-'), 
-                    getattr(f, 'return_stops', '-'),
-                    f.source
-                ]
-                ws.append(row)
-                
-            wb.save(fname)
+            export_flights_to_excel(fname, main_win.all_results, sheet_title="검색결과")
             QMessageBox.information(self, "완료", "엑셀 파일로 저장되었습니다.")
             
         except Exception as e:

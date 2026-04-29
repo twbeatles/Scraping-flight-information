@@ -45,6 +45,7 @@ class AutoAlertMixin:
         self.alert_worker.progress.connect(lambda msg: self.log_viewer.append_log(msg))
         self.alert_worker.alert_checked.connect(self._on_auto_alert_checked)
         self.alert_worker.alert_check_failed.connect(self._on_auto_alert_check_failed)
+        self.alert_worker.alert_no_result.connect(self._on_auto_alert_no_result)
         self.alert_worker.alert_hit.connect(self._on_auto_alert_hit)
         self.alert_worker.done.connect(self._on_auto_alert_done)
         self.alert_worker.start()
@@ -60,6 +61,13 @@ class AutoAlertMixin:
         except Exception as e:
             logger.debug(f"Failed to update auto alert failure: {e}")
         self.log_viewer.append_log(f"⚠️ 자동 알림 점검 실패: {origin}->{dest} - {summary}")
+    def _on_auto_alert_no_result(self: Any, alert_id: int, origin: str, dest: str):
+        message = "NO_RESULT: 검색 결과 없음"
+        try:
+            self.db.update_alert_check(alert_id, None, last_error=message)
+        except Exception as e:
+            logger.debug(f"Failed to update auto alert no-result: {e}")
+        self.log_viewer.append_log(f"ℹ️ 자동 알림 결과 없음: {origin}->{dest}")
     def _on_auto_alert_hit(self: Any, alert_id: int, price: int, target: int, origin: str, dest: str, cabin: str):
         try:
             self.db.mark_alert_triggered(alert_id)
@@ -84,6 +92,5 @@ class AutoAlertMixin:
             }
         )
         self.alert_worker = None
-
 
 

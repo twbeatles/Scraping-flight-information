@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QCalendarWidget, QGroupBox, QListWidget, QListWidgetItem, QFrame,
     QMessageBox, QDateEdit, QSpinBox, QCheckBox, QScrollArea, QGridLayout,
     QWidget, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QTabWidget, QFileDialog, QInputDialog
+    QTabWidget, QFileDialog, QInputDialog, QRadioButton, QButtonGroup
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QDate, QSettings
 from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QAction
@@ -21,6 +21,7 @@ except ImportError:
 import config
 from ui.styles import MODERN_THEME
 from ui.components_primitives import NoWheelSpinBox, NoWheelComboBox, NoWheelDateEdit
+from ui.airport_options import populate_airport_combo
 
 logger = logging.getLogger(__name__)
 
@@ -41,23 +42,31 @@ class DateRangeDialog(QDialog):
         layout = QVBoxLayout(self)
         
         layout.addWidget(QLabel("날짜 범위를 지정하여 가장 저렴한 날짜를 찾습니다."))
+
+        type_layout = QHBoxLayout()
+        type_layout.addWidget(QLabel("노선:"))
+        self.rb_domestic = QRadioButton("🇰🇷 국내선")
+        self.rb_intl = QRadioButton("✈️ 국제선")
+        self.rb_intl.setChecked(True)
+        self.flight_type_group = QButtonGroup(self)
+        self.flight_type_group.addButton(self.rb_domestic)
+        self.flight_type_group.addButton(self.rb_intl)
+        self.flight_type_group.buttonClicked.connect(self._refresh_airport_combos)
+        type_layout.addWidget(self.rb_domestic)
+        type_layout.addWidget(self.rb_intl)
+        type_layout.addStretch()
+        layout.addLayout(type_layout)
         
         # Origin & Dest
         route_layout = QHBoxLayout()
         route_layout.addWidget(QLabel("출발지:"))
         self.cb_origin = QComboBox()
-        for code, name in config.AIRPORTS.items():
-            self.cb_origin.addItem(f"{code} ({name})", code)
         route_layout.addWidget(self.cb_origin)
         
         route_layout.addWidget(QLabel("→"))
         
         route_layout.addWidget(QLabel("도착지:"))
         self.cb_dest = QComboBox()
-        all_presets = self.prefs.get_all_presets() if self.prefs else config.AIRPORTS
-        for code, name in all_presets.items():
-            self.cb_dest.addItem(f"{code} ({name})", code)
-        self.cb_dest.setCurrentIndex(1)  # 두 번째 항목
         route_layout.addWidget(self.cb_dest)
         layout.addLayout(route_layout)
         
@@ -121,6 +130,24 @@ class DateRangeDialog(QDialog):
         action_layout.addWidget(btn_search)
         action_layout.addWidget(btn_cancel)
         layout.addLayout(action_layout)
+        self._refresh_airport_combos()
+
+    def _refresh_airport_combos(self):
+        is_domestic = self.rb_domestic.isChecked()
+        populate_airport_combo(
+            self.cb_origin,
+            self.prefs,
+            is_domestic=is_domestic,
+            include_presets=True,
+            default_code="GMP" if is_domestic else "ICN",
+        )
+        populate_airport_combo(
+            self.cb_dest,
+            self.prefs,
+            is_domestic=is_domestic,
+            include_presets=True,
+            default_code="CJU" if is_domestic else "NRT",
+        )
     
     def _on_search(self):
         start = self.date_start.date()
@@ -134,6 +161,13 @@ class DateRangeDialog(QDialog):
         
         if origin == dest:
             QMessageBox.warning(self, "입력 오류", "출발지와 도착지가 같습니다.")
+            return
+
+        if self.rb_domestic.isChecked() and (
+            origin not in config.DOMESTIC_AIRPORT_CODES
+            or dest not in config.DOMESTIC_AIRPORT_CODES
+        ):
+            QMessageBox.warning(self, "입력 오류", "국내선 모드에서는 국내 공항/도시 코드만 사용할 수 있습니다.")
             return
 
         if start < today:

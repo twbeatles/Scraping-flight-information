@@ -25,6 +25,7 @@ except ImportError:
     HAS_OPENPYXL = False
 
 import config
+from ui.export_helpers import export_flights_to_csv, export_flights_to_excel
 
 logger = logging.getLogger(__name__)
 
@@ -287,60 +288,7 @@ class ResultTable(QTableWidget):
             return
         
         try:
-            if openpyxl is None:
-                raise RuntimeError("openpyxl is unavailable")
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            if ws is None:
-                raise RuntimeError("worksheet initialization failed")
-            ws.title = "검색 결과"
-            
-            # 헤더
-            headers = [
-                "항공사",
-                "오는편 항공사",
-                "가격",
-                "혜택가",
-                "혜택 정보",
-                "가는편 출발",
-                "가는편 도착",
-                "경유",
-                "오는편 출발",
-                "오는편 도착",
-                "경유",
-                "출처",
-                "가는편 가격",
-                "오는편 가격",
-            ]
-            ws.append(headers)
-            
-            # 데이터
-            for flight in self.results_data:
-                row = [
-                    flight.airline,
-                    getattr(flight, 'return_airline', ''),
-                    flight.price,
-                    getattr(flight, 'benefit_price', 0),
-                    getattr(flight, 'benefit_label', ''),
-                    flight.departure_time,
-                    flight.arrival_time,
-                    flight.stops,
-                    getattr(flight, 'return_departure_time', ''),
-                    getattr(flight, 'return_arrival_time', ''),
-                    getattr(flight, 'return_stops', 0),
-                    flight.source,
-                    getattr(flight, 'outbound_price', 0),
-                    getattr(flight, 'return_price', 0)
-                ]
-                ws.append(row)
-            
-            # 열 너비 자동 조절
-            from openpyxl.utils import get_column_letter
-            for col_idx, col in enumerate(ws.columns, start=1):
-                max_length = max(len(str(cell.value or '')) for cell in col)
-                ws.column_dimensions[get_column_letter(col_idx)].width = max_length + 2
-            
-            wb.save(filename)
+            export_flights_to_excel(filename, self.results_data)
             QMessageBox.information(self, "완료", f"Excel 파일이 저장되었습니다:\\n{filename}")
         except Exception as e:
             QMessageBox.critical(self, "오류", f"저장 실패: {e}")
@@ -361,41 +309,7 @@ class ResultTable(QTableWidget):
             return
         
         try:
-            with open(filename, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    "항공사",
-                    "오는편 항공사",
-                    "가격",
-                    "혜택가",
-                    "혜택 정보",
-                    "가는편 출발",
-                    "가는편 도착",
-                    "경유",
-                    "오는편 출발",
-                    "오는편 도착",
-                    "경유",
-                    "출처",
-                    "가는편 가격",
-                    "오는편 가격",
-                ])
-                for flight in self.results_data:
-                    writer.writerow([
-                        flight.airline,
-                        getattr(flight, 'return_airline', ''),
-                        flight.price,
-                        getattr(flight, 'benefit_price', 0),
-                        getattr(flight, 'benefit_label', ''),
-                        flight.departure_time,
-                        flight.arrival_time,
-                        flight.stops,
-                        getattr(flight, 'return_departure_time', ''),
-                        getattr(flight, 'return_arrival_time', ''),
-                        getattr(flight, 'return_stops', 0),
-                        flight.source,
-                        getattr(flight, 'outbound_price', 0),
-                        getattr(flight, 'return_price', 0)
-                    ])
+            export_flights_to_csv(filename, self.results_data)
             QMessageBox.information(self, "완료", f"CSV 파일이 저장되었습니다:\\n{filename}")
         except Exception as e:
             QMessageBox.critical(self, "오류", f"저장 실패: {e}")

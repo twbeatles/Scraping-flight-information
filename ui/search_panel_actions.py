@@ -2,6 +2,7 @@
 
 from ui.search_panel_shared import *
 from ui.search_panel_params import get_panel_search_params
+from ui.airport_options import populate_airport_combo
 
 
 class SearchPanelActionsMixin(SearchPanelMixinBase):
@@ -52,22 +53,23 @@ class SearchPanelActionsMixin(SearchPanelMixinBase):
 
     def _refresh_combos(self) -> None:
         """출발/도착 콤보박스 모두 갱신"""
-        for cb in [self.cb_origin, self.cb_dest]:
-            current = cb.currentData()
-            cb.clear()
-            
-            # 1. Standard Airports
-            for code, name in config.AIRPORTS.items():
-                cb.addItem(f"{code} ({name})", code)
-                
-            # 2. Custom Presets
-            presets = self.prefs.get_all_presets()
-            for code, name in presets.items():
-                if code not in config.AIRPORTS:
-                    cb.addItem(f"{code} ({name})", code)
-
-            idx = cb.findData(current)
-            if idx >= 0: cb.setCurrentIndex(idx)
+        is_domestic = bool(getattr(self, "rb_domestic", None) and self.rb_domestic.isChecked())
+        origin_default = "GMP" if is_domestic else "ICN"
+        dest_default = "CJU" if is_domestic else "NRT"
+        populate_airport_combo(
+            self.cb_origin,
+            self.prefs,
+            is_domestic=is_domestic,
+            include_presets=True,
+            default_code=origin_default,
+        )
+        populate_airport_combo(
+            self.cb_dest,
+            self.prefs,
+            is_domestic=is_domestic,
+            include_presets=True,
+            default_code=dest_default,
+        )
 
     def _toggle_return_date(self) -> None:
         is_round = self.rb_round.isChecked()
@@ -147,49 +149,19 @@ class SearchPanelActionsMixin(SearchPanelMixinBase):
         # 현재 선택 기억
         current_origin = self.cb_origin.currentData()
         current_dest = self.cb_dest.currentData()
-        
-        # 공항 목록 초기화
-        self.cb_origin.clear()
-        self.cb_dest.clear()
-        
-        if is_domestic:
-            # 국내선: 한국 공항만
-            domestic_airports = config.DOMESTIC_AIRPORTS
-            for code, name in domestic_airports.items():
-                self.cb_origin.addItem(f"{code} ({name})", code)
-                self.cb_dest.addItem(f"{code} ({name})", code)
-            
-            # 기본값 설정 (김포-제주)
-            self.cb_origin.setCurrentIndex(self.cb_origin.findData("GMP"))
-            self.cb_dest.setCurrentIndex(self.cb_dest.findData("CJU"))
-        else:
-            # 국제선: 전체 공항
-            for code, name in config.AIRPORTS.items():
-                self.cb_origin.addItem(f"{code} ({name})", code)
-                self.cb_dest.addItem(f"{code} ({name})", code)
-            
-            # 커스텀 프리셋도 출발지/도착지에 모두 추가 (중복 방지)
-            try:
-                presets = self.prefs.get_all_presets()
-                for code, name in presets.items():
-                    if code not in config.AIRPORTS:
-                        if self.cb_origin.findData(code) < 0:
-                            self.cb_origin.addItem(f"{code} ({name})", code)
-                        if self.cb_dest.findData(code) < 0:
-                            self.cb_dest.addItem(f"{code} ({name})", code)
-            except Exception as e:
-                logger.debug(f"Failed to add custom presets: {e}")
-            
-            # 기본값 설정 (인천-도쿄 나리타)
-            self.cb_origin.setCurrentIndex(self.cb_origin.findData("ICN"))
-            self.cb_dest.setCurrentIndex(self.cb_dest.findData("NRT"))
-        
-        # 이전 선택 복원 시도
-        if current_origin:
-            idx = self.cb_origin.findData(current_origin)
-            if idx >= 0:
-                self.cb_origin.setCurrentIndex(idx)
-        if current_dest:
-            idx = self.cb_dest.findData(current_dest)
-            if idx >= 0:
-                self.cb_dest.setCurrentIndex(idx)
+        populate_airport_combo(
+            self.cb_origin,
+            self.prefs,
+            is_domestic=is_domestic,
+            include_presets=True,
+            current_code=str(current_origin or ""),
+            default_code="GMP" if is_domestic else "ICN",
+        )
+        populate_airport_combo(
+            self.cb_dest,
+            self.prefs,
+            is_domestic=is_domestic,
+            include_presets=True,
+            current_code=str(current_dest or ""),
+            default_code="CJU" if is_domestic else "NRT",
+        )

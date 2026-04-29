@@ -39,7 +39,7 @@ VALID_CABIN_CLASSES = {"ECONOMY", "BUSINESS", "FIRST"}
 # 인터파크 검색용 도시 코드 매핑
 # 입력된 공항 코드를 인터파크 시스템이 이해하는 도시 코드로 변환
 CITY_CODES_MAP = {
-    "ICN": "SEL", "GMP": "SEL",  # 서울 (인천/김포 -> SEL)
+    "ICN": "SEL", "GMP": "SEL", "SEL": "SEL",  # 서울 (인천/김포/도시코드 -> SEL)
     "NRT": "TYO", "HND": "TYO",  # 도쿄 (나리타/하네다 -> TYO)
     "KIX": "OSA",                # 오사카
     "FUK": "FUK",                # 후쿠오카
@@ -207,6 +207,7 @@ class PreferenceManager:
                 "departure_end": 24      # 24시
             },
             "saved_profiles": {},   # { "ProfileName": { search_params... } }
+            "advanced_search_history": [],  # [ { type, timestamp, params, summary } ]
             "theme": "dark",        # 테마 설정 (dark/light)
             # 가격 알림 자동 점검 설정
             "alert_auto_check_enabled": False,
@@ -264,6 +265,15 @@ class PreferenceManager:
                 seen_keys.add(key)
                 history_items.append(normalized)
         prefs["search_history"] = history_items[:20]
+
+        advanced_history: List[Dict[str, Any]] = []
+        raw_advanced_history = raw_dict.get("advanced_search_history", [])
+        if isinstance(raw_advanced_history, list):
+            for item in raw_advanced_history:
+                normalized_item = self._normalize_advanced_history_item(item)
+                if normalized_item:
+                    advanced_history.append(normalized_item)
+        prefs["advanced_search_history"] = advanced_history[:20]
 
         last_search = raw_dict.get("last_search", {})
         if isinstance(last_search, dict):
@@ -328,13 +338,56 @@ class PreferenceManager:
         
         if not os.path.exists(self.filepath):
             return default_prefs
-            
+
         try:
             with open(self.filepath, 'r', encoding='utf-8') as f:
                 return self._normalize_preferences_payload(json.load(f))
         except Exception as e:
             logger.warning(f"Error loading preferences: {e}")
             return default_prefs
+
+    def _normalize_advanced_history_item(self, item: Any) -> Dict[str, Any]:
+        if not isinstance(item, dict):
+            return {}
+
+        history_type = str(item.get("type", "") or "").strip()
+        if history_type not in {"multi_dest", "date_range"}:
+            return {}
+
+        raw_params = item.get("params", {})
+        params = normalize_search_params(raw_params if isinstance(raw_params, dict) else {})
+        if not self._has_required_search_fields(params):
+            return {}
+
+        raw_summary = item.get("summary", [])
+        summary: List[Dict[str, Any]] = []
+        if isinstance(raw_summary, list):
+            for row in raw_summary:
+                if not isinstance(row, dict):
+                    continue
+                normalized_row: Dict[str, Any] = {}
+                for key, value in row.items():
+                    if key in {"min_price", "result_count"}:
+                        try:
+                            normalized_row[key] = int(value or 0)
+                        except Exception:
+                            normalized_row[key] = 0
+                    else:
+                        normalized_row[str(key)] = str(value or "")
+                summary.append(normalized_row)
+
+        if not summary:
+            return {}
+
+        timestamp = str(item.get("timestamp", "") or datetime.now().strftime("%Y-%m-%d %H:%M"))
+        title = str(item.get("title", "") or ("다중 목적지" if history_type == "multi_dest" else "날짜 범위"))
+        return {
+            "type": history_type,
+            "timestamp": timestamp,
+            "title": title,
+            "params": params,
+            "summary": summary,
+        }
 
     def save(self):
         """설정 파일 저장"""
@@ -377,6 +430,36 @@ class PreferenceManager:
         
     def get_history(self) -> List[Dict[str, Any]]:
         return self.preferences["search_history"]
+
+    def add_advanced_history(self, history_item: Dict[str, Any]):
+        normalized = self._normalize_advanced_history_item(history_item)
+        if not normalized:
+            return
+
+        history = [normalized]
+        new_key = (
+            normalized.get("type"),
+            normalized.get("timestamp"),
+            normalized.get("params", {}).get("origin"),
+            normalized.get("params", {}).get("dest"),
+            normalized.get("params", {}).get("dep"),
+        )
+        for item in self.preferences.get("advanced_search_history", []):
+            item_key = (
+                item.get("type"),
+                item.get("timestamp"),
+                item.get("params", {}).get("origin"),
+                item.get("params", {}).get("dest"),
+                item.get("params", {}).get("dep"),
+            )
+            if item_key != new_key:
+                history.append(item)
+        self.preferences["advanced_search_history"] = history[:20]
+        self.save()
+
+    def get_advanced_history(self) -> List[Dict[str, Any]]:
+        history = self.preferences.get("advanced_search_history", [])
+        return history if isinstance(history, list) else []
 
     # --- Profiles ---
     def save_profile(self, name: str, params: Dict[str, Any]):
@@ -516,8 +599,20 @@ class PreferenceManager:
             if isinstance(imported_history, list):
                 merged["search_history"] = imported_history + list(self.preferences.get("search_history", []))
 
+            imported_advanced_history = imported.get("advanced_search_history")
+            if isinstance(imported_advanced_history, list):
+                merged["advanced_search_history"] = imported_advanced_history + list(
+                    self.preferences.get("advanced_search_history", [])
+                )
+
             for key, value in imported.items():
-                if key in {"custom_presets", "saved_profiles", "last_search", "search_history"}:
+                if key in {
+                    "custom_presets",
+                    "saved_profiles",
+                    "last_search",
+                    "search_history",
+                    "advanced_search_history",
+                }:
                     continue
                 merged[key] = value
 
@@ -528,4 +623,3 @@ class PreferenceManager:
         except Exception as e:
             logger.error(f"Failed to import settings: {e}")
             return False
-

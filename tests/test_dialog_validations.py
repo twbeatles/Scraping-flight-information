@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from PyQt6.QtCore import QDate
 from PyQt6.QtWidgets import QMessageBox
 
+from database import PriceAlert
 from ui.dialogs import MultiDestDialog, DateRangeDialog, PriceAlertDialog
 
 
@@ -13,6 +14,8 @@ class _FakePrefs:
             "NRT": "도쿄 나리타",
             "HND": "도쿄 하네다",
             "GMP": "김포",
+            "CJU": "제주",
+            "ZZZ": "커스텀",
         }
 
 
@@ -99,6 +102,36 @@ def test_multi_dest_origin_checkbox_auto_excluded(qapp):
     assert nrt_cb.isEnabled() is False
     assert nrt_cb.isChecked() is False
     assert icn_cb.isEnabled() is True
+
+
+def test_advanced_dialogs_include_custom_origin_in_international_mode(qapp):
+    multi = MultiDestDialog(prefs=_FakePrefs())
+    date_range = DateRangeDialog(prefs=_FakePrefs())
+    alert = PriceAlertDialog(db=_FakeDB(), prefs=_FakePrefs())
+
+    assert multi.cb_origin.findData("ZZZ") >= 0
+    assert date_range.cb_origin.findData("ZZZ") >= 0
+    assert alert.cb_origin.findData("ZZZ") >= 0
+
+
+def test_advanced_dialogs_domestic_mode_limits_airport_options(qapp):
+    multi = MultiDestDialog(prefs=_FakePrefs())
+    multi.rb_domestic.setChecked(True)
+    multi._refresh_airports()
+    assert multi.cb_origin.findData("NRT") == -1
+    assert set(multi.dest_checkboxes.keys()) <= {"ICN", "GMP", "CJU", "PUS", "TAE", "SEL"}
+
+    date_range = DateRangeDialog(prefs=_FakePrefs())
+    date_range.rb_domestic.setChecked(True)
+    date_range._refresh_airport_combos()
+    assert date_range.cb_origin.findData("NRT") == -1
+    assert date_range.cb_dest.findData("CJU") >= 0
+
+    alert = PriceAlertDialog(db=_FakeDB(), prefs=_FakePrefs())
+    alert.rb_domestic.setChecked(True)
+    alert._refresh_airport_combos()
+    assert alert.cb_origin.findData("NRT") == -1
+    assert alert.cb_dest.findData("CJU") >= 0
 
 
 def test_date_range_allows_single_day_search(qapp, monkeypatch):
@@ -203,3 +236,30 @@ def test_price_alert_rejects_return_before_departure(qapp, monkeypatch):
     assert warnings
     assert db.add_calls == []
 
+
+def test_price_alert_dialog_displays_no_result_status(qapp):
+    class _NoResultDB(_FakeDB):
+        def get_all_alerts(self):
+            return [
+                PriceAlert(
+                    1,
+                    "ICN",
+                    "NRT",
+                    "20260301",
+                    None,
+                    300000,
+                    1,
+                    "2026-03-01 10:00:00",
+                    None,
+                    0,
+                    "now",
+                    last_error="NO_RESULT: 검색 결과 없음",
+                )
+            ]
+
+    dlg = PriceAlertDialog(db=_NoResultDB(), prefs=_FakePrefs())
+    status_item = dlg.table.item(0, 8)
+
+    assert status_item is not None
+    assert status_item.text() == "결과 없음"
+    assert status_item.toolTip() == "검색 결과 없음"

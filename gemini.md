@@ -36,7 +36,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-04-09)
+## 🔄 정합성 업데이트 (2026-04-29)
 
 최신 코드 기준으로 아래 항목을 우선 적용한다.
 
@@ -78,6 +78,16 @@
 36. 로컬/CI 정적 품질 기준선은 `pyright --warnings`다.
 37. 텍스트 무결성 기준선은 `python scripts/check_tracked_text.py --check-lf`이며, UTF-8 BOM과 CRLF를 모두 실패로 취급한다.
 38. 로컬 훅 기준선은 `.pre-commit-config.yaml`의 `check_tracked_text.py --check-lf` + `pyright --warnings`다.
+39. `CITY_CODES_MAP`는 `"SEL": "SEL"`을 포함하며 `SEL -> CJU` 검색 URL은 `c:SEL-c:CJU` 형태여야 한다.
+40. 공항 콤보 옵션은 `ui.airport_options` 공용 helper를 사용한다. 국내선 모드는 `config.DOMESTIC_AIRPORT_CODES`만 허용하고, 국제선 모드는 기본 공항 + custom preset을 허용한다.
+41. 다중 목적지/날짜 범위/가격 알림 다이얼로그는 국내선/국제선 라디오를 제공하되 기존 signal signature를 유지한다.
+42. CSV/Excel export는 `ui.export_helpers` 공용 helper를 사용하며 `return_airline`, `benefit_price`, `benefit_label`, `outbound_price`, `return_price`를 공통 컬럼으로 포함한다.
+43. `AlertAutoCheckWorker`는 `alert_no_result(int, str, str)` signal을 제공한다. 자동 점검 0건 결과는 `NO_RESULT: 검색 결과 없음`으로 저장하고 UI에는 `결과 없음`으로 표시한다.
+44. 국내선 왕복 dedup은 출발/도착 시간, 편명, API key, 혜택가/혜택 라벨까지 포함해 다른 항공편이 합쳐지지 않도록 한다.
+45. `PreferenceManager`는 `advanced_search_history`, `add_advanced_history()`, `get_advanced_history()`를 제공하며 고급 검색 요약은 최대 20개로 관리한다.
+46. 고급 검색 요약은 검색 기록 탭에서 read-only로 표시한다. 다중 검색은 목적지별, 날짜 범위 검색은 날짜별 summary row를 DB `search_logs`에 남긴다.
+47. PyInstaller spec 3종은 `ui.airport_options`, `ui.export_helpers` hiddenimport를 포함해야 한다.
+48. 2026-04-29 로컬 검증 기준선은 `pytest -q -> 87 passed`, `pyright --warnings -> 0 errors`, `check_tracked_text.py --check-lf -> Checked 105 tracked text files: OK`, `pyinstaller --clean FlightBot_v2.5.spec -> dist/FlightBot_v2.5.exe`다.
 
 ---
 
@@ -102,7 +112,7 @@ Scraping-flight-information-main-v2/
     └── workers.py         # 백그라운드 스레드 워커 (SearchWorker, MultiSearchWorker)
 ```
 
-- 2026-04-09 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 `hiddenimports`에 facade(`database`, `scraper_v2`, `ui.components/dialogs/workers`), 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`), 분할 모듈(`app.mainwindow.shared`, `scraping.playwright_api`, `scraping.extract_domestic`, `scraping.extract_international`, `ui.search_panel_params`)을 함께 유지한 상태가 기준이다.
+- 2026-04-29 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 `hiddenimports`에 facade(`database`, `scraper_v2`, `ui.components/dialogs/workers`), 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`), 분할 모듈(`app.mainwindow.shared`, `scraping.playwright_api`, `scraping.extract_domestic`, `scraping.extract_international`, `ui.search_panel_params`, `ui.airport_options`, `ui.export_helpers`)을 함께 유지한 상태가 기준이다.
 
 ---
 

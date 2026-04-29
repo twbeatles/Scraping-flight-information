@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QCalendarWidget, QGroupBox, QListWidget, QListWidgetItem, QFrame,
     QMessageBox, QDateEdit, QSpinBox, QCheckBox, QScrollArea, QGridLayout,
     QWidget, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QTabWidget, QFileDialog, QInputDialog
+    QTabWidget, QFileDialog, QInputDialog, QRadioButton, QButtonGroup
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QDate, QSettings
 from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QAction
@@ -24,6 +24,7 @@ import config
 from ui.styles import MODERN_THEME
 from ui.components_primitives import NoWheelSpinBox, NoWheelComboBox, NoWheelDateEdit
 from ui.dialogs_base import _validate_route_and_dates
+from ui.airport_options import populate_airport_combo
 
 logger = logging.getLogger(__name__)
 class PriceAlertDialog(QDialog):
@@ -51,74 +52,83 @@ class PriceAlertDialog(QDialog):
         # 새 알림 추가 그룹
         grp_new = QGroupBox("➕ 새 알림 추가")
         new_layout = QGridLayout(grp_new)
+
+        self.rb_domestic = QRadioButton("🇰🇷 국내선")
+        self.rb_intl = QRadioButton("✈️ 국제선")
+        self.rb_intl.setChecked(True)
+        self.flight_type_group = QButtonGroup(self)
+        self.flight_type_group.addButton(self.rb_domestic)
+        self.flight_type_group.addButton(self.rb_intl)
+        self.flight_type_group.buttonClicked.connect(self._refresh_airport_combos)
+        new_layout.addWidget(QLabel("노선:"), 0, 0)
+        type_layout = QHBoxLayout()
+        type_layout.addWidget(self.rb_domestic)
+        type_layout.addWidget(self.rb_intl)
+        type_layout.addStretch()
+        new_layout.addLayout(type_layout, 0, 1, 1, 3)
         
         # 출발지
-        new_layout.addWidget(QLabel("출발지:"), 0, 0)
+        new_layout.addWidget(QLabel("출발지:"), 1, 0)
         self.cb_origin = QComboBox()
-        for code, name in config.AIRPORTS.items():
-            self.cb_origin.addItem(f"{code} ({name})", code)
-        new_layout.addWidget(self.cb_origin, 0, 1)
+        new_layout.addWidget(self.cb_origin, 1, 1)
         
         # 도착지
-        new_layout.addWidget(QLabel("도착지:"), 0, 2)
+        new_layout.addWidget(QLabel("도착지:"), 1, 2)
         self.cb_dest = QComboBox()
-        all_presets = self.prefs.get_all_presets() if self.prefs else config.AIRPORTS
-        for code, name in all_presets.items():
-            self.cb_dest.addItem(f"{code} ({name})", code)
-        self.cb_dest.setCurrentIndex(1)
-        new_layout.addWidget(self.cb_dest, 0, 3)
+        new_layout.addWidget(self.cb_dest, 1, 3)
         
         # 가는 날
-        new_layout.addWidget(QLabel("가는 날:"), 1, 0)
+        new_layout.addWidget(QLabel("가는 날:"), 2, 0)
         self.date_dep = QDateEdit()
         self.date_dep.setCalendarPopup(True)
         self.date_dep.setDate(QDate.currentDate().addDays(7))
-        new_layout.addWidget(self.date_dep, 1, 1)
+        new_layout.addWidget(self.date_dep, 2, 1)
         
         # 오는 날
-        new_layout.addWidget(QLabel("오는 날:"), 1, 2)
+        new_layout.addWidget(QLabel("오는 날:"), 2, 2)
         self.date_ret = QDateEdit()
         self.date_ret.setCalendarPopup(True)
         self.date_ret.setDate(QDate.currentDate().addDays(10))
-        new_layout.addWidget(self.date_ret, 1, 3)
+        new_layout.addWidget(self.date_ret, 2, 3)
 
         # 편도 알림
         self.chk_oneway = QCheckBox("편도 알림")
         self.chk_oneway.setToolTip("체크하면 귀국일 없이 편도 노선만 기준으로 알림을 설정합니다.")
         self.chk_oneway.toggled.connect(self._toggle_alert_oneway)
-        new_layout.addWidget(self.chk_oneway, 2, 0, 1, 2)
+        new_layout.addWidget(self.chk_oneway, 3, 0, 1, 2)
 
         # 성인 수
-        new_layout.addWidget(QLabel("성인:"), 2, 2)
+        new_layout.addWidget(QLabel("성인:"), 3, 2)
         self.spin_adults = QSpinBox()
         self.spin_adults.setRange(1, 9)
         self.spin_adults.setValue(1)
         self.spin_adults.setSuffix(" 명")
-        new_layout.addWidget(self.spin_adults, 2, 3)
+        new_layout.addWidget(self.spin_adults, 3, 3)
         
         # 목표 가격
-        new_layout.addWidget(QLabel("목표 가격:"), 3, 0)
+        new_layout.addWidget(QLabel("목표 가격:"), 4, 0)
         self.spin_target = QSpinBox()
         self.spin_target.setRange(10000, 10000000)
         self.spin_target.setSingleStep(10000)
         self.spin_target.setValue(300000)
         self.spin_target.setSuffix(" 원")
-        new_layout.addWidget(self.spin_target, 3, 1)
+        new_layout.addWidget(self.spin_target, 4, 1)
 
         # 좌석 등급
-        new_layout.addWidget(QLabel("좌석 등급:"), 3, 2)
+        new_layout.addWidget(QLabel("좌석 등급:"), 4, 2)
         self.cb_cabin_class = QComboBox()
         self.cb_cabin_class.addItem("💺 이코노미", "ECONOMY")
         self.cb_cabin_class.addItem("💼 비즈니스", "BUSINESS")
         self.cb_cabin_class.addItem("👑 일등석", "FIRST")
-        new_layout.addWidget(self.cb_cabin_class, 3, 3)
+        new_layout.addWidget(self.cb_cabin_class, 4, 3)
         
         # 추가 버튼
         btn_add = QPushButton("🔔 알림 추가")
         btn_add.clicked.connect(self._add_alert)
-        new_layout.addWidget(btn_add, 4, 0, 1, 4)
+        new_layout.addWidget(btn_add, 5, 0, 1, 4)
         
         layout.addWidget(grp_new)
+        self._refresh_airport_combos()
         
         # 현재 알림 목록
         alert_label = QLabel("📋 설정된 알림 목록:")
@@ -159,6 +169,23 @@ class PriceAlertDialog(QDialog):
 
     def _toggle_alert_oneway(self, checked: bool):
         self.date_ret.setEnabled(not checked)
+
+    def _refresh_airport_combos(self):
+        is_domestic = self.rb_domestic.isChecked()
+        populate_airport_combo(
+            self.cb_origin,
+            self.prefs,
+            is_domestic=is_domestic,
+            include_presets=True,
+            default_code="GMP" if is_domestic else "ICN",
+        )
+        populate_airport_combo(
+            self.cb_dest,
+            self.prefs,
+            is_domestic=is_domestic,
+            include_presets=True,
+            default_code="CJU" if is_domestic else "NRT",
+        )
     
     def _add_alert(self):
         """새 알림 추가"""
@@ -169,6 +196,13 @@ class PriceAlertDialog(QDialog):
         target = self.spin_target.value()
         adults = self.spin_adults.value()
         cabin_class = self.cb_cabin_class.currentData() or "ECONOMY"
+
+        if self.rb_domestic.isChecked() and (
+            origin not in config.DOMESTIC_AIRPORT_CODES
+            or dest not in config.DOMESTIC_AIRPORT_CODES
+        ):
+            QMessageBox.warning(self, "입력 오류", "국내선 모드에서는 국내 공항/도시 코드만 사용할 수 있습니다.")
+            return
 
         if not _validate_route_and_dates(self, origin, dest, dep_date, ret_date):
             return
@@ -242,6 +276,9 @@ class PriceAlertDialog(QDialog):
             if alert.triggered:
                 status = "✅ 발동됨"
                 color = "#22c55e"
+            elif str(getattr(alert, "last_error", "") or "").startswith("NO_RESULT"):
+                status = "결과 없음"
+                color = "#94a3b8"
             elif getattr(alert, "last_error", ""):
                 status = "⚠️ 점검 실패"
                 color = "#f59e0b"
@@ -256,7 +293,8 @@ class PriceAlertDialog(QDialog):
             status_item.setForeground(QColor(color))
             last_error = getattr(alert, "last_error", "") or ""
             if last_error:
-                status_item.setToolTip(last_error)
+                tooltip = last_error.split(":", 1)[1].strip() if last_error.startswith("NO_RESULT:") else last_error
+                status_item.setToolTip(tooltip)
             self.table.setItem(i, 8, status_item)
     
     def _delete_selected(self):

@@ -1,9 +1,54 @@
 # Flight Bot v2.5 Scraping Audit
 
 - 작성일: 2026-02-25
-- 최종 갱신: 2026-04-09
+- 최종 갱신: 2026-04-29
 - 대상 저장소: `Scraping-flight-information`
 - 점검 범위: 스크래퍼, 워커, GUI, DB, 패키징, CI, 문서
+
+---
+
+## 2026-04-29 기준선
+
+- 공개 실행 및 import 진입점은 유지된다.
+  - `python gui_v2.py`
+  - `from database import FlightDatabase`
+  - `from scraper_v2 import FlightSearcher, PlaywrightScraper`
+  - `from ui.components import ...`
+  - `from ui.dialogs import ...`
+  - `from ui.workers import ...`
+- URL/국내선 기준선:
+  - `SEL -> CJU`는 인터파크 검색 URL에서 `c:SEL-c:CJU`로 생성된다
+  - 기존 `ICN/GMP -> SEL`, `NRT/HND -> TYO` 도시코드 매핑은 유지된다
+  - 국내선 왕복 dedup key는 출발/도착 시간, 편명, API key, 혜택가/혜택 라벨을 포함한다
+- UI/설정 기준선:
+  - 공항 콤보 옵션은 `ui.airport_options` 공용 helper를 사용한다
+  - 기본 검색 패널, 다중 목적지, 날짜 범위, 가격 알림은 같은 국내선/국제선 공항 목록 정책을 따른다
+  - 고급 검색 다이얼로그는 국내선/국제선 라디오를 제공하되 기존 signal signature를 유지한다
+- export 기준선:
+  - CSV/Excel export는 `ui.export_helpers` 공용 helper를 사용한다
+  - 메인 CSV, 결과 테이블 CSV/Excel, 설정 Excel export는 동일 컬럼을 쓴다
+  - 공통 컬럼은 `return_airline`, `benefit_price`, `benefit_label`, `outbound_price`, `return_price`를 포함한다
+- 가격 알림 기준선:
+  - `AlertAutoCheckWorker`는 검색 예외와 0건 결과를 분리한다
+  - 0건 결과는 `alert_no_result` signal로 전달되고 `last_error = "NO_RESULT: 검색 결과 없음"`으로 저장된다
+  - 알림 목록은 `NO_RESULT` prefix를 `점검 실패`가 아니라 `결과 없음` 상태로 표시한다
+- 고급 검색 기록 기준선:
+  - `PreferenceManager`는 `advanced_search_history`와 `add_advanced_history()`/`get_advanced_history()`를 제공한다
+  - 다중 목적지 검색은 목적지별 최저가 summary를, 날짜 범위 검색은 날짜별 최저가 summary를 최대 20개까지 저장한다
+  - 검색 기록 탭에서는 고급 검색 항목을 read-only 요약으로 표시한다
+  - DB `search_logs`에는 다중 검색은 목적지별, 날짜 범위 검색은 날짜별 summary row를 남긴다
+  - 전체 raw 결과의 앱 재시작 복원/세션 저장은 현재 범위가 아니다
+- 패키징 기준선:
+  - PyInstaller spec 3종은 `ui.airport_options`, `ui.export_helpers` hiddenimport를 포함한다
+  - 기존 facade 경로, package roots, split modules, `scraping.playwright_api`, `scraping.search_sources` hiddenimport를 유지한다
+  - `pyinstaller --clean FlightBot_v2.5.spec` 빌드가 성공했고 산출물은 `dist/FlightBot_v2.5.exe`다
+- 로컬 품질 기준선:
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `pytest -q` -> `87 passed`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 105 tracked text files: OK`
+- 저장소 운영 기준선:
+  - `.gitignore`는 현재 `build/`, `dist/`, `logs/`, `playwright_profile/`, `.pytest_tmp/`, `.pre-commit-cache/`, DB/세션/로그 산출물을 커버한다
+  - 2026-04-29 점검 기준으로 새 helper/문서/spec 변경 때문에 추가 ignore 규칙은 필요하지 않다
 
 ---
 
@@ -127,11 +172,13 @@
     - `scraping.playwright_*`
     - `scraping.playwright_api`
     - `scraping.search_sources`
-    - `ui.search_panel_*`
-    - `ui.search_panel_params`
-    - `ui.dialogs_search_*`
-    - `ui.dialogs_tools_*`
-    - `ui.styles_dark`
+  - `ui.search_panel_*`
+  - `ui.search_panel_params`
+  - `ui.airport_options`
+  - `ui.export_helpers`
+  - `ui.dialogs_search_*`
+  - `ui.dialogs_tools_*`
+  - `ui.styles_dark`
     - `ui.styles_light`
 
 ## 문서 정합성 요약
@@ -141,8 +188,10 @@
   - `pytest -q`는 로컬 검증 기준이다.
   - `.spec` 파일은 facade + split modules + package roots + `ui.search_panel_params` 기준으로 유지된다.
   - 2026-04-09부터는 `scraping.playwright_api`, `scraping.search_sources` hiddenimport도 포함한다.
+  - 2026-04-29부터는 `ui.airport_options`, `ui.export_helpers` hiddenimport도 포함한다.
   - 검색 파라미터 저장/복원은 `schema_version = 2`와 공용 정규화 규약을 기준으로 설명한다.
-  - 가격 알림 문서는 성인 수/좌석 등급 매칭과 `점검 실패` 상태를 반영한다.
+  - 가격 알림 문서는 성인 수/좌석 등급 매칭, `점검 실패`, `결과 없음` 상태를 반영한다.
+  - 고급 검색 문서는 요약 히스토리 저장과 raw 결과 복원 제외 범위를 반영한다.
   - `.gitignore`는 `.pytest_tmp/`, `.pre-commit-cache/`, `build/`, `dist/`, `playwright_profile/`, `logs/`를 포함해 현재 산출물을 커버한다.
 
 ## 남아 있는 운영 메모

@@ -70,11 +70,21 @@ def combine_domestic_round_trip(
         for returning in top_return:
             total_price = outbound["price"] + returning["price"]
             dedup_key = (
+                str(outbound.get("key", "") or ""),
+                str(returning.get("key", "") or ""),
                 outbound["airline"],
                 returning["airline"],
                 total_price,
                 outbound["depTime"],
+                outbound.get("arrTime", ""),
                 returning["depTime"],
+                returning.get("arrTime", ""),
+                outbound.get("flightNumber", ""),
+                returning.get("flightNumber", ""),
+                _coerce_int(outbound.get("benefitPrice")),
+                _coerce_int(returning.get("benefitPrice")),
+                str(outbound.get("benefitLabel", "") or ""),
+                str(returning.get("benefitLabel", "") or ""),
             )
             if dedup_key in seen:
                 continue
@@ -87,6 +97,7 @@ def combine_domestic_round_trip(
                 departure_time=outbound["depTime"],
                 arrival_time=outbound["arrTime"],
                 stops=outbound["stops"],
+                flight_number=str(outbound.get("flightNumber", "") or ""),
                 source="Interpark (국내선)",
                 return_departure_time=returning["depTime"],
                 return_arrival_time=returning["arrTime"],

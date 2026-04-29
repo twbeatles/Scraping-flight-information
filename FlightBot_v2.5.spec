@@ -92,6 +92,8 @@ hiddenimports = [
     "storage.db_alerts",
     "storage.db_last_search",
     "ui.components_primitives",
+    "ui.airport_options",
+    "ui.export_helpers",
     "ui.components_filter_panel",
     "ui.components_result_table",
     "ui.components_log_viewer",

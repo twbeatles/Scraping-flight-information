@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import time
 from typing import cast
 
+import config
 from PyQt6.QtCore import QDate, QSettings, QTimer, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
@@ -19,6 +20,7 @@ from database import PriceAlert
 from gui_v2 import MainWindow
 from scraper_v2 import FlightResult
 from ui.components import ResultTable, SearchPanel
+from ui.export_helpers import flight_export_headers, flight_to_export_row
 
 
 class _DummyLogViewer:
@@ -611,6 +613,49 @@ def test_flight_type_change_preserves_custom_origin_preset(qapp):
     assert ctx.cb_dest.findData("YYY") >= 0
 
 
+def test_refresh_combos_respects_domestic_mode(qapp):
+    class _Prefs:
+        def __init__(self):
+            self._preferred_time = {"departure_start": 0, "departure_end": 24}
+
+        def get_all_presets(self):
+            return {"ZZZ": "Custom International"}
+
+        def add_preset(self, code, name):
+            return None
+
+        def remove_preset(self, code):
+            return None
+
+        def get_preferred_time(self):
+            return self._preferred_time
+
+        def set_preferred_time(self, start, end):
+            self._preferred_time = {"departure_start": start, "departure_end": end}
+
+        def get_all_profiles(self):
+            return {}
+
+        def save_profile(self, name, params):
+            return None
+
+        def get_profile(self, name):
+            return {}
+
+    panel = SearchPanel(_Prefs())
+    panel.rb_domestic.setChecked(True)
+    panel._on_flight_type_changed()
+    panel._refresh_combos()
+
+    codes = {
+        panel.cb_origin.itemData(index)
+        for index in range(panel.cb_origin.count())
+    }
+    assert codes
+    assert codes <= config.DOMESTIC_AIRPORT_CODES
+    assert panel.cb_origin.findData("ZZZ") == -1
+
+
 def test_restore_last_search_avoids_direct_table_render():
     class _DummyStatusBar:
         def __init__(self):
@@ -721,6 +766,27 @@ def test_auto_alert_failure_logs_and_stores_error():
     assert any("자동 알림 점검 실패" in log for log in ctx.log_viewer.logs)
 
 
+def test_auto_alert_no_result_stores_no_result_status():
+    class _DummyDB:
+        def __init__(self):
+            self.update_calls = []
+
+        def update_alert_check(self, alert_id, current_price, last_error=""):
+            self.update_calls.append((alert_id, current_price, last_error))
+            return True
+
+    class _DummyContext:
+        def __init__(self):
+            self.db = _DummyDB()
+            self.log_viewer = _DummyLogViewer()
+
+    ctx = _DummyContext()
+    MainWindow._on_auto_alert_no_result(ctx, 8, "ICN", "NRT")
+
+    assert ctx.db.update_calls == [(8, None, "NO_RESULT: 검색 결과 없음")]
+    assert any("결과 없음" in log for log in ctx.log_viewer.logs)
+
+
 def test_double_click_url_includes_cabin_and_adults(monkeypatch):
     opened_urls = []
     monkeypatch.setattr("app.mainwindow.ui_bootstrap.webbrowser.open", lambda url: opened_urls.append(url))
@@ -790,6 +856,66 @@ def test_result_table_price_tooltip_and_csv_include_benefit(tmp_path, qapp, monk
     assert "혜택 정보" in content
     assert "38930" in content
     assert "삼성카드 2.5% 캐시백 적용 시" in content
+
+
+def test_main_csv_export_uses_shared_benefit_columns(tmp_path, monkeypatch):
+    class _DummyContext:
+        def __init__(self):
+            self.all_results = [
+                FlightResult(
+                    airline="제주항공",
+                    price=39900,
+                    benefit_price=38930,
+                    benefit_label="삼성카드 2.5% 캐시백 적용 시",
+                    departure_time="06:15",
+                    arrival_time="07:30",
+                )
+            ]
+            self.log_viewer = _DummyLogViewer()
+
+    output_path = tmp_path / "main_export.csv"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(output_path), "CSV Files (*.csv)"),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Ok,
+    )
+
+    ctx = _DummyContext()
+    MainWindow._export_to_csv(ctx)
+    content = output_path.read_text(encoding="utf-8-sig")
+
+    assert "혜택가" in content
+    assert "혜택 정보" in content
+    assert "38930" in content
+
+
+def test_export_helper_contains_benefit_and_split_price_fields():
+    flight = FlightResult(
+        airline="제주항공",
+        return_airline="대한항공",
+        price=100000,
+        benefit_price=95000,
+        benefit_label="카드 혜택",
+        departure_time="06:15",
+        arrival_time="07:30",
+        outbound_price=40000,
+        return_price=60000,
+    )
+
+    headers = flight_export_headers()
+    row = flight_to_export_row(flight)
+    data = dict(zip(headers, row))
+
+    assert data["오는편 항공사"] == "대한항공"
+    assert data["혜택가"] == 95000
+    assert data["혜택 정보"] == "카드 혜택"
+    assert data["가는편 가격"] == 40000
+    assert data["오는편 가격"] == 60000
 
 
 def test_restore_search_from_history_restores_cabin_class(monkeypatch):

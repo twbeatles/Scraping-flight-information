@@ -33,6 +33,21 @@ class HistoryMixin:
             list_item = QListWidgetItem(display)
             list_item.setData(Qt.ItemDataRole.UserRole, item)
             self.list_history.addItem(list_item)
+        advanced_history = []
+        if hasattr(self.prefs, "get_advanced_history"):
+            advanced_history = self.prefs.get_advanced_history()
+        for item in advanced_history:
+            params = item.get("params", {})
+            display = (
+                f"[{item.get('timestamp')}] {item.get('title')} "
+                f"({params.get('origin')} ➝ {params.get('dest')}, {params.get('dep')})"
+            )
+            list_item = QListWidgetItem(display)
+            list_item.setData(
+                Qt.ItemDataRole.UserRole,
+                {"__advanced_history__": True, "payload": item},
+            )
+            self.list_history.addItem(list_item)
     def _restore_search_panel_from_params(self: Any, params: dict):
         """검색 파라미터를 검색 패널 UI에 복원"""
         if not params:
@@ -44,13 +59,30 @@ class HistoryMixin:
             return
         
         try:
+            if isinstance(data, dict) and data.get("__advanced_history__"):
+                self._show_advanced_history_summary(data.get("payload", {}))
+                return
             self._restore_search_panel_from_params(data)
             QMessageBox.information(self, "복원 완료", "검색 조건이 복원되었습니다.")
             
         except Exception as e:
             QMessageBox.warning(self, "오류", f"복원 중 오류: {e}")
+
+    def _show_advanced_history_summary(self: Any, item: dict):
+        summary = item.get("summary", []) if isinstance(item, dict) else []
+        lines = [str(item.get("title", "고급 검색 요약"))]
+        for row in summary[:10]:
+            if not isinstance(row, dict):
+                continue
+            label = row.get("dest") or row.get("date") or "-"
+            price = int(row.get("min_price", 0) or 0)
+            airline = row.get("airline", "") or "-"
+            price_text = f"{price:,}원" if price > 0 else "N/A"
+            lines.append(f"{label}: {price_text} ({airline})")
+        if len(summary) > 10:
+            lines.append(f"... 외 {len(summary) - 10}건")
+        QMessageBox.information(self, "고급 검색 요약", "\n".join(lines))
     
     # --- Session Management Methods ---
-
 
 

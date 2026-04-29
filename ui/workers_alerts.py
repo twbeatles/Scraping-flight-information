@@ -27,6 +27,7 @@ class AlertAutoCheckWorker(QThread):
     progress = pyqtSignal(str)
     alert_checked = pyqtSignal(int, int)  # alert_id, current_price
     alert_check_failed = pyqtSignal(int, str, str, str)  # alert_id, origin, dest, error
+    alert_no_result = pyqtSignal(int, str, str)  # alert_id, origin, dest
     alert_hit = pyqtSignal(int, int, int, str, str, str)  # alert_id, price, target, origin, dest, cabin
     done = pyqtSignal(int, int)  # checked_count, hit_count
 
@@ -89,6 +90,7 @@ class AlertAutoCheckWorker(QThread):
             self._set_active_searcher(searcher)
             current_price = 0
             failure_message = ""
+            no_result = False
             try:
                 results = searcher.search(
                     origin,
@@ -103,6 +105,8 @@ class AlertAutoCheckWorker(QThread):
                 )
                 if results:
                     current_price = min(r.price for r in results)
+                else:
+                    no_result = True
             except Exception as e:
                 failure_message = str(e)
                 logger.debug(f"Alert auto-check error for {origin}->{dest}: {e}")
@@ -110,6 +114,8 @@ class AlertAutoCheckWorker(QThread):
                 checked += 1
                 if failure_message:
                     self.alert_check_failed.emit(alert_id, origin, dest, failure_message)
+                elif no_result:
+                    self.alert_no_result.emit(alert_id, origin, dest)
                 else:
                     self.alert_checked.emit(alert_id, current_price)
                 self._clear_active_searcher(searcher)

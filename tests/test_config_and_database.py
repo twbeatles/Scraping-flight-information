@@ -234,6 +234,39 @@ def test_import_settings_trims_search_history_to_20(tmp_path: Path):
     assert len(prefs.get_history()) == 20
 
 
+def test_advanced_search_history_trims_to_20(tmp_path: Path):
+    pref_path = tmp_path / "prefs.json"
+    prefs = PreferenceManager(filepath=str(pref_path))
+
+    for i in range(25):
+        prefs.add_advanced_history(
+            {
+                "type": "date_range",
+                "timestamp": f"2026-03-{(i % 28) + 1:02d} 10:00",
+                "title": "날짜 범위",
+                "params": {
+                    "origin": "ICN",
+                    "dest": "NRT",
+                    "dep": f"202603{(i % 28) + 1:02d}",
+                    "adults": 1,
+                    "cabin_class": "ECONOMY",
+                },
+                "summary": [
+                    {
+                        "date": f"202603{(i % 28) + 1:02d}",
+                        "min_price": 100000 + i,
+                        "airline": "A",
+                        "result_count": 1,
+                    }
+                ],
+            }
+        )
+
+    history = prefs.get_advanced_history()
+    assert len(history) == 20
+    assert history[0]["summary"][0]["min_price"] == 100024
+
+
 def test_preference_manager_normalizes_legacy_search_payloads(tmp_path: Path):
     pref_path = tmp_path / "prefs.json"
     pref_path.write_text(
@@ -358,4 +391,3 @@ def test_add_price_alert_persists_adults_and_default_error(tmp_path: Path):
     assert len(alerts) == 1
     assert alerts[0].adults == 3
     assert alerts[0].last_error == ""
-

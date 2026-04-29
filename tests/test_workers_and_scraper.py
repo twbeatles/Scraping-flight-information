@@ -529,6 +529,12 @@ def test_build_interpark_search_url_normalizes_hyphenated_dates():
     assert url.endswith("?cabin=BUSINESS&infant=0&child=0&adult=2")
 
 
+def test_build_interpark_search_url_treats_sel_as_city_code():
+    url = scraper_config.build_interpark_search_url("SEL", "CJU", "2026-05-01")
+
+    assert "/c:SEL-c:CJU-20260501" in url
+
+
 def test_multi_search_worker_runs_with_parallelism(monkeypatch):
     lock = threading.Lock()
     state = {"active": 0, "max_active": 0}
@@ -799,6 +805,41 @@ def test_alert_auto_check_worker_emits_failure_signal(monkeypatch):
     assert failures[0][1] == "ICN"
 
 
+def test_alert_auto_check_worker_emits_no_result_signal(monkeypatch):
+    class _Alert:
+        def __init__(self):
+            self.id = 10
+            self.origin = "ICN"
+            self.destination = "NRT"
+            self.departure_date = (datetime.now() + timedelta(days=7)).strftime("%Y%m%d")
+            self.return_date = None
+            self.target_price = 150000
+            self.cabin_class = "ECONOMY"
+            self.adults = 1
+
+    class _FakeSearcher:
+        def search(self, *args, **kwargs):
+            return []
+
+        def close(self):
+            return None
+
+        def is_manual_mode(self):
+            return False
+
+    monkeypatch.setattr("ui.workers.FlightSearcher", _FakeSearcher)
+
+    worker = AlertAutoCheckWorker([_Alert()])
+    no_results = []
+    checked = []
+    worker.alert_no_result.connect(lambda *args: no_results.append(args))
+    worker.alert_checked.connect(lambda *args: checked.append(args))
+    worker.run()
+
+    assert checked == []
+    assert no_results == [(10, "ICN", "NRT")]
+
+
 def test_alert_auto_check_worker_cancel_closes_active_searcher():
     class _FakeSearcher:
         def __init__(self):
@@ -812,6 +853,46 @@ def test_alert_auto_check_worker_cancel_closes_active_searcher():
     worker._set_active_searcher(fake)
     worker.cancel()
     assert fake.closed is True
+
+
+def test_domestic_round_trip_dedup_preserves_distinct_flight_numbers():
+    scraper = PlaywrightScraper()
+    outbound = [
+        {
+            "key": "OUT-1",
+            "airline": "A",
+            "price": 50000,
+            "depTime": "07:00",
+            "arrTime": "08:00",
+            "stops": 0,
+            "flightNumber": "A100",
+        },
+        {
+            "key": "OUT-2",
+            "airline": "A",
+            "price": 50000,
+            "depTime": "07:00",
+            "arrTime": "08:10",
+            "stops": 0,
+            "flightNumber": "A101",
+        },
+    ]
+    inbound = [
+        {
+            "key": "IN-1",
+            "airline": "B",
+            "price": 60000,
+            "depTime": "18:00",
+            "arrTime": "19:00",
+            "stops": 0,
+            "flightNumber": "B200",
+        }
+    ]
+
+    combined = scraper._combine_domestic_round_trip(outbound, inbound, max_results=10)
+
+    assert len(combined) == 2
+    assert {flight.flight_number for flight in combined} == {"A100", "A101"}
 
 
 def test_playwright_search_retries_on_network_error(monkeypatch):

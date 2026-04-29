@@ -71,6 +71,57 @@ class SearchMultiMixin:
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.progress_bar.setFormat("다중 검색 완료")
+        worker = getattr(self, "multi_worker", None)
+        if worker is not None:
+            summary = []
+            for dest, flights in results.items():
+                best = min(flights, key=lambda item: item.price) if flights else None
+                min_price = best.price if best else 0
+                summary.append(
+                    {
+                        "dest": dest,
+                        "min_price": min_price,
+                        "airline": best.airline if best else "",
+                        "result_count": len(flights),
+                    }
+                )
+                try:
+                    self.db.log_search(
+                        worker.origin,
+                        dest,
+                        worker.date,
+                        worker.return_date,
+                        worker.adults,
+                        len(flights),
+                        min_price if min_price > 0 else None,
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to log multi search summary: {e}")
+            try:
+                self.prefs.add_advanced_history(
+                    {
+                        "type": "multi_dest",
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "title": f"다중 목적지 {worker.origin} -> {len(worker.destinations)}곳",
+                        "params": {
+                            "origin": worker.origin,
+                            "dest": worker.destinations[0] if worker.destinations else "",
+                            "dep": worker.date,
+                            "ret": worker.return_date,
+                            "adults": worker.adults,
+                            "cabin_class": worker.cabin_class,
+                            "is_domestic": config.infer_is_domestic_route(
+                                worker.origin,
+                                worker.destinations[0] if worker.destinations else "",
+                            ),
+                        },
+                        "summary": summary,
+                    }
+                )
+                if hasattr(self, "list_history"):
+                    self._refresh_history_tab()
+            except Exception as e:
+                logger.debug(f"Failed to save multi search advanced history: {e}")
         
         # Show results dialog
         dialog = MultiDestResultDialog(results, self)
@@ -79,6 +130,5 @@ class SearchMultiMixin:
         self.log_viewer.append_log(f"✅ 다중 목적지 검색 완료: {len(results)}개 목적지")
 
     # --- Date Range Search ---
-
 
 

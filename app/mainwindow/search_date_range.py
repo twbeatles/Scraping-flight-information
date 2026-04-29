@@ -51,6 +51,62 @@ class SearchDateRangeMixin:
         
         # 캘린더 뷰용 데이터 저장
         self.date_range_results = results
+        worker = getattr(self, "date_worker", None)
+        if worker is not None:
+            summary = []
+            for date, (price, airline) in results.items():
+                summary.append(
+                    {
+                        "date": date,
+                        "min_price": price,
+                        "airline": airline,
+                        "result_count": 1 if price > 0 else 0,
+                    }
+                )
+                ret_date = None
+                if worker.return_offset:
+                    try:
+                        ret_date = (
+                            datetime.strptime(date, "%Y%m%d")
+                            + timedelta(days=worker.return_offset)
+                        ).strftime("%Y%m%d")
+                    except Exception:
+                        ret_date = None
+                try:
+                    self.db.log_search(
+                        worker.origin,
+                        worker.dest,
+                        date,
+                        ret_date,
+                        worker.adults,
+                        1 if price > 0 else 0,
+                        price if price > 0 else None,
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to log date-range search summary: {e}")
+            try:
+                first_date = worker.dates[0] if worker.dates else ""
+                self.prefs.add_advanced_history(
+                    {
+                        "type": "date_range",
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "title": f"날짜 범위 {worker.origin} -> {worker.dest}",
+                        "params": {
+                            "origin": worker.origin,
+                            "dest": worker.dest,
+                            "dep": first_date,
+                            "ret": None,
+                            "adults": worker.adults,
+                            "cabin_class": worker.cabin_class,
+                            "is_domestic": config.infer_is_domestic_route(worker.origin, worker.dest),
+                        },
+                        "summary": summary,
+                    }
+                )
+                if hasattr(self, "list_history"):
+                    self._refresh_history_tab()
+            except Exception as e:
+                logger.debug(f"Failed to save date-range advanced history: {e}")
         
         # Show results dialog
         dialog = DateRangeResultDialog(results, self)
@@ -59,6 +115,5 @@ class SearchDateRangeMixin:
         self.log_viewer.append_log(f"✅ 날짜 범위 검색 완료: {len(results)}일 (캘린더뷰 사용 가능)")
 
     # --- Standard Search ---
-
 
 

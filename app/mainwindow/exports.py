@@ -2,6 +2,7 @@
 
 from app.mainwindow.shared import *
 from typing import TYPE_CHECKING, Any
+from ui.export_helpers import export_flights_to_csv
 
 if TYPE_CHECKING:
     from app.main_window import MainWindow
@@ -14,8 +15,6 @@ class ExportsMixin:
             QMessageBox.warning(self, "내보내기 오류", "내보낼 검색 결과가 없습니다.")
             return
         
-        import csv
-        
         fname, _ = QFileDialog.getSaveFileName(
             self, "CSV로 저장", 
             f"flight_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
@@ -25,28 +24,7 @@ class ExportsMixin:
             return
         
         try:
-            with open(fname, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.writer(f)
-                # Header
-                writer.writerow([
-                    "항공사", "가격", "가는편 출발", "가는편 도착", "경유",
-                    "오는편 출발", "오는편 도착", "오는편 경유", "출처"
-                ])
-                
-                # Data
-                for flight in self.all_results:
-                    writer.writerow([
-                        flight.airline,
-                        flight.price,
-                        flight.departure_time,
-                        flight.arrival_time,
-                        flight.stops,
-                        getattr(flight, 'return_departure_time', '-'),
-                        getattr(flight, 'return_arrival_time', '-'),
-                        getattr(flight, 'return_stops', '-'),
-                        flight.source
-                    ])
-            
+            export_flights_to_csv(fname, self.all_results)
             self.log_viewer.append_log(f"📥 CSV 저장 완료: {fname}")
             QMessageBox.information(self, "저장 완료", f"{len(self.all_results)}개 결과가 저장되었습니다.\n{fname}")
             
@@ -73,6 +51,4 @@ class ExportsMixin:
         QMessageBox.information(self, "복사 완료", f"{min(len(self.all_results), 50)}개 결과가 클립보드에 복사되었습니다.")
 
     # --- Multi-Destination Search ---
-
-
 
