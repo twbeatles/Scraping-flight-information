@@ -99,6 +99,12 @@ venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
+재현 가능한 로컬 검증 환경을 맞출 때는 현재 검증된 constraints 파일을 함께 사용할 수 있습니다.
+
+```bash
+pip install -r requirements.txt -c constraints.txt
+```
+
 > `openpyxl`(Excel 입출력), `pytest`(테스트), `pyright`(정적 타입 검사)는 `requirements.txt`에 포함되어 함께 설치됩니다.
 
 ### 4단계: Playwright 브라우저 설치
@@ -442,7 +448,7 @@ pyinstaller --onedir --windowed --name FlightBot_v2.5 gui_v2.py
 | `FlightBot_v2.5.spec` | 표준 GUI 배포 (호환 프로필) | `pyinstaller --clean FlightBot_v2.5.spec` |
 | `FlightBot_Simple.spec` | 콘솔 로그 확인용 디버그 실행파일 | `pyinstaller --clean FlightBot_Simple.spec` |
 
-> 2026-04-29 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `scraping.playwright_api`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)과 공용 검색 파라미터 복원 모듈(`ui.search_panel_params`), 공항 옵션/export helper(`ui.airport_options`, `ui.export_helpers`), 내부 source registry 모듈(`scraping.search_sources`)도 함께 포함합니다.
+> 2026-05-03 패키징 점검 결과: 세 `.spec` 파일의 `hiddenimports`를 현재 구조에 맞게 다시 동기화했습니다. facade 경로(`database`, `scraper_v2`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`)는 유지하고, 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`)도 명시적으로 포함합니다. 신규 분리 모듈(`app.mainwindow.ui_bootstrap_sections`, `scraping.playwright_*`, `scraping.playwright_api`, `scraping.manual_reasons`, `ui.search_panel_*`, `ui.dialogs_search_*`, `ui.dialogs_tools_*`, `ui.styles_dark/light`)과 공용 검색 파라미터 복원 모듈(`ui.search_panel_params`), 공항 옵션/export helper(`ui.airport_options`, `ui.export_helpers`), 내부 source registry 모듈(`scraping.search_sources`)도 함께 포함합니다.
 
 ### 빌드 결과
 
@@ -499,6 +505,28 @@ playwright install chromium
 ---
 
 ## 📝 변경 로그
+
+### v2.5.12 (2026-05-03)
+- 🧭 **스크래핑 진단 강화**
+  - API fetch metadata(`status`, `ok`, payload key, recent resource URL)를 telemetry details에 보존
+  - search key 탐지를 status/final resource URL 양쪽에서 수행하도록 확장
+  - `manual_reason` raw code는 유지하면서 UI에는 사용자 친화 라벨을 함께 표시
+- 🔔 **자동 가격 알림 UX 보강**
+  - 설정 화면에 `지금 검사` 액션과 활성 알림 수/최근 점검/다음 예정/최근 실패 상태 표시 추가
+  - 자동 점검 중 다른 검색이 진행 중이면 로그로 짧게 안내
+- 🧵 **종료/DB 안정성 보강**
+  - 병렬/날짜 워커 취소 시 active searcher close, future cancel, executor shutdown 순서 정리
+  - `FlightDatabase.close()`는 해당 DB 경로 연결만 닫고, 앱 종료 전체 정리는 `close_all_connections()`로 분리
+- 📦 **재현성/패키징/운영 문서**
+  - `constraints.txt` 추가 및 재현 설치 명령 문서화
+  - 릴리스 전 수동 점검용 `scripts/live_smoke_search.py` 추가
+  - `.spec` 3종에 `scraping.manual_reasons` hiddenimport 반영
+  - `.gitignore` 점검 결과 build/dist/logs/db/profile/cache 산출물은 기존 규칙으로 커버됨
+- ✅ **검증**
+  - `pytest -q` -> `91 passed`
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 110 tracked text files: OK`
+  - `pyinstaller --clean FlightBot_v2.5.spec` -> `dist/FlightBot_v2.5.exe` 생성
 
 ### v2.5.11 (2026-04-29)
 - 🧭 **도시코드/국내선 UI 정합성**
@@ -757,6 +785,9 @@ Copyright (c) 2026
 # 개발 의존성 설치
 pip install -r requirements.txt
 
+# 검증된 버전 조합으로 설치하려면
+pip install -r requirements.txt -c constraints.txt
+
 # 코드 실행 (디버그 모드)
 python gui_v2.py
 
@@ -771,6 +802,9 @@ pre-commit install
 
 # tracked text 인코딩 검사
 python scripts/check_tracked_text.py --check-lf
+
+# 릴리스 전 수동 라이브 스모크 점검 (CI 미연결)
+python scripts/live_smoke_search.py
 ```
 
 > 저장소에는 `.gitattributes`, `scripts/check_tracked_text.py`, `.github/workflows/quality.yml`, `.pre-commit-config.yaml`가 포함되어 있어 UTF-8/LF 정책과 `pyright --warnings`를 GitHub Actions 및 로컬 훅에서 점검합니다. `pytest -q`는 PyQt 시스템 라이브러리가 준비된 로컬 환경에서 실행하는 기준입니다.

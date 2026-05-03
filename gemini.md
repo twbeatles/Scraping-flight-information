@@ -36,7 +36,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-04-29)
+## 🔄 정합성 업데이트 (2026-05-03)
 
 최신 코드 기준으로 아래 항목을 우선 적용한다.
 
@@ -45,7 +45,7 @@
 3. 자동 가격 알림은 `AlertAutoCheckWorker` + `QTimer`로 동작하며 기본값은 OFF, 30분이다.
 4. 워커 종료는 `terminate()`를 사용하지 않고 `cancel() -> requestInterruption() -> wait()` 순서를 사용한다.
 5. `PreferenceManager` 설정 파일명은 `user_preferences.json`이다.
-6. DB는 `close()`, `close_all_connections()`, 텔레메트리 API를 제공한다.
+6. DB는 `close()`로 해당 DB 경로 연결만 닫고, 앱 종료 전체 정리는 `close_all_connections()`를 사용한다.
 7. 관측성은 JSONL(`logs/flightbot_events.jsonl`) + DB(`telemetry_events`) 이중 저장이다.
 8. `PlaywrightScraper.search()`는 반복 루프 기반 재시도/백오프를 사용하며 시도 간 리소스를 정리한다.
 9. 다중/날짜/자동알림 검색은 `background_mode=True`(헤드리스, non-persistent)로 실행한다.
@@ -64,7 +64,7 @@
 22. `last_search_meta`는 `is_domestic`를 저장하고, 구 row 복원 시 route 기반 추론으로 보완한다.
 23. `PriceAlert` 및 `price_alerts`는 `adults`, `last_error`를 포함하며 가격 알림 매칭 기준은 `origin/dest/dep/ret/cabin_class/adults`다.
 24. 자동 가격 알림 실패는 모달 대신 DB 상태(`last_error`)와 로그/목록 상태(`점검 실패`)로 노출한다.
-25. PyInstaller spec 3종은 `ui.search_panel_params`뿐 아니라 `scraping.playwright_api`, `scraping.search_sources`도 hiddenimport에 포함해야 한다.
+25. PyInstaller spec 3종은 `ui.search_panel_params`뿐 아니라 `scraping.playwright_api`, `scraping.search_sources`, `scraping.manual_reasons`도 hiddenimport에 포함해야 한다.
 26. 국제선 추출은 동일 출처 API 우선(`flights/search -> status -> final POST`)이며 `page.totalCount/pageSize` 기준 전 페이지를 순회한다.
 27. 국제선 API 결과는 `bestFares + contents`를 합쳐 dedupe하고, API 성공 시 DOM fallback을 사용하지 않는다.
 28. 국제선 DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용하고 `크로스셀링` alt는 버리며, 실제 scrollable container를 찾아 점진 스크롤한다.
@@ -73,7 +73,7 @@
 31. 검색 telemetry/details에는 `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`, `manual_reason`를 남긴다.
 32. 수동 모드 및 수동 추출 UI telemetry도 `manual_reason`를 함께 기록한다.
 33. `scraping.search_sources`는 내부 source boundary이며 기본 런타임 source는 `InterparkAirSource`다.
-34. `InterparkTicketSource`는 metadata + `NotImplementedError` skeleton까지만 제공한다.
+34. `InterparkTicketSource`는 `status = inactive` metadata + `NotImplementedError` skeleton까지만 제공한다.
 35. 설정 저장은 `QSettings.sync()`까지 호출해 `SEL -> CJU` 같은 국내선 경로도 즉시 round-trip 되어야 한다.
 36. 로컬/CI 정적 품질 기준선은 `pyright --warnings`다.
 37. 텍스트 무결성 기준선은 `python scripts/check_tracked_text.py --check-lf`이며, UTF-8 BOM과 CRLF를 모두 실패로 취급한다.
@@ -88,6 +88,13 @@
 46. 고급 검색 요약은 검색 기록 탭에서 read-only로 표시한다. 다중 검색은 목적지별, 날짜 범위 검색은 날짜별 summary row를 DB `search_logs`에 남긴다.
 47. PyInstaller spec 3종은 `ui.airport_options`, `ui.export_helpers` hiddenimport를 포함해야 한다.
 48. 2026-04-29 로컬 검증 기준선은 `pytest -q -> 87 passed`, `pyright --warnings -> 0 errors`, `check_tracked_text.py --check-lf -> Checked 105 tracked text files: OK`, `pyinstaller --clean FlightBot_v2.5.spec -> dist/FlightBot_v2.5.exe`다.
+49. API fetch telemetry는 HTTP status/ok/payload key/recent resource URL 요약을 `_search_metrics`에 남긴다.
+50. `manual_reason`은 raw code를 telemetry에 유지하고, UI 표시는 `scraping.manual_reasons.describe_manual_reason()`의 사용자 친화 라벨을 함께 사용한다.
+51. 자동 가격 알림 설정에는 “지금 검사”와 최근/다음 점검 상태 요약을 제공한다.
+52. 재현 설치는 `pip install -r requirements.txt -c constraints.txt`를 사용할 수 있다.
+53. 라이브 스모크 점검은 `python scripts/live_smoke_search.py`로 수동 실행하며 CI에는 연결하지 않는다.
+54. CI는 텍스트 무결성 + `pyright --warnings`만 실행하고, `pytest -q`는 로컬 필수 검증 기준으로 유지한다.
+55. 2026-05-03 로컬 검증 기준선은 `pytest -q -> 91 passed`, `pyright --warnings -> 0 errors`, `check_tracked_text.py --check-lf -> Checked 110 tracked text files: OK`, `pyinstaller --clean FlightBot_v2.5.spec -> dist/FlightBot_v2.5.exe`다.
 
 ---
 
@@ -112,7 +119,7 @@ Scraping-flight-information-main-v2/
     └── workers.py         # 백그라운드 스레드 워커 (SearchWorker, MultiSearchWorker)
 ```
 
-- 2026-04-29 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 `hiddenimports`에 facade(`database`, `scraper_v2`, `ui.components/dialogs/workers`), 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`), 분할 모듈(`app.mainwindow.shared`, `scraping.playwright_api`, `scraping.extract_domestic`, `scraping.extract_international`, `ui.search_panel_params`, `ui.airport_options`, `ui.export_helpers`)을 함께 유지한 상태가 기준이다.
+- 2026-05-03 점검 결과: `.spec` 파일(`flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`)은 `hiddenimports`에 facade(`database`, `scraper_v2`, `ui.components/dialogs/workers`), 패키지 루트(`app`, `app.mainwindow`, `scraping`, `storage`), 분할 모듈(`app.mainwindow.shared`, `scraping.playwright_api`, `scraping.manual_reasons`, `scraping.extract_domestic`, `scraping.extract_international`, `ui.search_panel_params`, `ui.airport_options`, `ui.export_helpers`)을 함께 유지한 상태가 기준이다.
 
 ---
 

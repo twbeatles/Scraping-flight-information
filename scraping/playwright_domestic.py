@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 import scraper_config
 from scraper_config import ScraperScripts
 from scraping.models import FlightResult
-from scraping.playwright_api import find_latest_search_key, page_fetch_json
+from scraping.playwright_api import find_latest_search_key, get_api_meta, page_fetch_json, recent_api_resource_urls
 
 if TYPE_CHECKING:
     from scraping.playwright_scraper import PlaywrightScraper
@@ -156,6 +156,7 @@ def extract_domestic_api_flights_data(
     key = str(search_key or "").strip() or find_latest_search_key(scraper, trip_kind="domestic")
     if not key:
         logger.info("국내선 API search key를 찾지 못했습니다.")
+        _record_domestic_api_failure(scraper, "domestic_api_key_missing", {})
         return [], {"total_count": 0, "fetched_pages": 0}
 
     context = getattr(scraper, "_last_search_context", {}) or {}
@@ -169,9 +170,13 @@ def extract_domestic_api_flights_data(
     while page_number <= total_pages:
         payload = _fetch_domestic_search_page(scraper, key, page_number=page_number, page_size=page_size, cabin=cabin)
         if not payload:
+            _record_domestic_api_failure(scraper, "domestic_api_result_fetch_failed", {})
             break
 
         page_meta = payload.get("page")
+        if not isinstance(page_meta, dict):
+            _record_domestic_api_failure(scraper, "domestic_api_payload_mismatch", payload)
+            break
         if isinstance(page_meta, dict):
             page_size = max(_coerce_int(page_meta.get("pageSize")), page_size)
             total_count = max(total_count, _coerce_int(page_meta.get("totalCount")))
@@ -179,6 +184,7 @@ def extract_domestic_api_flights_data(
 
         items = payload.get("items")
         if not isinstance(items, list) or not items:
+            _record_domestic_api_failure(scraper, "domestic_api_payload_mismatch", payload)
             break
 
         for item in items:
@@ -224,6 +230,30 @@ def _fetch_domestic_search_page(
         },
     )
     return payload if isinstance(payload, dict) else {}
+
+
+def _record_domestic_api_failure(
+    scraper: "PlaywrightScraper",
+    reason: str,
+    payload: Dict[str, Any],
+) -> None:
+    if not getattr(scraper, "_manual_reason", ""):
+        scraper._manual_reason = reason
+    metrics = getattr(scraper, "_search_metrics", None)
+    if not isinstance(metrics, dict):
+        return
+    meta = get_api_meta(payload) if isinstance(payload, dict) else {}
+    metrics["api_failure_reason"] = reason
+    metrics["api_failure_payload_keys"] = list(payload.keys())[:20] if isinstance(payload, dict) else []
+    if meta:
+        metrics["api_failure_meta"] = {
+            "status": int(meta.get("status") or 0),
+            "ok": bool(meta.get("ok")),
+            "payload_keys": [str(item) for item in meta.get("payload_keys", [])[:20]],
+        }
+    resources = recent_api_resource_urls(scraper, trip_kind="domestic")
+    if resources:
+        metrics["api_recent_resources"] = resources
 
 
 def _normalize_domestic_api_item(item: Dict[str, Any]) -> Dict[str, Any]:

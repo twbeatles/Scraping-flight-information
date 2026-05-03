@@ -1,14 +1,20 @@
 # Flight Bot v2.5 Scraping Audit
 
 - 작성일: 2026-02-25
-- 최종 갱신: 2026-04-29
+- 최종 갱신: 2026-05-03
 - 대상 저장소: `Scraping-flight-information`
 - 점검 범위: 스크래퍼, 워커, GUI, DB, 패키징, CI, 문서
 
 ---
 
-## 2026-04-29 기준선
+## 2026-05-03 기준선
 
+- 2026-05-03 안정화 계획 반영 항목:
+  - CI 정책은 기존대로 텍스트 무결성 + `pyright --warnings`를 유지하고, `pytest -q`는 PyQt/Playwright가 준비된 로컬 필수 검증으로 둔다.
+  - 재현 가능한 로컬 설치를 위해 `constraints.txt`를 추가했으며, 권장 명령은 `pip install -r requirements.txt -c constraints.txt`이다.
+  - 릴리스 전 외부 서비스 변화 확인용 수동 스모크 스크립트는 `python scripts/live_smoke_search.py`로 실행한다.
+  - `.spec` 3종은 신규 사용자 친화 manual reason helper인 `scraping.manual_reasons`를 hiddenimport에 포함한다.
+  - `.gitignore`는 build/dist/logs/db/profile/cache 산출물을 이미 커버하며, 신규 `constraints.txt`와 `scripts/live_smoke_search.py`는 추적 대상이다.
 - 공개 실행 및 import 진입점은 유지된다.
   - `python gui_v2.py`
   - `from database import FlightDatabase`
@@ -32,6 +38,7 @@
   - `AlertAutoCheckWorker`는 검색 예외와 0건 결과를 분리한다
   - 0건 결과는 `alert_no_result` signal로 전달되고 `last_error = "NO_RESULT: 검색 결과 없음"`으로 저장된다
   - 알림 목록은 `NO_RESULT` prefix를 `점검 실패`가 아니라 `결과 없음` 상태로 표시한다
+  - 자동 가격 알림 설정에는 `지금 검사`와 최근/다음 점검 상태 요약이 제공된다
 - 고급 검색 기록 기준선:
   - `PreferenceManager`는 `advanced_search_history`와 `add_advanced_history()`/`get_advanced_history()`를 제공한다
   - 다중 목적지 검색은 목적지별 최저가 summary를, 날짜 범위 검색은 날짜별 최저가 summary를 최대 20개까지 저장한다
@@ -39,49 +46,21 @@
   - DB `search_logs`에는 다중 검색은 목적지별, 날짜 범위 검색은 날짜별 summary row를 남긴다
   - 전체 raw 결과의 앱 재시작 복원/세션 저장은 현재 범위가 아니다
 - 패키징 기준선:
-  - PyInstaller spec 3종은 `ui.airport_options`, `ui.export_helpers` hiddenimport를 포함한다
+  - PyInstaller spec 3종은 `ui.airport_options`, `ui.export_helpers`, `scraping.manual_reasons` hiddenimport를 포함한다
   - 기존 facade 경로, package roots, split modules, `scraping.playwright_api`, `scraping.search_sources` hiddenimport를 유지한다
   - `pyinstaller --clean FlightBot_v2.5.spec` 빌드가 성공했고 산출물은 `dist/FlightBot_v2.5.exe`다
 - 로컬 품질 기준선:
   - `pyright --warnings` -> `0 errors, 0 warnings`
-  - `pytest -q` -> `87 passed`
-  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 105 tracked text files: OK`
+  - `pytest -q` -> `91 passed`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 110 tracked text files: OK`
 - 저장소 운영 기준선:
   - `.gitignore`는 현재 `build/`, `dist/`, `logs/`, `playwright_profile/`, `.pytest_tmp/`, `.pre-commit-cache/`, DB/세션/로그 산출물을 커버한다
-  - 2026-04-29 점검 기준으로 새 helper/문서/spec 변경 때문에 추가 ignore 규칙은 필요하지 않다
+- 관측성 기준선:
+  - 검색 telemetry/details에 `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`, `manual_reason`, API status/ok/payload key/recent resource URL 요약을 남긴다
+  - UI `manual_mode_activated`, `ui_manual_extract_finished` 이벤트도 `manual_reason`를 포함한다
+  - UI에는 raw `manual_reason`과 함께 `scraping.manual_reasons.describe_manual_reason()`의 사용자 친화 라벨을 표시한다
 
 ---
-
-## 2026-04-09 기준선
-
-- 공개 실행 및 import 진입점은 유지된다.
-  - `python gui_v2.py`
-  - `from database import FlightDatabase`
-  - `from scraper_v2 import FlightSearcher, PlaywrightScraper`
-  - `from ui.components import ...`
-  - `from ui.dialogs import ...`
-  - `from ui.workers import ...`
-- 국제선 기준선:
-  - 국제선 추출은 동일 출처 API 우선(`flights/search -> status -> final POST`)이며 `page.totalCount/pageSize` 기준 전 페이지를 순회한다
-  - `bestFares + contents`를 합친 뒤 dedupe하고, API 성공 시 DOM fallback을 타지 않는다
-  - DOM fallback은 `img[alt$="로고"]`만 항공사 후보로 사용하고 `크로스셀링` alt를 버리며, 실제 scrollable container를 찾아 점진 스크롤한다
-- 국내선 기준선:
-  - 국내선도 `DOMESTIC::key` 기반 paging API 우선으로 추출한다
-  - 왕복은 가는편/오는편 각각 최신 search key를 다시 감지해 API를 호출한다
-  - 오는편 key를 잡지 못한 경우에만 `domestic_return_key_missing`을 남기고 DOM fallback으로 제한 전환한다
-  - `FlightResult` canonical `price`는 계속 기본가이며 `benefit_price`, `benefit_label`을 함께 채운다
-- 관측성 기준선:
-  - 검색 telemetry/details에 `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`, `manual_reason`를 남긴다
-  - UI `manual_mode_activated`, `ui_manual_extract_finished` 이벤트도 `manual_reason`를 포함한다
-- 패키징 기준선:
-  - PyInstaller spec 3종은 facade 경로, package roots, split modules와 함께 `scraping.playwright_api` hiddenimport를 포함한다
-  - `pyinstaller --clean FlightBot_v2.5.spec` 빌드가 성공했고 산출물은 `dist/FlightBot_v2.5.exe`다
-- 로컬 품질 기준선:
-  - `pyright --warnings` -> `0 errors, 0 warnings`
-  - `pytest -q` -> `76 passed`
-  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 104 tracked text files: OK`
-- 저장소 운영 기준선:
-  - `.gitignore`는 현재 `build/`, `dist/`, `logs/`, `playwright_profile/`, `.pytest_tmp/`를 이미 커버하므로 2026-04-09 기준 추가 수정이 필요하지 않았다
 
 ## 2026-03-24 기준선
 

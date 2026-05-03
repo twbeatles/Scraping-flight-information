@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 import scraper_config
 from scraper_config import ScraperScripts
 from scraping.models import FlightResult
-from scraping.playwright_api import find_latest_search_key, page_fetch_json
+from scraping.playwright_api import find_latest_search_key, get_api_meta, page_fetch_json, recent_api_resource_urls
 
 if TYPE_CHECKING:
     from scraping.playwright_scraper import PlaywrightScraper
@@ -74,6 +74,7 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
             search_key = str(initial.get("key") or "").strip()
         if not search_key:
             logger.info("국제선 API search key를 찾지 못했습니다: %s", initial)
+            _record_international_api_failure(scraper, "international_api_key_missing", initial)
             return []
 
         status_url = (
@@ -84,19 +85,27 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
 
         for attempt in range(max_polls):
             status_payload = page_fetch_json(scraper, status_url)
+            status_meta = get_api_meta(status_payload)
+            if status_meta and not bool(status_meta.get("ok", True)):
+                logger.info("국제선 API status HTTP 실패: %s", status_meta)
+                _record_international_api_failure(scraper, "international_api_http_failed", status_payload)
+                return []
             if str(status_payload.get("status") or "").upper() == "COMPLETE":
                 break
             if status_payload.get("code"):
                 logger.info("국제선 API status 실패: %s", status_payload)
+                _record_international_api_failure(scraper, "international_api_status_failed", status_payload)
                 return []
             if scraper.page:
                 scraper.page.wait_for_timeout(1000)
             if attempt == max_polls - 1:
                 logger.info("국제선 API status polling timeout: %s", search_key)
+                _record_international_api_failure(scraper, "international_api_status_timeout", status_payload)
                 return []
 
         payloads = _fetch_international_result_pages(scraper, search_key)
         if not payloads:
+            _record_international_api_failure(scraper, "international_api_result_fetch_failed", {})
             return []
 
         items: List[Dict[str, Any]] = []
@@ -114,6 +123,7 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
 
         if not items:
             logger.info("국제선 API 결과 payload shape mismatch: %s", list(payloads[0].keys())[:10])
+            _record_international_api_failure(scraper, "international_api_payload_mismatch", payloads[0])
             return []
 
         normalized: Dict[str, FlightResult] = {}
@@ -135,6 +145,7 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
         )
     except Exception as exc:
         logger.info("국제선 API 추출 예외: %s", exc)
+        _record_international_api_failure(scraper, "international_api_exception", {"error": str(exc)})
         return []
 
 
@@ -220,7 +231,7 @@ def _extract_international_prices_from_dom(scraper: "PlaywrightScraper") -> List
             "dom_gap_detected": dom_gap_detected,
         }
     )
-    if dom_gap_detected and not getattr(scraper, "_manual_reason", ""):
+    if dom_gap_detected:
         scraper._manual_reason = "dom_fallback_gap_risk"
 
     return _build_international_results(all_results_dict.values())
@@ -263,6 +274,30 @@ def _fetch_international_result_pages(
         payloads.append(payload)
 
     return payloads
+
+
+def _record_international_api_failure(
+    scraper: "PlaywrightScraper",
+    reason: str,
+    payload: Dict[str, Any],
+) -> None:
+    if not getattr(scraper, "_manual_reason", ""):
+        scraper._manual_reason = reason
+    metrics = getattr(scraper, "_search_metrics", None)
+    if not isinstance(metrics, dict):
+        return
+    meta = get_api_meta(payload) if isinstance(payload, dict) else {}
+    metrics["api_failure_reason"] = reason
+    metrics["api_failure_payload_keys"] = list(payload.keys())[:20] if isinstance(payload, dict) else []
+    if meta:
+        metrics["api_failure_meta"] = {
+            "status": int(meta.get("status") or 0),
+            "ok": bool(meta.get("ok")),
+            "payload_keys": [str(item) for item in meta.get("payload_keys", [])[:20]],
+        }
+    resources = recent_api_resource_urls(scraper, trip_kind="international")
+    if resources:
+        metrics["api_recent_resources"] = resources
 
 
 def _read_current_result_indices(scraper: "PlaywrightScraper") -> List[int]:

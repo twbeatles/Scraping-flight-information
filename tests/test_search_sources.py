@@ -21,6 +21,7 @@ def test_ticket_source_exposes_metadata_and_placeholder_contract():
 
     assert source.metadata["base_url"] == "https://nol.interpark.com/ticket"
     assert source.metadata["legacy_url"] == "https://tickets.interpark.com/"
+    assert source.metadata["status"] == "inactive"
     assert source.build_search_url({}) == "https://nol.interpark.com/ticket"
     with pytest.raises(NotImplementedError):
         source.search({})

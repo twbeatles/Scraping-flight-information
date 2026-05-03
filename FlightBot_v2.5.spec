@@ -78,6 +78,7 @@ hiddenimports = [
     "scraping.playwright_search",
     "scraping.playwright_domestic",
     "scraping.playwright_results",
+    "scraping.manual_reasons",
     "scraping.extract_domestic",
     "scraping.extract_international",
     "scraping.searcher",

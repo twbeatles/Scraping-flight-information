@@ -11,6 +11,7 @@ from scraper_v2 import FlightSearcher, BrowserInitError, NetworkError
 logger = logging.getLogger(__name__)
 MAX_DATE_RANGE_SEARCHES = 30
 MAX_PARALLEL_WORKERS = 2
+EXECUTOR_CANCEL_DRAIN_SECONDS = 0.5
 
 
 def _searcher_cls():
@@ -21,6 +22,16 @@ def _searcher_cls():
         return getattr(workers_module, "FlightSearcher", FlightSearcher)
     except Exception:
         return FlightSearcher
+
+
+def _cancel_and_shutdown_executor(executor, futures):
+    """Cancel queued futures and give running searches a short cleanup window."""
+    future_list = list(futures.keys())
+    for future in future_list:
+        future.cancel()
+    if future_list:
+        wait(future_list, timeout=EXECUTOR_CANCEL_DRAIN_SECONDS)
+    executor.shutdown(wait=False, cancel_futures=True)
 
 class MultiSearchWorker(QThread):
     """다중 목적지 병렬 검색 Worker (동시 2개)"""
@@ -128,9 +139,7 @@ class MultiSearchWorker(QThread):
             while pending or futures:
                 if self.is_cancelled():
                     self._close_all_active_searchers()
-                    for future in list(futures.keys()):
-                        future.cancel()
-                    executor.shutdown(wait=False, cancel_futures=True)
+                    _cancel_and_shutdown_executor(executor, futures)
                     self.progress.emit(f"⚠️ 다중 검색이 취소되었습니다. ({len(all_results)}/{total} 완료)")
                     return
 
@@ -168,9 +177,10 @@ class MultiSearchWorker(QThread):
                     all_results[done_dest] = results
                     self.single_finished.emit(done_dest, results)
         finally:
-            for future in list(futures.keys()):
-                future.cancel()
-            executor.shutdown(wait=False, cancel_futures=True)
+            if futures:
+                _cancel_and_shutdown_executor(executor, futures)
+            else:
+                executor.shutdown(wait=False, cancel_futures=True)
 
         ordered_results = {dest: all_results.get(dest, []) for dest in self.destinations}
         self.all_finished.emit(ordered_results)
@@ -302,9 +312,7 @@ class DateRangeWorker(QThread):
             while pending or futures:
                 if self.is_cancelled():
                     self._close_all_active_searchers()
-                    for future in list(futures.keys()):
-                        future.cancel()
-                    executor.shutdown(wait=False, cancel_futures=True)
+                    _cancel_and_shutdown_executor(executor, futures)
                     self.progress.emit(f"⚠️ 날짜 범위 검색이 취소되었습니다. ({len(all_results)}개 날짜 분석)")
                     return
 
@@ -349,9 +357,10 @@ class DateRangeWorker(QThread):
 
                     self.progress.emit(f"⚠️ {dep_date} 검색 실패: {status} [{completed}/{total}]")
         finally:
-            for future in list(futures.keys()):
-                future.cancel()
-            executor.shutdown(wait=False, cancel_futures=True)
+            if futures:
+                _cancel_and_shutdown_executor(executor, futures)
+            else:
+                executor.shutdown(wait=False, cancel_futures=True)
 
         self.progress.emit(f"🎾 검색 완료! 총 {len(all_results)}개 날짜 분석")
         ordered_results = {date: all_results.get(date, (0, "N/A")) for date in self.dates}

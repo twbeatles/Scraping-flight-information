@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import scraper_config
 from scraper_v2 import FlightResult, PlaywrightScraper, ParallelSearcher
+from scraping.playwright_api import find_search_keys
 from scraping.playwright_search import _handle_domestic_round_trip
 from ui.workers import AlertAutoCheckWorker, DateRangeWorker, MultiSearchWorker
 
@@ -260,6 +261,72 @@ def test_international_api_path_paginates_and_builds_results_without_dom_fallbac
     assert scraper._search_metrics["fetched_pages"] == 2
     assert scraper._search_metrics["api_item_count"] == 2
     assert page.fetch_calls == ["status", "final-1", "final-2"]
+
+
+def test_find_search_keys_accepts_status_and_final_resource_urls():
+    class _FakePage:
+        def evaluate(self, script):
+            assert "performance.getEntriesByType('resource')" in script
+            return ["INTERNATIONAL::old", "INTERNATIONAL::abc"]
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = _FakePage()
+
+    assert find_search_keys(scraper, trip_kind="international") == [
+        "INTERNATIONAL::old",
+        "INTERNATIONAL::abc",
+    ]
+
+
+def test_international_api_failure_records_reason_and_meta():
+    class _FakePage:
+        def evaluate(self, script):
+            if "performance.getEntriesByType('resource')" in script:
+                return [
+                    "https://example.test/international/flights/search/v2/INTERNATIONAL::abc/status",
+                    "https://example.test/international/flights/search/v2/INTERNATIONAL::abc",
+                ]
+            if "fetch(" in script and "/status" in script:
+                return {
+                    "code": "RATE_LIMIT",
+                    "__flightbot_api_meta": {
+                        "status": 429,
+                        "ok": False,
+                        "payload_keys": ["code"],
+                    },
+                }
+            if "const cards = document.querySelectorAll('li[data-index], div[data-index]');" in script:
+                return []
+            if "Array.from(document.querySelectorAll('li[data-index], div[data-index]'))" in script:
+                return []
+            if "const cards = Array.from(document.querySelectorAll('li[data-index], div[data-index]'));" in script:
+                return {"advanced": False, "atEnd": True}
+            if "const candidates = document.querySelectorAll(" in script:
+                return []
+            raise AssertionError(f"Unexpected script: {script[:120]}")
+
+        def wait_for_timeout(self, _timeout):
+            return None
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = _FakePage()
+    cast(Any, scraper)._last_search_context = {
+        "origin": "ICN",
+        "destination": "NRT",
+        "departure_date": "20260415",
+        "return_date": "20260418",
+        "adults": 1,
+        "cabin_class": "ECONOMY",
+        "child": 0,
+        "infant": 0,
+        "is_domestic": False,
+    }
+
+    assert scraper._extract_prices() == []
+    assert scraper._manual_reason == "international_api_http_failed"
+    assert scraper._search_metrics["api_failure_reason"] == "international_api_http_failed"
+    assert scraper._search_metrics["api_failure_meta"]["status"] == 429
+    assert scraper._search_metrics["api_recent_resources"]
 
 
 def test_domestic_api_path_paginates_and_normalizes_results():

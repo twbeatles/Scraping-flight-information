@@ -61,12 +61,13 @@ class SearchWorker(QThread):
             if self._cancelled:  # 중복 취소 방지
                 return
             self._cancelled = True
-        
+
+        self.requestInterruption()
         try:
             if self.searcher:
                 self.searcher.close()
         except Exception as e:
-            logging.debug(f"검색 취소 중 오류 (무시됨): {e}")
+            logger.debug("검색 취소 중 브라우저 정리 오류 (무시됨): %s", e)
     
     def is_cancelled(self) -> bool:
         """스레드 안전하게 취소 상태 확인"""

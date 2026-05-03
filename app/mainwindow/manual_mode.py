@@ -1,6 +1,7 @@
 """ManualModeMixin methods extracted from MainWindow."""
 
 from app.mainwindow.shared import *
+from scraping.manual_reasons import describe_manual_reason
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -36,7 +37,9 @@ class ManualModeMixin:
         self.progress_bar.setValue(50)
         self.progress_bar.setFormat("수동 모드 대기 중...")
         if manual_reason:
-            self.log_viewer.append_log(f"수동 모드로 전환됨. 사유: {manual_reason}")
+            self.log_viewer.append_log(
+                f"수동 모드로 전환됨. 사유: {describe_manual_reason(manual_reason)} ({manual_reason})"
+            )
         else:
             self.log_viewer.append_log("수동 모드로 전환됨.")
         
@@ -124,5 +127,4 @@ class ManualModeMixin:
         finally:
             self.active_searcher = None
             self.manual_frame.setVisible(False)
-
 

@@ -39,6 +39,7 @@ class InterparkAirSource:
     source_id = "interpark_air"
     metadata = {
         "display_name": "Interpark Air",
+        "status": "active",
         "base_url": scraper_config.INTERPARK_SEARCH_URL_BASE,
         "supports_runtime_search": True,
     }
@@ -92,6 +93,7 @@ class InterparkTicketSource:
     source_id = "interpark_ticket"
     metadata = {
         "display_name": "Interpark Ticket",
+        "status": "inactive",
         "base_url": "https://nol.interpark.com/ticket",
         "legacy_url": "https://tickets.interpark.com/",
         "supports_runtime_search": False,

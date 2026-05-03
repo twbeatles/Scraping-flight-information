@@ -112,12 +112,20 @@ class SettingsDialog(QDialog):
         self.spin_alert_interval.setSuffix(" 분")
         btn_save_alert = QPushButton("자동점검 저장")
         btn_save_alert.clicked.connect(self._save_alert_auto_check)
+        btn_run_alert = QPushButton("지금 검사")
+        btn_run_alert.clicked.connect(self._run_alert_auto_check_now)
         ga_layout.addWidget(self.chk_alert_auto)
         ga_layout.addWidget(QLabel("주기:"))
         ga_layout.addWidget(self.spin_alert_interval)
         ga_layout.addWidget(btn_save_alert)
+        ga_layout.addWidget(btn_run_alert)
         ga_layout.addStretch()
         layout.addWidget(grp_alert)
+
+        self.lbl_alert_auto_status = QLabel("")
+        self.lbl_alert_auto_status.setWordWrap(True)
+        self.lbl_alert_auto_status.setStyleSheet("font-size: 12px; color: #cbd5e1;")
+        layout.addWidget(self.lbl_alert_auto_status)
 
         # Diagnostics
         grp_diag = QGroupBox("🩺 진단 (최근 24시간)")
@@ -132,6 +140,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(grp_diag)
 
         self._refresh_diagnostics()
+        self._refresh_alert_auto_status()
         layout.addStretch()
         return widget
 
@@ -145,7 +154,40 @@ class SettingsDialog(QDialog):
             self.chk_alert_auto.isChecked(),
             self.spin_alert_interval.value(),
         )
+        self._refresh_alert_auto_status()
         QMessageBox.information(self, "저장", "자동 알림 점검 설정이 저장되었습니다.")
+
+    def _run_alert_auto_check_now(self):
+        parent = cast(Any, self.parent())
+        if not hasattr(parent, "_run_auto_alert_check"):
+            QMessageBox.warning(self, "실행 불가", "자동 알림 점검을 실행할 수 없습니다.")
+            return
+        parent._run_auto_alert_check(force=True)
+        self._refresh_alert_auto_status()
+
+    def _refresh_alert_auto_status(self):
+        cfg = self.prefs.get_alert_auto_check()
+        interval_min = max(5, int(cfg.get("interval_min", 30)))
+        enabled = bool(cfg.get("enabled", False))
+        summary = self.db.get_alert_check_summary() if self.db else {}
+        active_count = int(summary.get("active_count", 0) or 0)
+        last_checked = str(summary.get("last_checked") or "-")
+        last_error = str(summary.get("last_error") or "없음")
+        next_check = "-"
+        if enabled and last_checked and last_checked != "-":
+            try:
+                last_dt = datetime.strptime(last_checked, "%Y-%m-%d %H:%M:%S")
+                next_check = (last_dt + timedelta(minutes=interval_min)).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                next_check = "계산 불가"
+        elif enabled:
+            next_check = f"앱 실행 중 {interval_min}분 주기"
+        state = "활성" if enabled else "비활성"
+        self.lbl_alert_auto_status.setText(
+            f"자동 점검: {state} | 활성 알림: {active_count}건 | "
+            f"마지막 점검: {last_checked} | 다음 예정: {next_check}\n"
+            f"최근 실패: {last_error}"
+        )
 
     def _refresh_diagnostics(self):
         if not self.db:

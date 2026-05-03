@@ -84,6 +84,26 @@ class AlertsMixin:
             cursor.execute("SELECT * FROM price_alerts ORDER BY created_at DESC")
             rows = cursor.fetchall()
             return [PriceAlert(**dict(row)) for row in rows]
+
+    def get_alert_check_summary(self: Any) -> Dict[str, Any]:
+        """자동 가격 알림 점검 상태 요약."""
+        alerts = self.get_all_alerts()
+        active = [alert for alert in alerts if alert.is_active and not alert.triggered]
+        checked = [alert for alert in alerts if alert.last_checked]
+        failed = [alert for alert in alerts if getattr(alert, "last_error", "")]
+        latest_checked = max((str(alert.last_checked) for alert in checked), default="")
+        latest_error = ""
+        if failed:
+            failed.sort(key=lambda alert: str(alert.last_checked or alert.created_at or ""), reverse=True)
+            latest = failed[0]
+            latest_error = f"{latest.origin}->{latest.destination}: {latest.last_error}"
+        return {
+            "total_count": len(alerts),
+            "active_count": len(active),
+            "last_checked": latest_checked,
+            "last_error": latest_error,
+        }
+
     def update_alert_check(
         self: Any,
         alert_id: int,
@@ -145,6 +165,5 @@ class AlertsMixin:
     # ===== 마지막 검색 결과 저장/복원 =====
 
 __all__ = ["AlertsMixin"]
-
 
 

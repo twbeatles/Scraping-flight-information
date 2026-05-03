@@ -1,0 +1,10 @@
+# Verified local dependency constraints for reproducible Flight Bot checks.
+openpyxl==3.1.5
+playwright==1.58.0
+pre_commit==4.5.1
+pyinstaller==6.19.0
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.0
+PyQt6_sip==13.11.1
+pyright==1.1.408
+pytest==9.0.3

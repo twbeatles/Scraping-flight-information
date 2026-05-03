@@ -19,7 +19,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-04-29)
+## 🔄 정합성 업데이트 (2026-05-03)
 
 아래 항목은 코드베이스 최신 구현 기준으로 우선 적용한다.
 
@@ -27,7 +27,7 @@
 2. `MultiDestDialog.search_requested`와 `DateRangeDialog.search_requested`는 `cabin_class`를 포함한다.
 3. 자동 가격 알림은 `AlertAutoCheckWorker` + `MainWindow`의 `QTimer` 기반으로 동작한다(기본 OFF, 30분).
 4. 워커 종료 정책은 `terminate()`를 사용하지 않고 `cancel() -> requestInterruption() -> wait()` 순서를 사용한다.
-5. `FlightDatabase`는 `close()`, `close_all_connections()`, `log_telemetry_event()`, `get_telemetry_summary()`, `get_selector_health()`를 제공한다.
+5. `FlightDatabase.close()`는 해당 DB 경로의 연결만 닫고, 앱 종료용 전체 정리는 `close_all_connections()`를 사용한다.
 6. 설정 파일은 `preferences.json`이 아니라 `user_preferences.json`을 사용한다.
 7. 관측성 로그는 JSONL 파일(`logs/flightbot_events.jsonl`)과 DB(`telemetry_events`)에 함께 저장한다.
 8. `PlaywrightScraper.search()`는 재귀가 아닌 반복 루프 기반 재시도/백오프를 사용하며, 시도 간 리소스를 정리한다.
@@ -58,9 +58,9 @@
 33. `FlightResult`는 `benefit_price`, `benefit_label`을 포함하며 국내선 canonical `price`는 계속 기본가다.
 34. 검색 telemetry/details에는 `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`, `manual_reason`를 남긴다.
 35. 수동 모드 및 수동 추출 UI telemetry는 `manual_reason`를 함께 기록한다.
-36. PyInstaller spec 3종은 `ui.search_panel_params`와 함께 `scraping.playwright_api`, `scraping.search_sources` hiddenimport를 유지해야 한다.
+36. PyInstaller spec 3종은 `ui.search_panel_params`와 함께 `scraping.playwright_api`, `scraping.search_sources`, `scraping.manual_reasons` hiddenimport를 유지해야 한다.
 37. `scraping.search_sources`는 내부 source boundary이며 기본 런타임 source는 `InterparkAirSource`다.
-38. `InterparkTicketSource`는 metadata + `NotImplementedError` skeleton까지만 제공한다.
+38. `InterparkTicketSource`는 `status = inactive` metadata + `NotImplementedError` skeleton까지만 제공한다.
 39. 설정 저장은 `QSettings.sync()`까지 호출해 `SEL -> CJU` 같은 국내선 경로도 즉시 round-trip 되어야 한다.
 40. 로컬/CI 정적 품질 기준선은 `pyright --warnings`다.
 41. 텍스트 무결성 기준선은 `python scripts/check_tracked_text.py --check-lf`이며, UTF-8 BOM과 CRLF를 모두 실패로 취급한다.
@@ -75,6 +75,13 @@
 50. 다중 목적지/날짜 범위 검색은 검색 기록 탭에 read-only 요약으로 표시하고, DB `search_logs`에는 목적지별/날짜별 summary row를 남긴다. 전체 raw 결과의 재시작 복원은 현재 범위가 아니다.
 51. PyInstaller spec 3종은 `ui.airport_options`, `ui.export_helpers` hiddenimport를 포함해야 한다.
 52. 2026-04-29 로컬 검증 기준선은 `pytest -q -> 87 passed`, `pyright --warnings -> 0 errors`, `check_tracked_text.py --check-lf -> Checked 105 tracked text files: OK`, `pyinstaller --clean FlightBot_v2.5.spec -> dist/FlightBot_v2.5.exe`다.
+53. API fetch telemetry는 HTTP status/ok/payload key/recent resource URL 요약을 `_search_metrics`에 남긴다.
+54. `manual_reason`은 raw code를 telemetry에 유지하고, UI 표시는 `scraping.manual_reasons.describe_manual_reason()`의 사용자 친화 라벨을 함께 사용한다.
+55. 자동 가격 알림 설정에는 “지금 검사”와 최근/다음 점검 상태 요약을 제공한다.
+56. 재현 설치는 `pip install -r requirements.txt -c constraints.txt`를 사용할 수 있다.
+57. 라이브 스모크 점검은 `python scripts/live_smoke_search.py`로 수동 실행하며 CI에는 연결하지 않는다.
+58. CI는 텍스트 무결성 + `pyright --warnings`만 실행하고, `pytest -q`는 로컬 필수 검증 기준으로 유지한다.
+59. 2026-05-03 로컬 검증 기준선은 `pytest -q -> 91 passed`, `pyright --warnings -> 0 errors`, `check_tracked_text.py --check-lf -> Checked 110 tracked text files: OK`, `pyinstaller --clean FlightBot_v2.5.spec -> dist/FlightBot_v2.5.exe`다.
 
 ---
 

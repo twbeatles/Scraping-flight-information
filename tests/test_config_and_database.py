@@ -24,6 +24,18 @@ def test_default_alert_auto_check_is_disabled(tmp_path: Path):
     assert cfg["interval_min"] == 30
 
 
+def test_alert_check_summary_reports_active_last_checked_and_error(tmp_path: Path):
+    db = FlightDatabase(db_path=str(tmp_path / "flight_data.db"))
+    alert_id = db.add_price_alert("ICN", "NRT", "20260301", None, 200000)
+
+    db.update_alert_check(alert_id, None, last_error="boom")
+    summary = db.get_alert_check_summary()
+
+    assert summary["active_count"] == 1
+    assert summary["last_checked"]
+    assert summary["last_error"] == "ICN->NRT: boom"
+
+
 def test_last_search_cache_limit_is_1000(tmp_path: Path):
     db_path = tmp_path / "flight_data.db"
     db = FlightDatabase(db_path=str(db_path))
@@ -118,6 +130,22 @@ def test_close_all_connections_allows_db_file_removal(tmp_path: Path):
     db.close_all_connections()
     os.remove(db_path)
     assert not db_path.exists()
+
+
+def test_close_only_closes_matching_db_path(tmp_path: Path):
+    db1_path = tmp_path / "one.db"
+    db2_path = tmp_path / "two.db"
+    db1 = FlightDatabase(db_path=str(db1_path))
+    db2 = FlightDatabase(db_path=str(db2_path))
+
+    db1.get_stats()
+    db2.get_stats()
+    db1.close()
+
+    assert db2.get_stats()["favorites"] == 0
+    os.remove(db1_path)
+    assert not db1_path.exists()
+    assert db2_path.exists()
 
 
 def test_favorite_dedup_distinguishes_different_return_legs(tmp_path: Path):

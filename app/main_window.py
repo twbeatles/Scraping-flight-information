@@ -84,6 +84,8 @@ class MainWindow(
         self._pending_filter = None
         self._last_filter_log_msg = ""
         self._last_filter_log_ts = 0.0
+        self._last_alert_auto_check_at = ""
+        self._last_alert_auto_error = ""
         self._filter_apply_timer = QTimer(self)
         self._filter_apply_timer.setSingleShot(True)
         self._filter_apply_timer.timeout.connect(self._run_scheduled_filter_apply)

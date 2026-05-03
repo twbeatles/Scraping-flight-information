@@ -5,7 +5,7 @@ import os
 import sys
 import logging
 import threading
-from typing import List
+from typing import Dict, List
 
 from storage.schema import DatabaseSchemaMixin
 from storage.db_favorites import FavoritesMixin
@@ -30,7 +30,7 @@ class FlightDatabase(
 
     _local = threading.local()
     _registry_lock = threading.Lock()
-    _all_connections: List[sqlite3.Connection] = []
+    _connections_by_path: Dict[str, List[sqlite3.Connection]] = {}
 
     def __init__(self, db_path: str | None = None):
         if db_path is None:
@@ -74,16 +74,17 @@ class FlightDatabase(
         if not hasattr(FlightDatabase._local, 'connections'):
             FlightDatabase._local.connections = {}
         
-        conn = FlightDatabase._local.connections.get(self.db_path)
+        db_key = os.path.abspath(self.db_path)
+        conn = FlightDatabase._local.connections.get(db_key)
         
         # 연결이 없거나 닫혔을 경우 새로 생성
         if conn is None:
             conn = sqlite3.connect(self.db_path, check_same_thread=False)
             conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
             conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes with reasonable safety
-            FlightDatabase._local.connections[self.db_path] = conn
+            FlightDatabase._local.connections[db_key] = conn
             with FlightDatabase._registry_lock:
-                FlightDatabase._all_connections.append(conn)
+                FlightDatabase._connections_by_path.setdefault(db_key, []).append(conn)
         else:
             # 연결 유효성 검사
             try:
@@ -93,16 +94,34 @@ class FlightDatabase(
                 conn = sqlite3.connect(self.db_path, check_same_thread=False)
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA synchronous=NORMAL")
-                FlightDatabase._local.connections[self.db_path] = conn
+                FlightDatabase._local.connections[db_key] = conn
                 with FlightDatabase._registry_lock:
-                    FlightDatabase._all_connections.append(conn)
+                    FlightDatabase._connections_by_path.setdefault(db_key, []).append(conn)
         
         return conn
-    def close_all_connections(self):
+
+    @classmethod
+    def close_all_connections(cls):
         """열려 있는 SQLite 연결을 모두 닫는다."""
+        with cls._registry_lock:
+            grouped = list(cls._connections_by_path.values())
+            conns = [conn for group in grouped for conn in group]
+            cls._connections_by_path.clear()
+
+        for conn in conns:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        if hasattr(cls._local, "connections"):
+            cls._local.connections = {}
+
+    def close_path_connections(self):
+        """이 인스턴스의 DB 경로에 연결된 SQLite 연결만 닫는다."""
+        db_key = os.path.abspath(self.db_path)
         with FlightDatabase._registry_lock:
-            conns = list(FlightDatabase._all_connections)
-            FlightDatabase._all_connections.clear()
+            conns = FlightDatabase._connections_by_path.pop(db_key, [])
 
         for conn in conns:
             try:
@@ -111,8 +130,9 @@ class FlightDatabase(
                 pass
 
         if hasattr(FlightDatabase._local, "connections"):
-            FlightDatabase._local.connections = {}
+            FlightDatabase._local.connections.pop(db_key, None)
+
     def close(self):
-        self.close_all_connections()
+        self.close_path_connections()
     
     # ===== 즐겨찾기 =====
