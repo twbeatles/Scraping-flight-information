@@ -82,7 +82,6 @@ class DatabaseSchemaMixin:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ph_route ON price_history(origin, destination)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ph_date ON price_history(departure_date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fav_route ON favorites(origin, destination)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fav_dedup_key ON favorites(dedup_key)")
             
             # 가격 알림 테이블
             cursor.execute("""
@@ -224,6 +223,5 @@ class DatabaseSchemaMixin:
             conn.commit()
 
 __all__ = ["DatabaseSchemaMixin"]
-
 
 

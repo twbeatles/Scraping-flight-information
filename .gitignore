@@ -46,6 +46,10 @@ playwright_profile/
 *.wal
 *.db
 *.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite3-journal
 user_preferences.json
 flight_session_*.json
 logs/

@@ -506,6 +506,19 @@ playwright install chromium
 
 ## 📝 변경 로그
 
+### v2.5.14 (2026-05-11)
+- 🗄️ **기존 사용자 DB 마이그레이션 안정화**
+  - 구버전 `favorites` 테이블에 `dedup_key` 컬럼이 없을 때 앱 시작 중 `idx_fav_dedup_key` 인덱스 생성이 먼저 실행되어 실패하던 문제 수정
+  - `dedup_key` 인덱스는 `_migrate_schema_if_needed()`가 컬럼을 보강한 뒤 생성하도록 정리
+  - 레거시 즐겨찾기 row의 dedup key backfill 경로를 회귀 테스트로 고정
+- 📦 **spec / 문서 / ignore 정합성**
+  - `.spec` 3종은 이미 `storage.schema`, `storage.flight_database`, `storage.db_favorites` hiddenimport를 포함하므로 추가 변경 불필요
+  - `.gitignore`는 기존 `.db`/`.db-*`에 더해 `*.sqlite`, `*.sqlite3`, `*.sqlite-journal`, `*.sqlite3-journal`도 명시적으로 제외
+- ✅ **검증**
+  - `pytest -q` -> `98 passed`
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 112 tracked text files: OK`
+
 ### v2.5.13 (2026-05-11)
 - 🧭 **실사이트 API-first 복구**
   - Playwright page context `fetch()` POST body를 JSON 문자열로 전달해 인터파크 국내선/국제선 API payload mismatch를 수정

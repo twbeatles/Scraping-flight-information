@@ -9,6 +9,12 @@
 
 ## 2026-05-11 실사이트 API-first 복구 기준선
 
+- 2026-05-11 후속 DB 마이그레이션 기준선:
+  - 구버전 `favorites` 테이블에 `dedup_key`가 없어도 앱 시작 시 `_init_db() -> _migrate_schema_if_needed() -> _backfill_favorite_dedup_keys()` 순서가 실패하지 않는다.
+  - `idx_fav_dedup_key` 인덱스는 `favorites.dedup_key` 컬럼 보강 이후 생성된다.
+  - PyInstaller spec 3종은 `storage.schema`, `storage.flight_database`, `storage.db_favorites` hiddenimport를 이미 포함하므로 이번 DB 수정으로 spec 변경은 필요하지 않다.
+  - `.gitignore`는 `.db`/`.db-*`와 함께 `*.sqlite`, `*.sqlite3`, `*.sqlite-journal`, `*.sqlite3-journal` SQLite 산출물도 제외한다.
+  - 검증 기준선: `pytest -q -> 98 passed`, `pyright --warnings -> 0 errors`, `check_tracked_text.py --check-lf -> Checked 112 tracked text files: OK`
 - `page_fetch_json()`은 POST body를 JS object가 아니라 JSON 문자열로 `fetch()`에 전달한다.
 - 국내선 paging API 요청은 실제 사이트가 받는 최소 filter(`byCabins`)만 보낸다.
 - 국제선 fallback API URL은 검색 URL과 같은 도시 매핑을 사용하며, `ICN/GMP -> CITY:SEL`, `NRT/HND -> CITY:TYO` 형태로 생성된다.

@@ -183,6 +183,56 @@ def test_favorite_dedup_distinguishes_different_return_legs(tmp_path: Path):
     assert len(favorites) == 2
 
 
+def test_legacy_favorites_table_gets_dedup_key_before_index(tmp_path: Path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy_favorites.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE favorites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                airline TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                origin TEXT NOT NULL,
+                destination TEXT NOT NULL,
+                departure_date TEXT NOT NULL,
+                return_date TEXT,
+                departure_time TEXT,
+                arrival_time TEXT,
+                stops INTEGER DEFAULT 0,
+                note TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                search_params TEXT DEFAULT '{}'
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO favorites (
+                airline, price, origin, destination, departure_date, return_date,
+                departure_time, arrival_time, stops, note, created_at, search_params
+            )
+            VALUES ('LegacyAir', 123000, 'ICN', 'NRT', '20260301', NULL,
+                    '10:00', '12:00', 0, '', '2026-01-01 00:00:00', '{}')
+            """
+        )
+
+    db = FlightDatabase(db_path=str(db_path))
+    favorites = db.get_favorites()
+    db.close()
+
+    assert len(favorites) == 1
+    assert favorites[0].dedup_key
+
+    with sqlite3.connect(db_path) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(favorites)")}
+        indexes = {row[1] for row in conn.execute("PRAGMA index_list(favorites)")}
+
+    assert "dedup_key" in columns
+    assert "idx_fav_dedup_key" in indexes
+
+
 def test_cleanup_old_data_removes_stale_telemetry_rows(tmp_path: Path):
     db = FlightDatabase(db_path=str(tmp_path / "flight_data.db"))
 

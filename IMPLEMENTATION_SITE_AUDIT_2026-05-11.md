@@ -58,6 +58,44 @@ dist\FlightBot_v2.5.exe
 -> 6초 실행 스모크 통과
 ```
 
+## 2026-05-11 DB 마이그레이션 후속 조치
+
+사용자 테스트 중 다음 오류가 확인됐다.
+
+```text
+sqlite3.OperationalError: no such column: dedup_key
+```
+
+원인:
+
+- 구버전 사용자 DB의 `favorites` 테이블에는 `dedup_key` 컬럼이 없을 수 있다.
+- `_init_db()`가 `CREATE TABLE IF NOT EXISTS favorites (...)`를 실행해도 기존 테이블에는 새 컬럼이 추가되지 않는다.
+- 그런데 `_init_db()` 내부에서 `_migrate_schema_if_needed()`보다 먼저 `idx_fav_dedup_key` 인덱스를 생성해 기존 DB에서 앱 시작이 실패했다.
+
+수정:
+
+- `storage/schema.py`에서 `idx_fav_dedup_key` 생성 책임을 `_migrate_schema_if_needed()` 쪽으로 단일화했다.
+- 마이그레이션은 `favorites.dedup_key` 컬럼을 먼저 보강한 뒤 인덱스를 생성하고, 이후 `_backfill_favorite_dedup_keys()`가 기존 즐겨찾기 row를 채운다.
+- `tests/test_config_and_database.py`에 구버전 `favorites` 테이블을 직접 만든 뒤 `FlightDatabase()` 초기화가 성공하고 인덱스까지 생성되는 회귀 테스트를 추가했다.
+
+정합성 점검:
+
+- `flight_bot.spec`, `FlightBot_v2.5.spec`, `FlightBot_Simple.spec`는 이미 `storage.schema`, `storage.flight_database`, `storage.db_favorites` hiddenimport를 포함한다. 이번 수정은 기존 모듈 내부 순서 변경이라 spec 추가 변경은 필요하지 않다.
+- `.gitignore`는 기존 `.db`/`.db-*` ignore에 더해 `*.sqlite`, `*.sqlite3`, `*.sqlite-journal`, `*.sqlite3-journal`도 명시적으로 제외하도록 보강했다.
+
+검증:
+
+```text
+pytest -q
+-> 98 passed
+
+pyright --warnings
+-> 0 errors, 0 warnings, 0 informations
+
+python scripts\check_tracked_text.py --check-lf
+-> Checked 112 tracked text files: OK
+```
+
 ## 2026-05-11 pull 이후 재점검
 
 현재 상태:

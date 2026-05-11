@@ -102,6 +102,10 @@
 60. 국제선 API fare의 카드/프로모션/혜택 정보는 `FlightResult.benefit_price`/`benefit_label`에 보존한다.
 61. 2026-05-11 live smoke 기준선은 `GMP->CJU source=domestic_api`, `ICN->NRT source=international_api`다.
 62. 2026-05-11 로컬 검증 기준선은 `pytest -q -> 97 passed`, `pyright --warnings -> 0 errors`, `python scripts/check_tracked_text.py --check-lf -> Checked 112 tracked text files: OK`, `python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec -> dist/FlightBot_v2.5.exe`, `dist/FlightBot_v2.5.exe` 6초 실행 스모크 통과다.
+63. 구버전 `favorites` 테이블에 `dedup_key`가 없을 수 있으므로 `idx_fav_dedup_key` 인덱스는 `_migrate_schema_if_needed()`가 컬럼을 추가한 뒤 생성해야 한다.
+64. PyInstaller spec 3종은 `storage.schema`, `storage.flight_database`, `storage.db_favorites` hiddenimport를 유지하며, 이번 DB 마이그레이션 수정에는 spec 변경이 필요하지 않다.
+65. `.gitignore`는 `.db`/`.db-*`뿐 아니라 `*.sqlite`, `*.sqlite3`, `*.sqlite-journal`, `*.sqlite3-journal`도 제외해야 한다.
+66. 2026-05-11 DB 마이그레이션 후속 검증 기준선은 `pytest -q -> 98 passed`, `pyright --warnings -> 0 errors`, `check_tracked_text.py --check-lf -> Checked 112 tracked text files: OK`다.
 
 ---
 
