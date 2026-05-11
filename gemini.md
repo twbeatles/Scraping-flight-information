@@ -36,7 +36,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-05-03)
+## 🔄 정합성 업데이트 (2026-05-11)
 
 최신 코드 기준으로 아래 항목을 우선 적용한다.
 
@@ -60,7 +60,7 @@
 18. 구버전 payload에 `is_domestic`가 없으면 `config.DOMESTIC_AIRPORT_CODES` 기준으로 국내선 여부를 추론한다.
 19. `user_preferences.json`과 세션 JSON 루트는 `schema_version = 2`를 사용하고, 구버전 데이터는 load/import 시 정규화한다.
 20. 검색 패널 설정/프로필/세션/히스토리 복원은 `ui.search_panel_params` 공용 helper를 사용한다.
-21. 설정 저장은 공항 표시 문자열이 아니라 코드(`currentData`)를 저장하며, 복원 시 국내선/국제선 모드를 먼저 맞춘 뒤 코드를 적용한다.
+21. 설정 저장은 공항 표시 문자열이 아니라 editable 직접 입력을 우선 정규화한 코드를 저장하며, 복원 시 국내선/국제선 모드를 먼저 맞춘 뒤 코드를 적용한다.
 22. `last_search_meta`는 `is_domestic`를 저장하고, 구 row 복원 시 route 기반 추론으로 보완한다.
 23. `PriceAlert` 및 `price_alerts`는 `adults`, `last_error`를 포함하며 가격 알림 매칭 기준은 `origin/dest/dep/ret/cabin_class/adults`다.
 24. 자동 가격 알림 실패는 모달 대신 DB 상태(`last_error`)와 로그/목록 상태(`점검 실패`)로 노출한다.
@@ -95,6 +95,13 @@
 53. 라이브 스모크 점검은 `python scripts/live_smoke_search.py`로 수동 실행하며 CI에는 연결하지 않는다.
 54. CI는 텍스트 무결성 + `pyright --warnings`만 실행하고, `pytest -q`는 로컬 필수 검증 기준으로 유지한다.
 55. 2026-05-03 로컬 검증 기준선은 `pytest -q -> 91 passed`, `pyright --warnings -> 0 errors`, `check_tracked_text.py --check-lf -> Checked 110 tracked text files: OK`, `pyinstaller --clean FlightBot_v2.5.spec -> dist/FlightBot_v2.5.exe`다.
+56. 2026-05-11 기준 `page_fetch_json()` POST body는 JSON 문자열로 전달해야 하며, body object를 `JSON.parse(...)`로 되돌려 `fetch()`에 넘기면 안 된다.
+57. 국내선 paging API filter는 실제 사이트가 받는 최소 `byCabins` payload를 사용하고, 실패 telemetry에는 API `code`/`message`를 남긴다.
+58. 국제선 fallback API URL은 `resolve_interpark_location()` 기반 `CITY:`/`AIRPORT:` route type을 사용한다.
+59. page load 직후 API 추출을 먼저 시도하고, 실패 시에만 DOM wait/fallback으로 내려간다.
+60. 국제선 API fare의 카드/프로모션/혜택 정보는 `FlightResult.benefit_price`/`benefit_label`에 보존한다.
+61. 2026-05-11 live smoke 기준선은 `GMP->CJU source=domestic_api`, `ICN->NRT source=international_api`다.
+62. 2026-05-11 로컬 검증 기준선은 `pytest -q -> 97 passed`, `pyright --warnings -> 0 errors`, `python scripts/check_tracked_text.py --check-lf -> Checked 112 tracked text files: OK`, `python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec -> dist/FlightBot_v2.5.exe`, `dist/FlightBot_v2.5.exe` 6초 실행 스모크 통과다.
 
 ---
 

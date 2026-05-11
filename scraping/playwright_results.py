@@ -289,6 +289,11 @@ def _record_international_api_failure(
     meta = get_api_meta(payload) if isinstance(payload, dict) else {}
     metrics["api_failure_reason"] = reason
     metrics["api_failure_payload_keys"] = list(payload.keys())[:20] if isinstance(payload, dict) else []
+    if isinstance(payload, dict):
+        if payload.get("code"):
+            metrics["api_failure_code"] = str(payload.get("code"))
+        if payload.get("message") or payload.get("title"):
+            metrics["api_failure_message"] = str(payload.get("message") or payload.get("title"))
     if meta:
         metrics["api_failure_meta"] = {
             "status": int(meta.get("status") or 0),
@@ -372,13 +377,8 @@ def _normalize_international_api_item(item: Dict[str, Any]) -> Optional[FlightRe
     if not isinstance(schedules, list) or not schedules:
         return None
 
-    price = _coerce_int(item.get("adultPrice"))
-    if price <= 0:
-        fares = item.get("fares")
-        if isinstance(fares, list):
-            fare_prices = [_coerce_int(fare.get("adultPrice")) for fare in fares if isinstance(fare, dict)]
-            fare_prices = [value for value in fare_prices if value > 0]
-            price = min(fare_prices) if fare_prices else 0
+    fare_summary = _select_international_fare(item)
+    price = fare_summary["price"]
     if price <= 0:
         return None
 
@@ -412,6 +412,8 @@ def _normalize_international_api_item(item: Dict[str, Any]) -> Optional[FlightRe
         return_duration=_iso_duration_to_text(inbound.get("totalFlightTime")) if inbound else "",
         return_stops=_coerce_int(inbound.get("stop")) if inbound else 0,
         is_round_trip=is_round_trip,
+        benefit_price=fare_summary["benefit_price"],
+        benefit_label=fare_summary["benefit_label"],
         confidence=0.98,
         extraction_source="international_api",
     )
@@ -445,6 +447,8 @@ def _build_international_results(items: Iterable[Dict[str, Any]]) -> List[Flight
                 return_arrival_time=str(item.get("retArrTime", "") or ""),
                 return_stops=_coerce_int(item.get("retStops")),
                 is_round_trip=is_round_trip,
+                benefit_price=_coerce_int(item.get("benefitPrice")),
+                benefit_label=str(item.get("benefitLabel", "") or ""),
                 confidence=float(item.get("confidence", 0.9) or 0.9),
                 extraction_source=str(
                     item.get("extraction_source", "international_primary") or "international_primary"
@@ -564,3 +568,146 @@ def _coerce_int(value: Any) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _select_international_fare(item: Dict[str, Any]) -> Dict[str, Any]:
+    base_price = _first_positive_int(
+        item,
+        ("adultPrice", "totalPrice", "totalFare", "price", "sellPrice", "salePrice"),
+    )
+    candidates: list[Dict[str, Any]] = []
+    fares = item.get("fares")
+    if isinstance(fares, list):
+        for fare in fares:
+            if not isinstance(fare, dict):
+                continue
+            fare_price = _first_positive_int(
+                fare,
+                ("adultPrice", "totalPrice", "totalFare", "price", "sellPrice", "salePrice"),
+            )
+            if fare_price <= 0:
+                fare_price = base_price
+            if fare_price <= 0:
+                continue
+            benefit_price, benefit_label = _extract_international_benefit(fare)
+            candidates.append(
+                {
+                    "price": fare_price,
+                    "benefit_price": benefit_price,
+                    "benefit_label": benefit_label,
+                }
+            )
+
+    if candidates:
+        selected = min(candidates, key=lambda value: value["price"])
+    else:
+        selected = {"price": base_price, "benefit_price": 0, "benefit_label": ""}
+
+    top_benefit_price, top_benefit_label = _extract_international_benefit(item)
+    if selected["benefit_price"] <= 0 and top_benefit_price > 0:
+        selected["benefit_price"] = top_benefit_price
+    if not selected["benefit_label"] and top_benefit_label:
+        selected["benefit_label"] = top_benefit_label
+    if selected["benefit_price"] > 0 and not selected["benefit_label"]:
+        selected["benefit_label"] = "혜택가"
+    return selected
+
+
+def _extract_international_benefit(container: Dict[str, Any]) -> tuple[int, str]:
+    best_price = _first_positive_int(
+        container,
+        ("benefitPrice", "discountedPrice", "discountPrice", "paymentPrice", "finalPrice"),
+    )
+    label_parts = _benefit_label_parts(container)
+
+    for key in (
+        "benefits",
+        "benefit",
+        "promotions",
+        "promotion",
+        "discounts",
+        "discount",
+        "paymentBenefits",
+        "paymentBenefit",
+        "cardBenefits",
+        "cardBenefit",
+        "cardCashback",
+        "paymentMethods",
+    ):
+        value = container.get(key)
+        for node in _iter_benefit_nodes(value):
+            node_price = _first_positive_int(
+                node,
+                ("discountedPrice", "benefitPrice", "discountPrice", "paymentPrice", "finalPrice", "amount"),
+            )
+            if node_price > 0 and (best_price <= 0 or node_price < best_price):
+                best_price = node_price
+            label_parts.extend(_benefit_label_parts(node))
+
+    return best_price, _join_label_parts(label_parts)
+
+
+def _first_positive_int(container: Dict[str, Any], keys: tuple[str, ...]) -> int:
+    for key in keys:
+        value = _coerce_int(container.get(key))
+        if value > 0:
+            return value
+    return 0
+
+
+def _iter_benefit_nodes(value: Any) -> Iterable[Dict[str, Any]]:
+    if isinstance(value, dict):
+        yield value
+        for nested_key in ("cardCashback", "promotion", "benefit", "discount"):
+            nested = value.get(nested_key)
+            if isinstance(nested, dict):
+                yield nested
+    elif isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                yield from _iter_benefit_nodes(item)
+
+
+def _benefit_label_parts(container: Dict[str, Any]) -> list[str]:
+    parts: list[str] = []
+    card_name = str(container.get("cardName", "") or "").strip()
+    rate = container.get("rate")
+    amount = _coerce_int(container.get("amount"))
+    if card_name:
+        if rate:
+            parts.append(f"{card_name} {rate}% 캐시백 적용 시")
+        elif amount > 0:
+            parts.append(f"{card_name} {amount:,}원 캐시백 적용 시")
+        else:
+            parts.append(card_name)
+
+    for key in (
+        "benefitLabel",
+        "promotionName",
+        "promoName",
+        "discountName",
+        "paymentMethodName",
+        "title",
+        "name",
+        "label",
+        "description",
+        "condition",
+    ):
+        value = str(container.get(key, "") or "").strip()
+        if value:
+            parts.append(value)
+    return parts
+
+
+def _join_label_parts(parts: Iterable[str]) -> str:
+    seen: set[str] = set()
+    labels: list[str] = []
+    for part in parts:
+        label = re.sub(r"\s+", " ", str(part or "")).strip(" /|,")
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        labels.append(label)
+        if len(labels) >= 3:
+            break
+    return " / ".join(labels)

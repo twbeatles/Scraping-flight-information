@@ -19,7 +19,7 @@
 
 ---
 
-## 🔄 정합성 업데이트 (2026-05-03)
+## 🔄 정합성 업데이트 (2026-05-11)
 
 아래 항목은 코드베이스 최신 구현 기준으로 우선 적용한다.
 
@@ -46,7 +46,7 @@
 21. 검색 파라미터 저장/복원 공용 규약은 `origin`, `dest`, `dep`, `ret`, `adults`, `cabin_class`, `is_domestic`를 사용한다.
 22. 구버전 payload에 `is_domestic`가 없으면 `config.DOMESTIC_AIRPORT_CODES` 기준으로 국내선 여부를 추론한다.
 23. `user_preferences.json`과 세션 JSON 루트는 `schema_version = 2`를 사용하며, 구버전 데이터는 load/import 시 정규화 후 다음 저장부터 새 포맷으로 덮어쓴다.
-24. 검색 패널 설정/프로필/세션/히스토리 복원은 `ui.search_panel_params` 공용 helper 경로를 사용하고, 설정 저장은 표시 문자열이 아니라 공항 코드(`currentData`)를 저장한다.
+24. 검색 패널 설정/프로필/세션/히스토리 복원은 `ui.search_panel_params` 공용 helper 경로를 사용하고, 설정 저장은 editable 직접 입력을 우선 정규화한 공항 코드를 저장한다.
 25. 검색 패널 복원은 국내선/국제선 모드를 먼저 맞춘 뒤 코드 기준으로 콤보를 적용해야 하며, `SEL -> CJU` 같은 국내선 도시코드도 round-trip 되어야 한다.
 26. `storage/last_search_meta`는 `is_domestic`를 저장해야 하며, 구 DB/구 row 복원 시에는 route 기반 추론으로 보완한다.
 27. `PriceAlert` 및 `price_alerts` 스키마는 `adults`, `last_error`를 포함하고, 가격 알림 매칭 기준은 `origin/dest/dep/ret/cabin_class/adults`다.
@@ -82,6 +82,13 @@
 57. 라이브 스모크 점검은 `python scripts/live_smoke_search.py`로 수동 실행하며 CI에는 연결하지 않는다.
 58. CI는 텍스트 무결성 + `pyright --warnings`만 실행하고, `pytest -q`는 로컬 필수 검증 기준으로 유지한다.
 59. 2026-05-03 로컬 검증 기준선은 `pytest -q -> 91 passed`, `pyright --warnings -> 0 errors`, `check_tracked_text.py --check-lf -> Checked 110 tracked text files: OK`, `pyinstaller --clean FlightBot_v2.5.spec -> dist/FlightBot_v2.5.exe`다.
+60. 2026-05-11 기준 `page_fetch_json()` POST body는 JSON 문자열로 전달해야 하며, body object를 `JSON.parse(...)`로 되돌려 `fetch()`에 넘기면 안 된다.
+61. 국내선 paging API filter는 실제 사이트가 받는 최소 `byCabins` payload를 사용하고, 실패 telemetry에는 API `code`/`message`를 남긴다.
+62. 국제선 fallback API URL은 `resolve_interpark_location()` 기반 `CITY:`/`AIRPORT:` route type을 사용한다.
+63. page load 직후 API 추출을 먼저 시도하고, 실패 시에만 DOM wait/fallback으로 내려간다.
+64. 국제선 API fare의 카드/프로모션/혜택 정보는 `FlightResult.benefit_price`/`benefit_label`에 보존한다.
+65. 2026-05-11 live smoke 기준선은 `GMP->CJU source=domestic_api`, `ICN->NRT source=international_api`다.
+66. 2026-05-11 로컬 검증 기준선은 `pytest -q -> 97 passed`, `pyright --warnings -> 0 errors`, `python scripts/check_tracked_text.py --check-lf -> Checked 112 tracked text files: OK`, `python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec -> dist/FlightBot_v2.5.exe`, `dist/FlightBot_v2.5.exe` 6초 실행 스모크 통과다.
 
 ---
 

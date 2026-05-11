@@ -21,6 +21,7 @@ from gui_v2 import MainWindow
 from scraper_v2 import FlightResult
 from ui.components import ResultTable, SearchPanel
 from ui.export_helpers import flight_export_headers, flight_to_export_row
+from ui.search_panel_params import get_panel_search_params
 
 
 class _DummyLogViewer:
@@ -254,6 +255,24 @@ def test_restore_search_panel_oneway_disables_return_date(qapp):
 
     assert panel.rb_oneway.isChecked()
     assert panel.date_ret.isEnabled() is False
+
+
+def test_search_params_prefer_editable_airport_text_over_stale_data(qapp):
+    panel = _build_search_panel()
+    panel.cb_origin.setEditable(True)
+    panel.cb_dest.setEditable(True)
+    panel.cb_origin.setCurrentIndex(0)
+    panel.cb_dest.setCurrentIndex(0)
+    assert panel.cb_origin.currentData() == "ICN"
+    assert panel.cb_dest.currentData() == "NRT"
+
+    panel.cb_origin.setEditText("HND")
+    panel.cb_dest.setEditText("KIX")
+
+    params = get_panel_search_params(panel)
+
+    assert params["origin"] == "HND"
+    assert params["dest"] == "KIX"
 
 
 def test_restore_search_panel_restores_sel_domestic_route(qapp):

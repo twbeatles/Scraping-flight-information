@@ -506,6 +506,26 @@ playwright install chromium
 
 ## 📝 변경 로그
 
+### v2.5.13 (2026-05-11)
+- 🧭 **실사이트 API-first 복구**
+  - Playwright page context `fetch()` POST body를 JSON 문자열로 전달해 인터파크 국내선/국제선 API payload mismatch를 수정
+  - 국내선 paging API filter를 실제 사이트가 받는 최소 `byCabins` payload로 정리
+  - 국제선 fallback search API URL을 `resolve_interpark_location()` 기반 `CITY:`/`AIRPORT:` route type으로 생성
+- ✈️ **검색 UX/결과 품질 보강**
+  - 검색 패널의 editable 공항 콤보는 사용자가 직접 입력한 3자리 코드를 이전 선택값보다 우선 사용
+  - 국제선 API fare의 카드/프로모션/혜택 정보를 `benefit_price`, `benefit_label`에 보존
+  - 페이지 로드 직후 API 추출을 먼저 시도하고 실패 시 기존 DOM wait/fallback으로 내려가도록 검색 흐름 조정
+- 🧪 **운영 검증 도구 정리**
+  - `python scripts/live_smoke_search.py`가 repo root import path 없이도 문서 명령 그대로 실행되도록 보정
+  - live smoke 기준: `GMP->CJU source=domestic_api`, `ICN->NRT source=international_api`
+- ✅ **검증**
+  - `pytest -q` -> `97 passed`
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 112 tracked text files: OK`
+  - `python scripts/live_smoke_search.py --dep 20260615 --ret 20260618 --max-results 5` -> domestic/international API source 확인
+  - `python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec` -> `dist/FlightBot_v2.5.exe` 생성
+  - `dist/FlightBot_v2.5.exe` 6초 실행 스모크 통과
+
 ### v2.5.12 (2026-05-03)
 - 🧭 **스크래핑 진단 강화**
   - API fetch metadata(`status`, `ok`, payload key, recent resource URL)를 telemetry details에 보존

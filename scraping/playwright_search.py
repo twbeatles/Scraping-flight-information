@@ -176,6 +176,18 @@ def run_search(
                 except Exception as exc:
                     raise NetworkError("페이지 로딩 실패", url) from exc
 
+                api_first_results = _try_api_first_extraction(
+                    scraper,
+                    is_domestic=is_domestic,
+                    is_round_trip=bool(normalized_return_date),
+                    log=log,
+                    time_module=time_module,
+                )
+                if api_first_results:
+                    results = scraper._sort_and_limit_results(api_first_results, max_results, log)
+                    log(f"✅ 자동 추출 성공: {len(results)}개")
+                    break
+
                 log("결과 로딩 대기 중...")
                 wait_result = scraper._wait_for_results(is_domestic, log)
                 found_data = wait_result.get("found", False)
@@ -448,3 +460,32 @@ def _handle_domestic_round_trip(
         log(f"⚠️ 국내선 처리 중 오류: {exc}")
         logger.error("Domestic error: %s", exc, exc_info=True)
         return None
+
+
+def _try_api_first_extraction(
+    scraper: "PlaywrightScraper",
+    *,
+    is_domestic: bool,
+    is_round_trip: bool,
+    log: Callable[[str], None],
+    time_module,
+) -> List[FlightResult]:
+    """Try the page/API extraction path before waiting on DOM result selectors."""
+
+    page = getattr(scraper, "page", None)
+    if page is None or not hasattr(page, "evaluate"):
+        return []
+    if is_domestic and is_round_trip:
+        return []
+
+    if is_domestic:
+        log("🇰🇷 국내선 API 우선 추출 시도")
+    else:
+        log("🌍 국제선 API 우선 추출 시도")
+
+    time_module.sleep(scraper_config.SEARCH_PAGE_STABILIZE_SECONDS)
+    try:
+        return scraper._extract_domestic_prices() if is_domestic else scraper._extract_prices()
+    except Exception as exc:
+        logger.info("API-first extraction failed before DOM wait: %s", exc)
+        return []

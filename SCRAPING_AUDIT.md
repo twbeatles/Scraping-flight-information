@@ -1,9 +1,31 @@
 # Flight Bot v2.5 Scraping Audit
 
 - 작성일: 2026-02-25
-- 최종 갱신: 2026-05-03
+- 최종 갱신: 2026-05-11
 - 대상 저장소: `Scraping-flight-information`
 - 점검 범위: 스크래퍼, 워커, GUI, DB, 패키징, CI, 문서
+
+---
+
+## 2026-05-11 실사이트 API-first 복구 기준선
+
+- `page_fetch_json()`은 POST body를 JS object가 아니라 JSON 문자열로 `fetch()`에 전달한다.
+- 국내선 paging API 요청은 실제 사이트가 받는 최소 filter(`byCabins`)만 보낸다.
+- 국제선 fallback API URL은 검색 URL과 같은 도시 매핑을 사용하며, `ICN/GMP -> CITY:SEL`, `NRT/HND -> CITY:TYO` 형태로 생성된다.
+- 검색 흐름은 page load 직후 API 추출을 먼저 시도하고, 실패했을 때만 기존 DOM wait/fallback으로 내려간다.
+- 검색 패널 editable 공항 콤보는 사용자가 직접 입력한 3자리 코드를 이전 `currentData()`보다 우선한다.
+- 국제선 API fare의 카드/프로모션/혜택 정보는 `FlightResult.benefit_price`/`benefit_label`에 보존된다.
+- `scripts/live_smoke_search.py`는 repo root를 import path에 추가하므로 문서 명령 그대로 실행된다.
+- live smoke 기준:
+  - `python scripts/live_smoke_search.py --dep 20260615 --ret 20260618 --max-results 5`
+  - `GMP->CJU` -> `source=domestic_api`, `api_total_count=173`, `fetched_pages=9`
+  - `ICN->NRT` -> `source=international_api`, `api_total_count=2800`, `fetched_pages=140`
+- 로컬 품질 기준선:
+  - `pyright --warnings` -> `0 errors, 0 warnings`
+  - `pytest -q` -> `97 passed`
+  - `python scripts/check_tracked_text.py --check-lf` -> `Checked 112 tracked text files: OK`
+  - `python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec` -> `dist/FlightBot_v2.5.exe`
+  - `dist/FlightBot_v2.5.exe` 6초 실행 스모크 통과
 
 ---
 

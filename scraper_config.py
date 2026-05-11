@@ -59,6 +59,12 @@ def resolve_interpark_location(code: str) -> tuple[str, str]:
     return "a", normalized
 
 
+def _interpark_api_location(code: str) -> str:
+    prefix, normalized = resolve_interpark_location(code)
+    route_type = "CITY" if prefix == "c" else "AIRPORT"
+    return f"{route_type}:{normalized}"
+
+
 def build_interpark_search_url(
     origin: str,
     destination: str,
@@ -105,16 +111,16 @@ def build_interpark_international_api_search_url(
 ) -> str:
     """Build the current Interpark international search API URL."""
 
-    origin_code = (origin or "").strip().upper()
-    dest_code = (destination or "").strip().upper()
+    origin_code = _interpark_api_location(origin)
+    dest_code = _interpark_api_location(destination)
     departure = normalize_interpark_api_date(departure_date)
     returning = normalize_interpark_api_date(return_date) if return_date else ""
     safe_cabin = (cabin or "ECONOMY").upper()
     safe_adults = max(1, int(adults or 1))
 
-    route = f"AIRPORT:{origin_code}-AIRPORT:{dest_code}/{departure}"
+    route = f"{origin_code}-{dest_code}/{departure}"
     if returning:
-        route = f"{route}/AIRPORT:{dest_code}-AIRPORT:{origin_code}/{returning}"
+        route = f"{route}/{dest_code}-{origin_code}/{returning}"
 
     return (
         f"{INTERPARK_AIR_API_BASE}/flights/search/{route}"

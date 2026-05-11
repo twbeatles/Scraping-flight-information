@@ -221,10 +221,6 @@ def _fetch_domestic_search_page(
             "pageNumber": page_number,
             "pageSize": page_size,
             "filter": {
-                "byAirline": None,
-                "byDepartureTimes": None,
-                "byPaymentMethods": None,
-                "byDiscountTypes": None,
                 "byCabins": [cabin],
             },
         },
@@ -245,6 +241,11 @@ def _record_domestic_api_failure(
     meta = get_api_meta(payload) if isinstance(payload, dict) else {}
     metrics["api_failure_reason"] = reason
     metrics["api_failure_payload_keys"] = list(payload.keys())[:20] if isinstance(payload, dict) else []
+    if isinstance(payload, dict):
+        if payload.get("code"):
+            metrics["api_failure_code"] = str(payload.get("code"))
+        if payload.get("message") or payload.get("title"):
+            metrics["api_failure_message"] = str(payload.get("message") or payload.get("title"))
     if meta:
         metrics["api_failure_meta"] = {
             "status": int(meta.get("status") or 0),

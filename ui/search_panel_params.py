@@ -10,6 +10,16 @@ from PyQt6.QtCore import QDate
 import config
 
 
+def _combo_airport_code(combo: Any) -> str:
+    typed_code = config._extract_airport_code(combo.currentText())
+    if config.validate_airport_code(typed_code):
+        return typed_code
+    data_code = config._extract_airport_code(combo.currentData())
+    if config.validate_airport_code(data_code):
+        return data_code
+    return str(combo.currentText() or combo.currentData() or "").strip()
+
+
 def get_panel_search_params(
     panel: Any,
     *,
@@ -17,8 +27,8 @@ def get_panel_search_params(
     timestamp: str | None = None,
 ) -> dict[str, Any]:
     params = {
-        "origin": panel.cb_origin.currentData() or panel.cb_origin.currentText(),
-        "dest": panel.cb_dest.currentData() or panel.cb_dest.currentText(),
+        "origin": _combo_airport_code(panel.cb_origin),
+        "dest": _combo_airport_code(panel.cb_dest),
         "dep": panel.date_dep.date().toString("yyyyMMdd"),
         "ret": panel.date_ret.date().toString("yyyyMMdd") if panel.rb_round.isChecked() else None,
         "adults": panel.spin_adults.value(),

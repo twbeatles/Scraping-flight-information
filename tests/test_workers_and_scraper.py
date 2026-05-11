@@ -6,7 +6,8 @@ from typing import Any, cast
 
 import scraper_config
 from scraper_v2 import FlightResult, PlaywrightScraper, ParallelSearcher
-from scraping.playwright_api import find_search_keys
+from scraping.playwright_api import find_search_keys, page_fetch_json
+from scraping.playwright_results import _normalize_international_api_item
 from scraping.playwright_search import _handle_domestic_round_trip
 from ui.workers import AlertAutoCheckWorker, DateRangeWorker, MultiSearchWorker
 
@@ -220,7 +221,7 @@ def test_international_api_path_paginates_and_builds_results_without_dom_fallbac
                         }
                     ],
                 }
-            if "fetch(" in script and "/flights/search/AIRPORT:ICN-AIRPORT:NRT/2026-04-15/AIRPORT:NRT-AIRPORT:ICN/2026-04-18" in script:
+            if "fetch(" in script and "/flights/search/CITY:SEL-CITY:TYO/2026-04-15/CITY:TYO-CITY:SEL/2026-04-18" in script:
                 raise AssertionError("existing search key should prevent rebuilding the initial search request")
             if "const cards = document.querySelectorAll('li[data-index], div[data-index]');" in script:
                 raise AssertionError("DOM fallback should not run when API succeeds")
@@ -333,11 +334,13 @@ def test_domestic_api_path_paginates_and_normalizes_results():
     class _FakePage:
         def __init__(self):
             self.fetch_calls = 0
+            self.fetch_scripts = []
 
         def evaluate(self, script):
             if "performance.getEntriesByType('resource')" in script and "DOMESTIC::" in script:
                 return ["DOMESTIC::outbound"]
             if "fetch(" in script and "/domestic/flights/search/DOMESTIC::outbound" in script:
+                self.fetch_scripts.append(script)
                 self.fetch_calls += 1
                 if self.fetch_calls == 1:
                     return {
@@ -407,7 +410,8 @@ def test_domestic_api_path_paginates_and_normalizes_results():
             raise AssertionError(f"Unexpected script: {script[:120]}")
 
     scraper = PlaywrightScraper()
-    cast(Any, scraper).page = _FakePage()
+    page = _FakePage()
+    cast(Any, scraper).page = page
     cast(Any, scraper)._last_search_context = {
         "origin": "GMP",
         "destination": "CJU",
@@ -423,6 +427,9 @@ def test_domestic_api_path_paginates_and_normalizes_results():
     results = scraper._extract_domestic_prices()
 
     assert [result.price for result in results] == [35000, 39000, 42000]
+    assert page.fetch_scripts
+    assert all('\\"byCabins\\": [\\"ECONOMY\\"]' in script for script in page.fetch_scripts)
+    assert all("byAirline" not in script for script in page.fetch_scripts)
     assert all(result.extraction_source == "domestic_api" for result in results)
     assert results[0].airline == "제주항공"
     assert results[0].flight_number == "7C123"
@@ -600,6 +607,88 @@ def test_build_interpark_search_url_treats_sel_as_city_code():
     url = scraper_config.build_interpark_search_url("SEL", "CJU", "2026-05-01")
 
     assert "/c:SEL-c:CJU-20260501" in url
+
+
+def test_build_interpark_international_api_search_url_uses_city_route_types():
+    url = scraper_config.build_interpark_international_api_search_url(
+        "ICN",
+        "NRT",
+        "2026-04-15",
+        "2026-04-18",
+        cabin="BUSINESS",
+        adults=2,
+    )
+
+    assert "/flights/search/CITY:SEL-CITY:TYO/2026-04-15/CITY:TYO-CITY:SEL/2026-04-18" in url
+    assert url.endswith("?adult=2&child=0&infant=0&cabins=BUSINESS&freeBaggageOnly=false")
+
+
+def test_page_fetch_json_sends_post_body_as_json_string():
+    class _FakePage:
+        def __init__(self):
+            self.script = ""
+
+        def evaluate(self, script):
+            self.script = script
+            return {"ok": True}
+
+    scraper = PlaywrightScraper()
+    page = _FakePage()
+    cast(Any, scraper).page = page
+
+    payload = page_fetch_json(
+        scraper,
+        "https://example.test/api",
+        method="POST",
+        body={"pageNumber": 1, "filter": {"byCabins": ["ECONOMY"]}},
+    )
+
+    assert payload == {"ok": True}
+    assert "body: JSON.parse" not in page.script
+    assert 'headers: {"content-type":"application/json"}' in page.script
+    body_line = next(line.strip() for line in page.script.splitlines() if line.strip().startswith("body:"))
+    assert body_line == 'body: "{\\"pageNumber\\": 1, \\"filter\\": {\\"byCabins\\": [\\"ECONOMY\\"]}}",'
+
+
+def test_international_api_item_preserves_cheapest_fare_benefit():
+    result = _normalize_international_api_item(
+        {
+            "adultPrice": 0,
+            "schedules": [
+                {
+                    "carrier": {"name": "제주항공"},
+                    "totalFlightTime": "PT2H30M",
+                    "stop": 0,
+                    "segments": [
+                        {
+                            "departure": {"at": "2026-04-15T10:25:00"},
+                            "arrival": {"at": "2026-04-15T12:55:00"},
+                            "marketingCarrier": {"name": "제주항공"},
+                        }
+                    ],
+                }
+            ],
+            "fares": [
+                {"adultPrice": 420000},
+                {
+                    "adultPrice": 390000,
+                    "benefits": [
+                        {
+                            "discountedPrice": 380000,
+                            "cardCashback": {"cardName": "KB국민", "rate": 10},
+                            "promotionName": "카드 즉시할인",
+                        }
+                    ],
+                },
+            ],
+        }
+    )
+
+    assert result is not None
+    assert result.price == 390000
+    assert result.benefit_price == 380000
+    assert "KB국민 10% 캐시백 적용 시" in result.benefit_label
+    assert "카드 즉시할인" in result.benefit_label
 
 
 def test_multi_search_worker_runs_with_parallelism(monkeypatch):
@@ -1002,6 +1091,63 @@ def test_playwright_search_retries_on_network_error(monkeypatch):
 
     assert len(results) == 1
     assert page.calls == 2
+
+
+def test_international_search_attempts_api_extraction_before_dom_wait(monkeypatch):
+    class _FakePage:
+        def __init__(self):
+            self.urls = []
+
+        def goto(self, url, *_args, **_kwargs):
+            self.urls.append(url)
+
+        def evaluate(self, _script):
+            return []
+
+    class _FakeContext:
+        def __init__(self, page):
+            self._page = page
+
+        def new_page(self):
+            return self._page
+
+        def close(self):
+            return None
+
+    page = _FakePage()
+    scraper = PlaywrightScraper()
+    calls = {"wait": 0, "extract": 0}
+
+    def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
+        cast(Any, scraper).context = _FakeContext(page)
+
+    def _fake_wait(*_args, **_kwargs):
+        calls["wait"] += 1
+        raise AssertionError("DOM wait should not block a successful API-first extraction")
+
+    def _fake_extract():
+        calls["extract"] += 1
+        return [
+            FlightResult(
+                airline="API항공",
+                price=180000,
+                departure_time="10:00",
+                arrival_time="12:00",
+                extraction_source="international_api",
+            )
+        ]
+
+    monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
+    monkeypatch.setattr(scraper, "_wait_for_results", _fake_wait)
+    monkeypatch.setattr(scraper, "_extract_prices", _fake_extract)
+    monkeypatch.setattr(scraper, "close", lambda: None)
+    monkeypatch.setattr("scraping.playwright_scraper.time.sleep", lambda *_args, **_kwargs: None)
+
+    results = scraper.search("ICN", "NRT", "20260301", None, adults=1, cabin_class="ECONOMY", max_results=10)
+
+    assert len(results) == 1
+    assert calls == {"wait": 0, "extract": 1}
+    assert page.urls
 
 
 def test_domestic_one_way_search_uses_api_first_extractor(monkeypatch):

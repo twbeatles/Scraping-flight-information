@@ -32,7 +32,7 @@ def page_fetch_json(
                 method: {method_json},
                 credentials: 'include',
                 headers: {headers_expr},
-                body: {body_expr} === undefined ? undefined : JSON.parse({body_expr}),
+                body: {body_expr},
             }});
             const text = await response.text();
             const meta = {{
