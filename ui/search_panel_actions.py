@@ -135,10 +135,23 @@ class SearchPanelActionsMixin(SearchPanelMixinBase):
 
         self.search_requested.emit(origin_code, dest_code, dep, ret, adults, cabin_class)
 
+    def _on_force_refresh_search(self) -> None:
+        self._force_refresh_requested = True
+        self._on_search()
+        if self._force_refresh_requested:
+            self._force_refresh_requested = False
+
+    def consume_force_refresh(self) -> bool:
+        requested = bool(getattr(self, "_force_refresh_requested", False))
+        self._force_refresh_requested = False
+        return requested
+
 
     def set_searching(self, searching: bool) -> None:
         self.btn_search.setText("⏳ 검색 중..." if searching else "🔍 최저가 검색 시작")
         self.btn_search.setEnabled(not searching)
+        if hasattr(self, "btn_force_refresh"):
+            self.btn_force_refresh.setEnabled(not searching)
         self.cb_origin.setEnabled(not searching)
         self.cb_dest.setEnabled(not searching)
     

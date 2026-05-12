@@ -12,7 +12,12 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import config
 import scraper_config
 from scraper_config import ScraperScripts
-from scraping.errors import BrowserInitError, DataExtractionError, NetworkError
+from scraping.errors import (
+    BrowserInitError,
+    DataExtractionError,
+    ManualModeActivationError,
+    NetworkError,
+)
 from scraping.models import FlightResult
 from scraping.playwright_api import find_latest_search_key
 
@@ -41,6 +46,11 @@ def run_search(
     """Run a full Playwright-backed search."""
 
     search_start_time = time_module.time()
+    url = ""
+    profile_dir: str | None = None
+    auto_headless = bool(
+        background_mode or getattr(scraper_config, "AUTO_SEARCH_HEADLESS", True)
+    )
 
     def log(message: str) -> None:
         if emit:
@@ -125,7 +135,17 @@ def run_search(
                         profile_dir = os.path.join(os.getcwd(), "playwright_profile")
                     os.makedirs(profile_dir, exist_ok=True)
 
-                scraper._init_browser(log, profile_dir, headless=background_mode)
+                try:
+                    scraper._init_browser(
+                        log,
+                        profile_dir,
+                        headless=auto_headless,
+                        block_resources=auto_headless,
+                    )
+                except TypeError as exc:
+                    if "block_resources" not in str(exc):
+                        raise
+                    scraper._init_browser(log, profile_dir, headless=auto_headless)
 
                 if scraper.context is None:
                     if scraper.browser is None:
@@ -137,6 +157,7 @@ def run_search(
                             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                         ),
                     )
+                    scraper._configure_resource_blocking(auto_headless)
 
                 context = scraper.context
                 if context is None:
@@ -164,6 +185,8 @@ def run_search(
                 else:
                     log("🌍 국제선 검색 모드")
                 log(f"URL: {url}")
+                if auto_headless:
+                    log("자동 검색 최적화 모드: Headless + 리소스 차단")
 
                 try:
                     page.goto(
@@ -246,7 +269,15 @@ def run_search(
                     if background_mode:
                         break
                     scraper._manual_reason = "international_api_failed" if not is_domestic else "domestic_api_failed"
-                    scraper.manual_mode = True
+                    _activate_manual_mode_or_raise(
+                        scraper,
+                        url=url,
+                        profile_dir=profile_dir,
+                        is_domestic=is_domestic,
+                        log=log,
+                        auto_headless=auto_headless,
+                        message="결과 로딩 실패 후 수동 모드 전환에 실패했습니다.",
+                    )
                     break
 
                 results = scraper._sort_and_limit_results(results, max_results, log)
@@ -278,6 +309,8 @@ def run_search(
                 raise
             except BrowserInitError:
                 raise
+            except ManualModeActivationError:
+                raise
             except DataExtractionError as exc:
                 if background_mode:
                     log(f"⚠️ {exc} - 백그라운드 모드 종료")
@@ -288,7 +321,15 @@ def run_search(
                         scraper._manual_reason = (
                             "domestic_api_failed" if is_domestic else "international_api_failed"
                         )
-                    scraper.manual_mode = True
+                    _activate_manual_mode_or_raise(
+                        scraper,
+                        url=url,
+                        profile_dir=profile_dir,
+                        is_domestic=is_domestic,
+                        log=log,
+                        auto_headless=auto_headless,
+                        message="자동 추출 결과 없음 이후 수동 모드 전환에 실패했습니다.",
+                    )
                 break
             except Exception as exc:
                 logger.error("Playwright error: %s", exc, exc_info=True)
@@ -298,7 +339,18 @@ def run_search(
                     scraper._manual_reason = (
                         "domestic_api_failed" if is_domestic else "international_api_failed"
                     )
-                scraper.manual_mode = False if background_mode else True
+                if background_mode:
+                    scraper.manual_mode = False
+                else:
+                    _activate_manual_mode_or_raise(
+                        scraper,
+                        url=url,
+                        profile_dir=profile_dir,
+                        is_domestic=is_domestic,
+                        log=log,
+                        auto_headless=auto_headless,
+                        message="오류 복구 중 수동 모드 전환에 실패했습니다.",
+                    )
                 break
     finally:
         if not scraper.manual_mode:
@@ -327,6 +379,27 @@ def run_search(
         )
 
     return results
+
+
+def _activate_manual_mode_or_raise(
+    scraper: "PlaywrightScraper",
+    *,
+    url: str,
+    profile_dir: str | None,
+    is_domestic: bool,
+    log: Callable[[str], None],
+    auto_headless: bool,
+    message: str,
+) -> None:
+    entered = scraper._enter_manual_mode(
+        url=url,
+        profile_dir=profile_dir,
+        is_domestic=is_domestic,
+        log_func=log,
+        reopen_visible=auto_headless,
+    )
+    if not entered:
+        raise ManualModeActivationError(message)
 
 
 def _handle_domestic_round_trip(

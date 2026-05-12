@@ -18,6 +18,7 @@ from scraping.errors import (
     BrowserInitError,
     NetworkError,
     DataExtractionError,
+    ManualModeActivationError,
 )
 from scraping.models import FlightResult
 from scraping.playwright_scraper import PlaywrightScraper
@@ -31,6 +32,7 @@ __all__ = [
     "BrowserInitError",
     "NetworkError",
     "DataExtractionError",
+    "ManualModeActivationError",
     "FlightResult",
     "PlaywrightScraper",
     "FlightSearcher",

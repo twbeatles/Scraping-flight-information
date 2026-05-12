@@ -8,13 +8,17 @@ if TYPE_CHECKING:
 
 
 class SearchSingleMixin:
-    def _start_search(self: Any, origin, dest, dep, ret, adults, cabin_class="ECONOMY"):
+    def _start_search(self: Any, origin, dest, dep, ret, adults, cabin_class="ECONOMY", force_refresh=False):
         self._stop_alert_worker_if_running()
         if not self._ensure_no_running_search():
             return
 
         if not self._guard_manual_browser_for_new_search("새 검색"):
             return
+
+        if hasattr(self, "search_panel") and hasattr(self.search_panel, "consume_force_refresh"):
+            force_refresh = bool(force_refresh or self.search_panel.consume_force_refresh())
+
         # Save search params for later use
         self.current_search_params = config.normalize_search_params(
             {
@@ -48,6 +52,9 @@ class SearchSingleMixin:
             self.manual_status_label.setText("🖐️ <b>수동 모드 유지 중</b> - 브라우저 닫기 가능")
         self.manual_frame.setVisible(manual_browser_open)
         self.log_viewer.clear()
+        if force_refresh:
+            self.statusBar().showMessage("캐시 무시 재조회 실행 중...")
+            self.log_viewer.append_log("강제 재조회: 캐시를 무시하고 새로 검색합니다.")
         self.log_viewer.append_log(f"검색 프로세스 시작... (좌석등급: {cabin_label})")
         self.tabs.setCurrentIndex(2)  # Switch to logs
         
@@ -62,6 +69,7 @@ class SearchSingleMixin:
             cabin_class,
             max_results,
             telemetry_callback=self._emit_telemetry_event,
+            force_refresh=force_refresh,
         )
         self.worker.progress.connect(self._update_progress)
         self.worker.finished.connect(self._search_finished)
@@ -69,6 +77,14 @@ class SearchSingleMixin:
         self.worker.manual_mode_signal.connect(self._activate_manual_mode)
         self.worker.start()
     def _update_progress(self: Any, msg):
+        now = time.monotonic()
+        dedup_window = max(
+            0, int(getattr(scraper_config, "PROGRESS_LOG_DEDUP_WINDOW_MS", 300))
+        ) / 1000.0
+        if msg == self._last_progress_msg and (now - self._last_progress_ts) < dedup_window:
+            return
+        self._last_progress_msg = msg
+        self._last_progress_ts = now
         status_bar = self.statusBar()
         if status_bar is not None:
             status_bar.showMessage(msg)
@@ -101,7 +117,7 @@ class SearchSingleMixin:
                     self.current_search_params.get('origin', ''),
                     self.current_search_params.get('dest', ''),
                     self.current_search_params.get('dep', ''),
-                    [{'price': r.price, 'airline': r.airline} for r in results]
+                    results
                 )
                 
                 # Log search
@@ -140,6 +156,8 @@ class SearchSingleMixin:
                         "error_code": "NO_RESULT",
                     }
                 )
+            self.table.update_data([])
+            self.tabs.setCurrentIndex(0)
             QMessageBox.information(self, "결과 없음", "항공권을 찾을 수 없습니다.")
     def _check_price_alerts(self: Any, results):
         """검색 완료 후 활성 가격 알림 체크"""
@@ -230,6 +248,3 @@ class SearchSingleMixin:
             )
         else:
             QMessageBox.critical(self, "오류", f"검색 중 오류 발생:\n{err_msg}")
-
-
-

@@ -38,6 +38,9 @@ class UiBootstrapMixin:
         shortcut_search = QShortcut(QKeySequence("Ctrl+Return"), self)
         shortcut_search.activated.connect(self.search_panel._on_search)
 
+        shortcut_force_search = QShortcut(QKeySequence("Ctrl+Shift+Return"), self)
+        shortcut_force_search.activated.connect(self._start_force_refresh_search)
+
         shortcut_refresh = QShortcut(QKeySequence("F5"), self)
         shortcut_refresh.activated.connect(self._apply_filter)
 
@@ -48,6 +51,11 @@ class UiBootstrapMixin:
         shortcut_filter.activated.connect(
             lambda: self.filter_panel.cb_airline_category.setFocus()
         )
+
+    def _start_force_refresh_search(self: Any):
+        """Start a one-shot cache-bypassing search from the shortcut."""
+        if hasattr(self, "search_panel"):
+            self.search_panel._on_force_refresh_search()
 
     def _on_table_double_click(self: Any, row, col):
         """테이블 더블클릭 - 현재 조건 검색 페이지 다시 열기."""

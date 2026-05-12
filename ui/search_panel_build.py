@@ -188,7 +188,20 @@ class SearchPanelBuildMixin(SearchPanelMixinBase):
             }
         """)
         self.btn_search.clicked.connect(self._on_search)
-        layout.addWidget(self.btn_search, 4, 0, 1, 3) 
+
+        self.btn_force_refresh = QPushButton("강제 재조회")
+        self.btn_force_refresh.setObjectName("tool_btn")
+        self.btn_force_refresh.setFixedHeight(54)
+        self.btn_force_refresh.setToolTip("캐시를 무시하고 다시 조회합니다 (Ctrl+Shift+Enter)")
+        self.btn_force_refresh.clicked.connect(self._on_force_refresh_search)
+
+        action_row = QWidget()
+        action_layout = QHBoxLayout(action_row)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(10)
+        action_layout.addWidget(self.btn_search, 3)
+        action_layout.addWidget(self.btn_force_refresh, 1)
+        layout.addWidget(action_row, 4, 0, 1, 3)
         
         # Load previous preferred time if any
         pt = self.prefs.get_preferred_time()

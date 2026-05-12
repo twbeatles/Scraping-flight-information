@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import logging
 import time
 from typing import cast
 
@@ -17,7 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from database import PriceAlert
-from gui_v2 import MainWindow
+from gui_v2 import MainWindow, resolve_log_level
 from scraper_v2 import FlightResult
 from ui.components import ResultTable, SearchPanel
 from ui.export_helpers import flight_export_headers, flight_to_export_row
@@ -30,6 +31,9 @@ class _DummyLogViewer:
 
     def append_log(self, message):
         self.logs.append(message)
+
+    def clear(self):
+        self.logs.clear()
 
 
 class _DummyGuardContext:
@@ -762,6 +766,208 @@ def test_filter_debounce_applies_last_event_once(qapp):
         time.sleep(0.01)
     assert len(ctx.applied) == 1
     assert ctx.applied[0]["start_time"] == 4
+
+
+def test_update_progress_dedup_suppresses_duplicate_logs():
+    class _DummyStatusBar:
+        def __init__(self):
+            self.messages = []
+
+        def showMessage(self, msg):
+            self.messages.append(msg)
+
+    class _DummyProgress:
+        def __init__(self):
+            self.formats = []
+
+        def setFormat(self, msg):
+            self.formats.append(msg)
+
+    class _DummyContext:
+        def __init__(self):
+            self._status_bar = _DummyStatusBar()
+            self.progress_bar = _DummyProgress()
+            self.log_viewer = _DummyLogViewer()
+            self._last_progress_msg = ""
+            self._last_progress_ts = 0.0
+
+        def statusBar(self):
+            return self._status_bar
+
+    ctx = _DummyContext()
+
+    MainWindow._update_progress(ctx, "same message")
+    MainWindow._update_progress(ctx, "same message")
+    MainWindow._update_progress(ctx, "new message")
+
+    assert ctx.log_viewer.logs == ["same message", "new message"]
+    assert ctx._status_bar.messages[-1] == "new message"
+
+
+def test_start_search_consumes_force_refresh_into_worker(monkeypatch):
+    captured = {"force_refresh": None}
+
+    class _Signal:
+        def connect(self, _):
+            return None
+
+    class _DummyWorker:
+        def __init__(self, *args, **kwargs):
+            captured["force_refresh"] = kwargs.get("force_refresh")
+            self.progress = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+            self.manual_mode_signal = _Signal()
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr("app.mainwindow.search_single.SearchWorker", _DummyWorker)
+
+    class _DummyPrefs:
+        def add_history(self, *_):
+            return None
+
+        def save_last_search(self, *_):
+            return None
+
+        def get_max_results(self):
+            return 1000
+
+    class _DummySearchPanel:
+        rb_domestic = type("R", (), {"isChecked": lambda *_: False})()
+
+        def set_searching(self, *_):
+            return None
+
+        def consume_force_refresh(self):
+            return True
+
+    class _DummyTable:
+        def setRowCount(self, *_):
+            return None
+
+    class _DummyManual:
+        def setVisible(self, *_):
+            return None
+
+    class _DummyTabs:
+        def setCurrentIndex(self, *_):
+            return None
+
+    class _DummyProgress:
+        def setRange(self, *_):
+            return None
+
+        def setFormat(self, *_):
+            return None
+
+    class _DummyStatus:
+        def showMessage(self, *_):
+            return None
+
+    class _DummyContext:
+        def __init__(self):
+            self.prefs = _DummyPrefs()
+            self.search_panel = _DummySearchPanel()
+            self.table = _DummyTable()
+            self.manual_frame = _DummyManual()
+            self.log_viewer = _DummyLogViewer()
+            self.tabs = _DummyTabs()
+            self.progress_bar = _DummyProgress()
+            self.active_searcher = None
+            self.worker = None
+            self.current_search_params = {}
+
+        def _stop_alert_worker_if_running(self):
+            return None
+
+        def _ensure_no_running_search(self):
+            return True
+
+        def _guard_manual_browser_for_new_search(self, _):
+            return True
+
+        def _update_progress(self, *_):
+            return None
+
+        def _search_finished(self, *_):
+            return None
+
+        def _search_error(self, *_):
+            return None
+
+        def _activate_manual_mode(self, *_):
+            return None
+
+        def _emit_telemetry_event(self, *_):
+            return None
+
+        def statusBar(self):
+            return _DummyStatus()
+
+    ctx = _DummyContext()
+    MainWindow._start_search(ctx, "ICN", "NRT", "20260301", None, 1, "ECONOMY")
+
+    assert captured["force_refresh"] is True
+
+
+def test_search_finished_empty_updates_table_and_shows_result_tab(monkeypatch):
+    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
+
+    class _DummySearchPanel:
+        def set_searching(self, _):
+            return None
+
+    class _DummyProgress:
+        def setRange(self, *_):
+            return None
+
+        def setValue(self, *_):
+            return None
+
+        def setFormat(self, *_):
+            return None
+
+    class _DummyTabs:
+        def __init__(self):
+            self.index = None
+
+        def setCurrentIndex(self, index):
+            self.index = index
+
+    class _DummyTable:
+        def __init__(self):
+            self.last = None
+
+        def update_data(self, rows):
+            self.last = rows
+
+    class _DummyContext:
+        def __init__(self):
+            self.search_panel = _DummySearchPanel()
+            self.progress_bar = _DummyProgress()
+            self.table = _DummyTable()
+            self.log_viewer = _DummyLogViewer()
+            self.tabs = _DummyTabs()
+            self.current_search_params = {}
+
+    ctx = _DummyContext()
+    MainWindow._search_finished(ctx, [])
+
+    assert ctx.table.last == []
+    assert ctx.tabs.index == 0
+
+
+def test_resolve_log_level_defaults_and_overrides(monkeypatch):
+    monkeypatch.delenv("FLIGHTBOT_LOG_LEVEL", raising=False)
+    assert resolve_log_level() == logging.INFO
+
+    monkeypatch.setenv("FLIGHTBOT_LOG_LEVEL", "DEBUG")
+    assert resolve_log_level() == logging.DEBUG
+
+    monkeypatch.setenv("FLIGHTBOT_LOG_LEVEL", "NOT_A_LEVEL")
+    assert resolve_log_level() == logging.INFO
 
 
 def test_auto_alert_failure_logs_and_stores_error():

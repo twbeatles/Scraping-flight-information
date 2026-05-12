@@ -8,7 +8,6 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
-from scraper_v2 import FlightResult
 from storage.models import (
     FavoriteItem,
     PriceHistoryItem,
@@ -38,22 +37,43 @@ class HistoryLogsMixin:
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             ))
             conn.commit()
-    def add_price_history_batch(self: Any, origin: str, dest: str, dep_date: str, 
-                                results: List[Dict[str, Any]]):
-        """검색 결과 일괄 저장 (최저가만)"""
+    def add_price_history_batch(self: Any, origin: str, dest: str, dep_date: str,
+                                results: List[Any]):
+        """Store the cheapest valid result from dict or FlightResult-like rows."""
         if not results:
             return
-        
-        # 최저가만 저장
-        min_price = min(r.get('price', float('inf')) for r in results)
-        min_item = next((r for r in results if r.get('price') == min_price), None)
-        
-        if min_item:
-            airline_value = min_item.get('airline')
-            self.add_price_history(
-                origin, dest, dep_date,
-                min_price, str(airline_value) if airline_value is not None else None
-            )
+
+        min_price: int | None = None
+        min_airline: str | None = None
+
+        for item in results:
+            if isinstance(item, dict):
+                price = item.get("price")
+                airline = item.get("airline")
+            else:
+                price = getattr(item, "price", None)
+                airline = getattr(item, "airline", None)
+
+            if price is None:
+                continue
+
+            try:
+                price_int = int(price)
+            except (TypeError, ValueError):
+                continue
+
+            if price_int <= 0:
+                continue
+
+            if min_price is None or price_int < min_price:
+                min_price = price_int
+                min_airline = str(airline) if airline is not None else None
+
+        if min_price is None:
+            return
+
+        self.add_price_history(origin, dest, dep_date, min_price, min_airline)
+
     def get_price_history(self: Any, origin: str, dest: str, 
                           days: int = 30) -> List[PriceHistoryItem]:
         """노선별 가격 히스토리 조회"""
@@ -156,6 +176,3 @@ class HistoryLogsMixin:
             }
 
 __all__ = ["HistoryLogsMixin"]
-
-
-

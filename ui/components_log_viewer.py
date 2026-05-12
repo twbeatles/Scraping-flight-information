@@ -32,6 +32,10 @@ class LogViewer(QTextEdit):
         super().__init__()
         self.setObjectName("log_view")
         self.setReadOnly(True)
+        self.setUndoRedoEnabled(False)
+        document = self.document()
+        if document is not None:
+            document.setMaximumBlockCount(1000)
         self.setPlaceholderText("검색 로그가 여기에 표시됩니다...")
     
     @pyqtSlot(str)

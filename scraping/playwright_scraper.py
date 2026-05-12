@@ -7,10 +7,13 @@ from typing import Any, Callable, Dict, List, Optional
 
 import logging
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+import scraper_config
 from scraping.models import FlightResult
 from scraping.playwright_browser import (
     close_resources,
+    configure_resource_blocking,
     init_browser,
     wait_for_domestic_return_view,
     wait_for_results,
@@ -90,13 +93,88 @@ class PlaywrightScraper:
         log_func: Optional[Callable[[str], None]] = None,
         user_data_dir: Optional[str] = None,
         headless: bool = False,
+        block_resources: bool = False,
     ) -> None:
         init_browser(
             self,
             log_func=log_func,
             user_data_dir=user_data_dir,
             headless=headless,
+            block_resources=block_resources,
         )
+
+    def _configure_resource_blocking(self, enabled: bool) -> None:
+        configure_resource_blocking(self, enabled)
+
+    def _enter_manual_mode(
+        self,
+        url: str,
+        profile_dir: str | None,
+        is_domestic: bool,
+        log_func: Callable[[str], None],
+        reopen_visible: bool,
+    ) -> bool:
+        """Open or reuse a visible browser so the user can extract manually."""
+        if not reopen_visible and self.page is not None:
+            self.manual_mode = True
+            log_func("수동 모드 활성화 - 브라우저에서 결과 로딩 후 추출 버튼을 누르세요")
+            return True
+
+        if reopen_visible:
+            log_func("자동 추출 실패 - 수동 모드 브라우저를 여는 중...")
+        else:
+            log_func("수동 모드 재초기화: 기존 브라우저 세션이 없어 새로 엽니다.")
+
+        try:
+            self.close()
+            try:
+                self._init_browser(
+                    log_func=log_func,
+                    user_data_dir=profile_dir,
+                    headless=False,
+                    block_resources=False,
+                )
+            except TypeError as exc:
+                if "block_resources" not in str(exc):
+                    raise
+                self._init_browser(
+                    log_func=log_func,
+                    user_data_dir=profile_dir,
+                    headless=False,
+                )
+            if self.context is None and self.browser is not None:
+                self.context = self.browser.new_context(
+                    viewport={"width": 1400, "height": 900},
+                    locale="ko-KR",
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36"
+                    ),
+                )
+            if self.context is None:
+                return False
+            self.page = self.context.new_page()
+
+            if url and self.page is not None:
+                try:
+                    self.page.goto(
+                        url,
+                        wait_until="domcontentloaded",
+                        timeout=scraper_config.PAGE_LOAD_TIMEOUT_MS,
+                    )
+                except PlaywrightTimeoutError:
+                    log_func("수동 모드 페이지 로딩 시간 초과 - 계속 진행합니다.")
+                except Exception as exc:
+                    log_func(f"수동 모드 페이지 진입 실패: {exc}")
+            self._wait_for_results(is_domestic, lambda _msg: None)
+            self.manual_mode = True
+            log_func("수동 모드 활성화 - 브라우저에서 결과 로딩 후 추출 버튼을 누르세요")
+            return True
+        except Exception as exc:
+            logger.error("Manual mode activation failed: %s", exc, exc_info=True)
+            self.close()
+            self.manual_mode = False
+            return False
 
     def _wait_for_results(
         self,

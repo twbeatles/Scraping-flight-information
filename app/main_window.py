@@ -82,6 +82,8 @@ class MainWindow(
         self.current_search_params = {}
         self._cancelling = False  # 검색 취소 중복 방지 플래그
         self._pending_filter = None
+        self._last_progress_msg = ""
+        self._last_progress_ts = 0.0
         self._last_filter_log_msg = ""
         self._last_filter_log_ts = 0.0
         self._last_alert_auto_check_at = ""
@@ -107,10 +109,15 @@ class MainWindow(
 
 MAX_PRICE_FILTER = 99_990_000
 
+
+def resolve_log_level() -> int:
+    level_name = os.environ.get("FLIGHTBOT_LOG_LEVEL", "INFO").upper().strip()
+    return getattr(logging, level_name, logging.INFO)
+
 def main():
     # 로깅 설정 (중앙 집중식)
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=resolve_log_level(),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[logging.StreamHandler(sys.stdout)]
     )

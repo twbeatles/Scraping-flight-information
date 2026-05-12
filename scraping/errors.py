@@ -10,6 +10,12 @@ class BrowserInitError(ScraperError):
         self.message = message
         super().__init__(self.message)
 
+class ManualModeActivationError(ScraperError):
+    """Automatic extraction failed and manual mode could not be opened."""
+    def __init__(self, message: str = "수동 모드로 전환하지 못했습니다."):
+        self.message = message
+        super().__init__(self.message)
+
 class NetworkError(ScraperError):
     """네트워크 연결 오류"""
     def __init__(self, message: str = "네트워크 연결에 실패했습니다.", url: str = ""):

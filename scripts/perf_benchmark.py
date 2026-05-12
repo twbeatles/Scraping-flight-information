@@ -22,9 +22,10 @@ from PyQt6.QtWidgets import QApplication
 
 from database import FlightDatabase
 from gui_v2 import MAX_PRICE_FILTER, MainWindow
-from scraper_v2 import FlightResult
+from scraper_v2 import FlightResult, FlightSearcher
 from ui.components import ResultTable
 from ui.workers import MultiSearchWorker
+import scraper_config
 import ui.workers as workers_module
 
 
@@ -209,6 +210,61 @@ def benchmark_worker_parallelism() -> dict:
         workers_module.FlightSearcher = original_searcher
 
 
+def benchmark_search_cache_hit(runs: int = 20) -> dict:
+    original_cache_enabled = scraper_config.ENABLE_SEARCH_CACHE
+
+    class _FakeSource:
+        source_id = "fake"
+        metadata = {}
+
+        def __init__(self):
+            self.calls = 0
+
+        def build_search_url(self, params):
+            return "https://example.test"
+
+        def search(self, *args, **kwargs):
+            self.calls += 1
+            return [FlightResult(airline="CacheAir", price=111_000, departure_time="09:00", arrival_time="11:00")]
+
+        def extract_manual(self):
+            return []
+
+        def close(self):
+            return None
+
+        def is_manual_mode(self):
+            return False
+
+    try:
+        scraper_config.ENABLE_SEARCH_CACHE = True
+        FlightSearcher.clear_cache()
+        searcher = FlightSearcher()
+        fake_source = _FakeSource()
+        searcher.source = fake_source
+
+        dep = (datetime.now() + timedelta(days=10)).strftime("%Y%m%d")
+        searcher.search("ICN", "NRT", dep, None, 1, "ECONOMY", max_results=20, progress_callback=None)
+
+        samples = []
+        for _ in range(runs):
+            t0 = time.perf_counter()
+            results = searcher.search("ICN", "NRT", dep, None, 1, "ECONOMY", max_results=20, progress_callback=None)
+            samples.append(time.perf_counter() - t0)
+            assert results
+
+        return {
+            "runs": runs,
+            "median": statistics.median(samples),
+            "min": min(samples),
+            "max": max(samples),
+            "source_calls": fake_source.calls,
+        }
+    finally:
+        FlightSearcher.clear_cache()
+        scraper_config.ENABLE_SEARCH_CACHE = original_cache_enabled
+
+
 def main():
     app_instance = QApplication.instance()
     app = app_instance if isinstance(app_instance, QApplication) else QApplication([])
@@ -242,6 +298,14 @@ def main():
         f"parallel={worker_stats['parallel']:.4f}s "
         f"speedup={worker_stats['speedup']:.2f}x "
         f"results={worker_stats['result_keys']}"
+    )
+
+    cache_stats = benchmark_search_cache_hit()
+    print(
+        f"[Cache] runs={cache_stats['runs']} "
+        f"median={cache_stats['median']:.6f}s "
+        f"(min={cache_stats['min']:.6f}s max={cache_stats['max']:.6f}s) "
+        f"source_calls={cache_stats['source_calls']}"
     )
 
 

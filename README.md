@@ -141,6 +141,7 @@ python gui_v2.py
 6. **인원 설정**: 성인 인원 수 입력 (1-9명)
 7. **좌석 등급 선택**: 이코노미/비즈니스/일등석
 8. **🔍 검색 버튼 클릭** 또는 `Ctrl+Enter`
+9. 캐시를 무시한 즉시 재검색이 필요하면 **강제 재조회** 버튼 또는 `Ctrl+Shift+Enter`
 
 ### 검색 결과 활용
 
@@ -263,6 +264,7 @@ python gui_v2.py
 | 단축키 | 기능 |
 |--------|------|
 | `Ctrl+Enter` | 검색 시작 |
+| `Ctrl+Shift+Enter` | 캐시 무시 강제 재조회 |
 | `F5` | 결과 새로고침 (필터 재적용) |
 | `Escape` | 검색 취소 / 다이얼로그 닫기 |
 | `Ctrl+F` | 필터 영역으로 포커스 이동 |
@@ -505,6 +507,16 @@ playwright install chromium
 ---
 
 ## 📝 변경 로그
+
+### v2.5.15 (2026-05-12)
+- ⚡ **검색 안정성/캐시 UX 통합**
+  - 동일 조건 검색은 3분 TTL 메모리 캐시를 사용하고, `강제 재조회` 버튼 또는 `Ctrl+Shift+Enter`로 캐시를 우회
+  - 자동 검색은 기본 headless + 이미지/미디어/폰트 차단으로 실행하고, 자동 추출 실패 시 visible 수동 모드 브라우저로 재오픈
+  - 진행 로그 중복 출력 억제와 로그 뷰 블록 제한으로 장시간 검색 중 UI 렌더링 비용 완화
+  - `FLIGHTBOT_LOG_LEVEL` 환경변수로 앱 로그 레벨 오버라이드 지원
+- ✅ **검증**
+  - `pytest -q` -> `108 passed`
+  - `python -m compileall app scraping storage ui scraper_v2.py gui_v2.py database.py`
 
 ### v2.5.14 (2026-05-11)
 - 🗄️ **기존 사용자 DB 마이그레이션 안정화**

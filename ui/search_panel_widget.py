@@ -15,4 +15,5 @@ class SearchPanel(SearchPanelStateMixin, SearchPanelActionsMixin, SearchPanelBui
         super().__init__()
         self.prefs = prefs
         self.setObjectName("card")
+        self._force_refresh_requested = False
         self._init_ui()

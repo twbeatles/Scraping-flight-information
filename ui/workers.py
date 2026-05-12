@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from scraper_v2 import BrowserInitError, FlightSearcher, NetworkError
+from scraper_v2 import BrowserInitError, FlightSearcher, ManualModeActivationError, NetworkError
 from ui.workers_search import SearchWorker
 from ui.workers_parallel import (
     MAX_DATE_RANGE_SEARCHES,
@@ -33,6 +33,7 @@ __all__ = [
     "pyqtSignal",
     "FlightSearcher",
     "BrowserInitError",
+    "ManualModeActivationError",
     "NetworkError",
     "logger",
     "MAX_DATE_RANGE_SEARCHES",

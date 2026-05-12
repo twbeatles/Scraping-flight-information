@@ -24,6 +24,7 @@ def init_browser(
     log_func: Optional[Callable[[str], None]] = None,
     user_data_dir: Optional[str] = None,
     headless: bool = False,
+    block_resources: bool = False,
 ) -> None:
     """Start a usable Playwright browser context."""
 
@@ -96,6 +97,7 @@ def init_browser(
                     user_data_dir,
                     **context_options,
                 )
+                configure_resource_blocking(scraper, block_resources)
                 log(f"  - {browser_name} 시작 성공 (Persistent Context)")
             else:
                 scraper.browser = playwright.chromium.launch(**launch_options)
@@ -119,6 +121,33 @@ def init_browser(
     )
     logger.error(error_message)
     raise BrowserInitError(error_message)
+
+
+def configure_resource_blocking(scraper: "PlaywrightScraper", enabled: bool) -> None:
+    """Block heavy resource types for headless automatic searches."""
+    if not enabled or not scraper.context:
+        return
+
+    blocked = set(getattr(scraper_config, "AUTO_BLOCK_RESOURCE_TYPES", ()))
+    if not blocked:
+        return
+
+    def _route_handler(route, request):
+        try:
+            if request.resource_type in blocked:
+                route.abort()
+            else:
+                route.continue_()
+        except Exception:
+            try:
+                route.continue_()
+            except Exception:
+                pass
+
+    try:
+        scraper.context.route("**/*", _route_handler)
+    except Exception as exc:
+        logger.debug("Resource blocking route setup failed: %s", exc)
 
 
 def wait_for_results(

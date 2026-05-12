@@ -6,7 +6,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from scraper_v2 import FlightSearcher, BrowserInitError, NetworkError
+from scraper_v2 import FlightSearcher, BrowserInitError, ManualModeActivationError, NetworkError
 
 logger = logging.getLogger(__name__)
 MAX_DATE_RANGE_SEARCHES = 30
@@ -38,6 +38,7 @@ class SearchWorker(QThread):
         cabin_class="ECONOMY",
         max_results=1000,
         telemetry_callback=None,
+        force_refresh=False,
     ):
         super().__init__()
         self.origin = origin
@@ -47,6 +48,7 @@ class SearchWorker(QThread):
         self.adults = adults
         self.cabin_class = cabin_class
         self.max_results = max_results
+        self.force_refresh = force_refresh
         searcher_cls = _searcher_cls()
         try:
             self.searcher = searcher_cls(telemetry_callback=telemetry_callback)
@@ -66,6 +68,9 @@ class SearchWorker(QThread):
         try:
             if self.searcher:
                 self.searcher.close()
+        except ManualModeActivationError as e:
+            if not self.is_cancelled():
+                self.error.emit(f"수동 모드 전환 실패:\n{e.message}")
         except Exception as e:
             logger.debug("검색 취소 중 브라우저 정리 오류 (무시됨): %s", e)
     
@@ -82,6 +87,7 @@ class SearchWorker(QThread):
                 max_results=self.max_results,
                 progress_callback=lambda msg: self.progress.emit(msg),
                 background_mode=False,
+                force_refresh=self.force_refresh,
             )
             
             if self.is_cancelled():
