@@ -22,6 +22,16 @@ EXPORT_HEADERS = [
     "가는편 가격",
     "오는편 가격",
 ]
+FORMULA_TRIGGER_PREFIXES = ("=", "+", "-", "@")
+
+
+def sanitize_export_cell(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip()
+    if stripped and stripped[0] in FORMULA_TRIGGER_PREFIXES:
+        return "'" + value
+    return value
 
 
 def flight_export_headers() -> list[str]:
@@ -48,7 +58,10 @@ def flight_to_export_row(flight: Any) -> list[Any]:
 
 
 def flight_export_rows(flights: Iterable[Any]) -> list[list[Any]]:
-    return [flight_to_export_row(flight) for flight in flights]
+    return [
+        [sanitize_export_cell(value) for value in flight_to_export_row(flight)]
+        for flight in flights
+    ]
 
 
 def export_flights_to_csv(filepath: str, flights: Iterable[Any]) -> None:

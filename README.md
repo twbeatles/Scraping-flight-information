@@ -4,7 +4,7 @@ Playwright 기반 Interpark 항공권 검색 결과를 PyQt6 데스크톱 UI에�
 
 ## Current Status
 
-2026-06-10 기준 코드베이스는 책임별 패키지 구조로 분리되어 있습니다. 기존 외부 진입점은 유지하고, 실제 구현은 `core/*`, `scraping/interpark/*`, `scraping/domestic/*`, `scraping/international/*`, `scraping/search_flow/*`로 이동했습니다.
+2026-06-11 기준 코드베이스는 책임별 패키지 구조로 분리되어 있습니다. 기존 외부 진입점은 유지하고, 실제 구현은 `core/*`, `scraping/interpark/*`, `scraping/domestic/*`, `scraping/international/*`, `scraping/search_flow/*`로 이동했습니다.
 
 현재 검증 기준:
 
@@ -12,15 +12,16 @@ Playwright 기반 Interpark 항공권 검색 결과를 PyQt6 데스크톱 UI에�
 python -m pytest -q
 pyright --warnings
 python scripts\check_tracked_text.py --check-lf
+python scripts\live_smoke_search.py --max-results 5 --fail-on-cap --max-domestic-pages 30 --max-international-pages 50
 python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec
 ```
 
 최근 로컬 기준선:
 
-- `python -m pytest -q` -> `111 passed`
+- `python -m pytest -q` -> `123 passed`
 - `pyright --warnings` -> `0 errors, 0 warnings`
-- `python scripts\check_tracked_text.py --check-lf` -> `Checked 112 tracked text files: OK`
-- 신규 패키지 파일 LF/UTF-8 점검 -> `Checked 30 new package files: OK`
+- `python scripts\check_tracked_text.py --check-lf` -> `Checked 142 tracked text files: OK`
+- `python scripts\live_smoke_search.py --max-results 5 --fail-on-cap --max-domestic-pages 30 --max-international-pages 50` -> 국내선/국제선 실사이트 검색 통과
 - `FlightBot_v2.5.spec` PyInstaller 빌드 및 `dist\FlightBot_v2.5.exe` 6초 실행 스모크 통과
 
 ## Features
@@ -31,7 +32,7 @@ python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec
 - 다중 목적지 검색, 날짜 범위 검색, 캘린더 최저가 보기
 - 즐겨찾기, 검색 기록, 세션 저장/복원
 - 가격 알림 및 자동 점검 옵션
-- CSV/Excel 내보내기
+- CSV/Excel 내보내기, formula-like 셀 중립화
 - JSONL + SQLite telemetry 기록
 
 ## Requirements
@@ -82,6 +83,7 @@ Scraping-flight-information/
 ├─ app/mainwindow/              # MainWindow feature mixins
 ├─ core/
 │  ├─ airports.py               # airport/city/airline constants and validation
+│  ├─ file_io.py                # atomic text writes
 │  ├─ search_params.py          # search parameter schema and normalization
 │  └─ preferences.py            # PreferenceManager and user settings
 ├─ scraping/
@@ -116,6 +118,7 @@ from ui.workers import SearchWorker, MultiSearchWorker, DateRangeWorker
 | 영역 | 권장 모듈 |
 | --- | --- |
 | 공항/도시/항공사 상수 | `core.airports` |
+| atomic text write | `core.file_io` |
 | 검색 파라미터 정규화 | `core.search_params` |
 | 사용자 설정 | `core.preferences` |
 | Interpark URL/selector/script | `scraping.interpark.*` |
@@ -130,6 +133,8 @@ from ui.workers import SearchWorker, MultiSearchWorker, DateRangeWorker
 - telemetry JSONL: `logs/flightbot_events.jsonl`
 - 세션 파일: `flight_session_*.json`
 - preferences/session root schema: `schema_version = 2`
+- preferences/session JSON은 atomic write를 사용합니다.
+- 기본 DB 파일이 손상되어 초기화에 실패하면 timestamp backup으로 격리한 뒤 재생성을 시도합니다.
 
 런타임 산출물, DB, 로그, Playwright profile, 빌드 결과, `.codegraph/`는 `.gitignore`에서 제외합니다.
 
@@ -145,7 +150,7 @@ from ui.workers import SearchWorker, MultiSearchWorker, DateRangeWorker
 
 - facade: `database`, `scraper_v2`, `config`, `scraper_config`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`
 - package roots: `app`, `app.mainwindow`, `core`, `scraping`, `storage`, `ui`
-- split modules: `scraping.interpark.*`, `scraping.domestic.*`, `scraping.international.*`, `scraping.search_flow.*`
+- split modules: `core.file_io`, `scraping.interpark.*`, `scraping.domestic.*`, `scraping.international.*`, `scraping.search_flow.*`
 - compatibility modules: `scraping.playwright_*`, `scraping.playwright_api`, `scraping.search_sources`, `scraping.manual_reasons`
 
 빌드:
@@ -179,11 +184,21 @@ git diff --check
 | --- | --- |
 | Playwright 브라우저 실행 실패 | `playwright install chromium` 재실행 |
 | PyInstaller 실행 파일에서 import 실패 | spec hiddenimports가 현재 패키지 구조와 맞는지 확인 |
-| 검색 결과 0건 또는 수동 모드 진입 | telemetry의 `manual_reason`, `api_total_count`, `fetched_pages` 확인 |
+| 검색 결과 0건 또는 수동 모드 진입 | telemetry의 `manual_reason`, `api_total_count`, `fetched_pages`, `api_pages_truncated` 확인 |
 | 설정 복원 오류 | `user_preferences.json`의 `schema_version`, 공항 코드, `is_domestic` 확인 |
-| DB 마이그레이션 오류 | `storage/schema.py`와 `storage/flight_database.py` 회귀 테스트 확인 |
+| DB 마이그레이션/복구 오류 | `storage/schema.py`와 `storage/flight_database.py` 회귀 테스트 및 `.bak` 격리 파일 확인 |
 
 ## Changelog
+
+### 2026-06-11
+
+- 국내선/국제선 API pagination에 page cap과 truncation telemetry를 추가했습니다.
+- 검색 성공 후 DB 저장/검색 로그/last-result/알림 점검 실패가 결과 렌더링을 막지 않도록 분리했습니다.
+- 손상된 SQLite DB 파일은 timestamp backup으로 격리한 뒤 재생성을 시도합니다.
+- preferences/session JSON 저장을 atomic write로 변경했습니다.
+- 검색 worker 시작 전 취소, 자동 가격 알림 DB 조회 실패, CSV/XLSX formula-like 셀 중립화를 보강했습니다.
+- live smoke에 page cap, stale manual reason, browser cleanup 검사를 추가했습니다.
+- PyInstaller spec 3종에 `core.file_io` hidden import를 추가했습니다.
 
 ### 2026-06-10
 

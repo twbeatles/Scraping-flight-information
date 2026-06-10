@@ -20,6 +20,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("ScraperV2")
 
+DOMESTIC_API_FAILURE_REASONS = {
+    "domestic_api_key_missing",
+    "domestic_api_result_fetch_failed",
+    "domestic_api_payload_mismatch",
+    "domestic_api_failed",
+}
+
 
 DOMESTIC_CARRIER_NAMES = {
     "KE": "대한항공",
@@ -50,9 +57,12 @@ def extract_domestic_api_flights_data(
 
     context = getattr(scraper, "_last_search_context", {}) or {}
     cabin = str(context.get("cabin_class", "ECONOMY") or "ECONOMY").upper()
+    page_cap = max(int(getattr(scraper_config, "DOMESTIC_API_MAX_PAGES", 30)), 1)
     page_size = 20
     page_number = 1
     total_pages = 1
+    total_pages_estimated = 1
+    pages_truncated = False
     total_count = 0
     seen: Dict[str, Dict[str, Any]] = {}
 
@@ -69,7 +79,9 @@ def extract_domestic_api_flights_data(
         if isinstance(page_meta, dict):
             page_size = max(_coerce_int(page_meta.get("pageSize")), page_size)
             total_count = max(total_count, _coerce_int(page_meta.get("totalCount")))
-            total_pages = max((total_count + page_size - 1) // page_size, page_number)
+            total_pages_estimated = max((total_count + page_size - 1) // page_size, page_number)
+            pages_truncated = total_pages_estimated > page_cap
+            total_pages = min(total_pages_estimated, page_cap)
 
         items = payload.get("items")
         if not isinstance(items, list) or not items:
@@ -89,8 +101,35 @@ def extract_domestic_api_flights_data(
         {
             "total_count": total_count,
             "fetched_pages": max(page_number - 1, 0),
+            "page_cap": page_cap,
+            "pages_truncated": pages_truncated,
+            "total_pages_estimated": total_pages_estimated,
         },
     )
+
+
+def clear_domestic_api_failure_after_success(scraper: "PlaywrightScraper") -> None:
+    """Move stale domestic API failure state out of the final search status."""
+
+    metrics = getattr(scraper, "_search_metrics", None)
+    stale_reason = ""
+    if isinstance(metrics, dict):
+        stale_reason = str(metrics.pop("api_failure_reason", "") or "")
+        if stale_reason:
+            metrics.setdefault("prewait_api_failure_reason", stale_reason)
+        for key in (
+            "api_failure_payload_keys",
+            "api_failure_code",
+            "api_failure_message",
+            "api_failure_meta",
+            "api_recent_resources",
+        ):
+            if key in metrics:
+                metrics[f"prewait_{key}"] = metrics.pop(key)
+
+    manual_reason = str(getattr(scraper, "_manual_reason", "") or "")
+    if manual_reason in DOMESTIC_API_FAILURE_REASONS or manual_reason == stale_reason:
+        scraper._manual_reason = ""
 
 
 def _fetch_domestic_search_page(

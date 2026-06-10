@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, List
 
 from scraping.models import FlightResult
-from scraping.domestic.api import extract_domestic_api_flights_data
+from scraping.domestic.api import clear_domestic_api_failure_after_success, extract_domestic_api_flights_data
 from scraping.domestic.dom import extract_domestic_dom_flights_data
 from scraping.domestic.helpers import _coerce_int, _combine_benefit_labels
 
@@ -22,10 +22,15 @@ def extract_domestic_flights_data(scraper: "PlaywrightScraper") -> list:
 
     items, metadata = extract_domestic_api_flights_data(scraper)
     if items:
+        clear_domestic_api_failure_after_success(scraper)
         scraper._search_metrics.update(
             {
                 "api_total_count": _coerce_int(metadata.get("total_count")),
                 "fetched_pages": _coerce_int(metadata.get("fetched_pages")),
+                "api_fetched_pages": _coerce_int(metadata.get("fetched_pages")),
+                "api_page_cap": _coerce_int(metadata.get("page_cap")),
+                "api_pages_truncated": bool(metadata.get("pages_truncated")),
+                "api_total_pages_estimated": _coerce_int(metadata.get("total_pages_estimated")),
                 "api_item_count": len(items),
             }
         )
@@ -33,7 +38,10 @@ def extract_domestic_flights_data(scraper: "PlaywrightScraper") -> list:
 
     if not getattr(scraper, "_manual_reason", ""):
         scraper._manual_reason = "domestic_api_failed"
-    return extract_domestic_dom_flights_data(scraper)
+    dom_items = extract_domestic_dom_flights_data(scraper)
+    if dom_items:
+        clear_domestic_api_failure_after_success(scraper)
+    return dom_items
 
 
 def build_domestic_results(

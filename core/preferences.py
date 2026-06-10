@@ -13,6 +13,7 @@ from core.search_params import (
     _coerce_bool,
     normalize_search_params,
 )
+from core.file_io import write_text_atomic
 
 
 logger = logging.getLogger(__name__)
@@ -231,8 +232,10 @@ class PreferenceManager:
     def save(self):
         try:
             self.preferences = self._normalize_preferences_payload(self.preferences)
-            with open(self.filepath, "w", encoding="utf-8") as f:
-                json.dump(self.preferences, f, ensure_ascii=False, indent=4)
+            write_text_atomic(
+                self.filepath,
+                json.dumps(self.preferences, ensure_ascii=False, indent=4),
+            )
         except Exception as e:
             logger.warning(f"Error saving preferences: {e}")
 
@@ -373,8 +376,10 @@ class PreferenceManager:
 
     def export_all_settings(self, filepath: str) -> bool:
         try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(self.preferences, f, ensure_ascii=False, indent=4)
+            write_text_atomic(
+                filepath,
+                json.dumps(self.preferences, ensure_ascii=False, indent=4),
+            )
             logger.info(f"Settings exported to: {filepath}")
             return True
         except Exception as e:

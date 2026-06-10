@@ -90,6 +90,7 @@ hiddenimports = [
     'app.mainwindow.calendar',
     'app.mainwindow.app_lifecycle',
     'core.airports',
+    'core.file_io',
     'core.search_params',
     'core.preferences',
     'scraping.errors',

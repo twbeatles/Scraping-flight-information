@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 
 import config
+from core.file_io import write_text_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +50,10 @@ class SessionManager:
                 "results": serialized_results
             }
             
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(session_data, f, ensure_ascii=False, indent=2)
+            write_text_atomic(
+                filepath,
+                json.dumps(session_data, ensure_ascii=False, indent=2),
+            )
             return True
         except Exception as e:
             logging.error(f"Session save error: {e}")

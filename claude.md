@@ -4,7 +4,7 @@
 
 ## Current Baseline
 
-- 기준일: 2026-06-10
+- 기준일: 2026-06-11
 - 실행 진입점: `python gui_v2.py`
 - 주요 기술: Python 3.10+, PyQt6, Playwright, SQLite, PyInstaller
 - 공개 facade 유지: `config.py`, `scraper_config.py`, `scraper_v2.py`, `database.py`, `gui_v2.py`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`, `scraping.playwright_*`
@@ -16,15 +16,16 @@
 python -m pytest -q
 pyright --warnings
 python scripts\check_tracked_text.py --check-lf
+python scripts\live_smoke_search.py --max-results 5 --fail-on-cap --max-domestic-pages 30 --max-international-pages 50
 python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec
 ```
 
 최근 확인 결과:
 
-- `python -m pytest -q` -> `111 passed`
+- `python -m pytest -q` -> `123 passed`
 - `pyright --warnings` -> `0 errors, 0 warnings`
-- `python scripts\check_tracked_text.py --check-lf` -> `Checked 112 tracked text files: OK`
-- 신규 패키지 파일 LF/UTF-8 점검 -> `Checked 30 new package files: OK`
+- `python scripts\check_tracked_text.py --check-lf` -> `Checked 142 tracked text files: OK`
+- live smoke with page-cap guard -> 국내선/국제선 실사이트 검색 통과
 - `dist\FlightBot_v2.5.exe` 6초 실행 스모크 통과
 
 ## Architecture
@@ -44,6 +45,7 @@ scraper_v2.py
 config.py
 └─ core/*
    ├─ airports.py
+   ├─ file_io.py
    ├─ search_params.py
    └─ preferences.py
 
@@ -56,6 +58,7 @@ database.py
 | 모듈 | 책임 |
 | --- | --- |
 | `core.airports` | 공항/도시/항공사 상수, 공항 코드 검증, 항공사 분류 |
+| `core.file_io` | preferences/session JSON atomic write |
 | `core.search_params` | 검색 파라미터 스키마, 날짜 정규화, 국내선 추론 |
 | `core.preferences` | `PreferenceManager`, 설정 import/export, 히스토리/프로필 |
 | `scraping.interpark.runtime` | timeout, retry, cache, scroll 튜닝 상수 |
@@ -89,6 +92,8 @@ database.py
 - API 성공 시 DOM fallback을 실행하지 않는다.
 - API 실패 또는 key 미확인 시에만 DOM fallback과 수동 모드로 내려간다.
 - `manual_reason`, `api_total_count`, `fetched_pages`, `api_item_count`, `dom_seen_indices`, `dom_gap_detected`를 telemetry에 남긴다.
+- API pagination은 domestic/international page cap을 넘기지 않고, cap으로 잘린 경우 `api_pages_truncated`, `api_page_cap`, `api_total_pages_estimated`를 telemetry에 남긴다.
+- API 성공 이후 남아 있는 pre-wait 실패 사유는 최종 `api_failure_reason`으로 유지하지 않는다.
 - 국내선 canonical `price`는 기본가이고, 혜택가는 `benefit_price`/`benefit_label`에 보존한다.
 - 국내선 왕복 dedup key는 시간, 편명, API key, 혜택가/혜택 라벨을 포함해야 한다.
 
@@ -97,9 +102,12 @@ database.py
 - 검색 파라미터 공용 schema: `origin`, `dest`, `dep`, `ret`, `adults`, `cabin_class`, `is_domestic`
 - `is_domestic`가 없는 구 payload는 국내선 공항 코드 기준으로 추론한다.
 - `user_preferences.json`과 세션 JSON root는 `schema_version = 2`를 유지한다.
+- `user_preferences.json`과 세션 JSON 저장은 `core.file_io.write_text_atomic()`을 사용한다.
 - 검색 패널 복원은 국내선/국제선 모드를 먼저 맞춘 뒤 공항 코드를 적용한다.
 - 자동 가격 알림 실패는 모달 대신 `last_error`, 로그, 목록 상태로 노출한다.
-- CSV/Excel export는 `ui.export_helpers`의 공통 컬럼 정책을 따른다.
+- 자동 가격 알림 DB 조회 실패는 worker 실행으로 이어지지 않게 중단하고 telemetry/log에 남긴다.
+- CSV/Excel export는 `ui.export_helpers`의 공통 컬럼 정책을 따르고 formula-like 셀을 중립화한다.
+- 검색 성공 후 DB 저장, 검색 로그, last-result 저장, 알림 점검 실패는 결과 렌더링을 막지 않는다.
 
 ## Packaging Rules
 
@@ -111,7 +119,7 @@ database.py
 
 필수 범위:
 
-- `core.airports`, `core.search_params`, `core.preferences`
+- `core.airports`, `core.file_io`, `core.search_params`, `core.preferences`
 - `scraping.interpark.*`
 - `scraping.domestic.*`
 - `scraping.international.*`

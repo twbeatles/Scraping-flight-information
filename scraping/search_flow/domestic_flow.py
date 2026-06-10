@@ -114,12 +114,21 @@ def _handle_domestic_round_trip(
                     "fetched_pages": 0,
                 }
         log(f"오는편 {len(return_flights)}개 발견")
+        outbound_pages_truncated = bool(outbound_meta.get("pages_truncated"))
+        return_pages_truncated = bool(return_meta.get("pages_truncated"))
         scraper._search_metrics.update(
             {
                 "api_total_count": int(outbound_meta.get("total_count", 0) or 0)
                 + int(return_meta.get("total_count", 0) or 0),
                 "fetched_pages": int(outbound_meta.get("fetched_pages", 0) or 0)
                 + int(return_meta.get("fetched_pages", 0) or 0),
+                "api_fetched_pages": int(outbound_meta.get("fetched_pages", 0) or 0)
+                + int(return_meta.get("fetched_pages", 0) or 0),
+                "api_page_cap": int(outbound_meta.get("page_cap", 0) or 0)
+                + int(return_meta.get("page_cap", 0) or 0),
+                "api_pages_truncated": outbound_pages_truncated or return_pages_truncated,
+                "api_total_pages_estimated": int(outbound_meta.get("total_pages_estimated", 0) or 0)
+                + int(return_meta.get("total_pages_estimated", 0) or 0),
                 "api_item_count": len(outbound_flights) + len(return_flights),
             }
         )

@@ -5,6 +5,7 @@ import os
 import sys
 import logging
 import threading
+from datetime import datetime
 from typing import Dict, List
 
 from storage.schema import DatabaseSchemaMixin
@@ -33,6 +34,7 @@ class FlightDatabase(
     _connections_by_path: Dict[str, List[sqlite3.Connection]] = {}
 
     def __init__(self, db_path: str | None = None):
+        self.recovery_backup_path: str | None = None
         if db_path is None:
             # Determine appropriate path based on environment
             if getattr(sys, 'frozen', False):
@@ -66,9 +68,47 @@ class FlightDatabase(
         self.telemetry_jsonl_max_files = TELEMETRY_JSONL_MAX_FILES
 
         logger.info(f"Database path: {self.db_path}")
+        try:
+            self._initialize_database()
+        except (sqlite3.Error, OSError) as exc:
+            if not self._recover_database_file(exc):
+                raise
+            self._initialize_database()
+
+    def _initialize_database(self):
         self._init_db()
         self._migrate_schema_if_needed()
         self._backfill_favorite_dedup_keys()
+
+    def _recover_database_file(self, error: Exception) -> bool:
+        if self.db_path == ":memory:" or not os.path.exists(self.db_path):
+            logger.error("Database initialization failed without recoverable file: %s", error)
+            return False
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{self.db_path}.{timestamp}.bak"
+        try:
+            self.close_path_connections()
+            os.replace(self.db_path, backup_path)
+            for suffix in ("-wal", "-shm"):
+                sidecar = f"{self.db_path}{suffix}"
+                if os.path.exists(sidecar):
+                    os.replace(sidecar, f"{backup_path}{suffix}")
+            self.recovery_backup_path = backup_path
+            logger.warning(
+                "Recovered from database initialization failure; backed up %s to %s: %s",
+                self.db_path,
+                backup_path,
+                error,
+            )
+            return True
+        except OSError as backup_error:
+            logger.error(
+                "Failed to back up invalid database after initialization error %s: %s",
+                error,
+                backup_error,
+            )
+            return False
     def _get_connection(self):
         """Thread-safe connection management with proper initialization"""
         if not hasattr(FlightDatabase._local, 'connections'):

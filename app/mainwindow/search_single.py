@@ -121,29 +121,7 @@ class SearchSingleMixin:
             
             # Save price history
             if self.current_search_params:
-                self.db.add_price_history_batch(
-                    self.current_search_params.get('origin', ''),
-                    self.current_search_params.get('dest', ''),
-                    self.current_search_params.get('dep', ''),
-                    results
-                )
-                
-                # Log search
-                self.db.log_search(
-                    self.current_search_params.get('origin', ''),
-                    self.current_search_params.get('dest', ''),
-                    self.current_search_params.get('dep', ''),
-                    self.current_search_params.get('ret'),
-                    self.current_search_params.get('adults', 1),
-                    len(results),
-                    results[0].price if results else None
-                )
-                
-                # 마지막 검색 결과를 DB에 저장 (프로그램 재시작 시 복원용)
-                self.db.save_last_search_results(self.current_search_params, results)
-                
-                # 가격 알림 체크
-                self._check_price_alerts(results)
+                self._persist_successful_search(results)
             
             best_price = results[0].price
             self.progress_bar.setFormat(f"✨ 검색 완료! 최저가: {best_price:,}원 🏆")
@@ -167,6 +145,46 @@ class SearchSingleMixin:
             self.table.update_data([])
             self.tabs.setCurrentIndex(0)
             QMessageBox.information(self, "결과 없음", "항공권을 찾을 수 없습니다.")
+    def _record_persistence_warning(self: Any, action_name: str, error: Exception):
+        logger.warning("%s failed after successful search: %s", action_name, error)
+        try:
+            self.log_viewer.append_log(f"⚠️ {action_name} 실패: {error}")
+        except Exception:
+            pass
+
+    def _persist_successful_search(self: Any, results):
+        origin = self.current_search_params.get('origin', '')
+        dest = self.current_search_params.get('dest', '')
+        dep = self.current_search_params.get('dep', '')
+
+        try:
+            self.db.add_price_history_batch(origin, dest, dep, results)
+        except Exception as e:
+            self._record_persistence_warning("가격 기록 저장", e)
+
+        try:
+            self.db.log_search(
+                origin,
+                dest,
+                dep,
+                self.current_search_params.get('ret'),
+                self.current_search_params.get('adults', 1),
+                len(results),
+                results[0].price if results else None
+            )
+        except Exception as e:
+            self._record_persistence_warning("검색 로그 저장", e)
+
+        try:
+            self.db.save_last_search_results(self.current_search_params, results)
+        except Exception as e:
+            self._record_persistence_warning("마지막 검색 결과 저장", e)
+
+        try:
+            self._check_price_alerts(results)
+        except Exception as e:
+            self._record_persistence_warning("가격 알림 확인", e)
+
     def _check_price_alerts(self: Any, results):
         """검색 완료 후 활성 가격 알림 체크"""
         if not results or not self.current_search_params:

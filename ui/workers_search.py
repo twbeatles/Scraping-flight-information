@@ -81,6 +81,10 @@ class SearchWorker(QThread):
 
     def run(self):
         try:
+            if self.is_cancelled():
+                self.progress.emit("검색이 취소되었습니다.")
+                return
+
             results = self.searcher.search(
                 self.origin, self.destination, self.date, 
                 self.return_date, self.adults, self.cabin_class,

@@ -124,10 +124,34 @@ class MainWindow(
         self._alert_auto_timer.timeout.connect(self._run_auto_alert_check)
         
         # prefs는 이미 테마 로드 시 초기화됨
-        self.db = FlightDatabase()
-        self.db.cleanup_old_data(days=60, telemetry_days=30)
+        self._database_startup_warning = ""
+        try:
+            self.db = FlightDatabase()
+        except Exception as exc:
+            fallback_path = os.path.join(
+                os.environ.get("TEMP", os.getcwd()),
+                "FlightBot_recovered_flight_data.db",
+            )
+            logging.getLogger(__name__).error(
+                "Primary database initialization failed; using fallback DB %s: %s",
+                fallback_path,
+                exc,
+            )
+            self._database_startup_warning = f"기본 DB 초기화 실패, 임시 DB 사용: {exc}"
+            self.db = FlightDatabase(db_path=fallback_path)
+
+        backup_path = getattr(self.db, "recovery_backup_path", None)
+        if backup_path:
+            self._database_startup_warning = f"DB 파일을 복구했습니다. 백업: {backup_path}"
+        try:
+            self.db.cleanup_old_data(days=60, telemetry_days=30)
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Database cleanup failed: %s", exc)
+            self._database_startup_warning = f"DB 오래된 데이터 정리 실패: {exc}"
         
         self._init_ui()
+        if self._database_startup_warning:
+            self.log_viewer.append_log(f"⚠️ {self._database_startup_warning}")
         self.search_panel.restore_settings()
         self._setup_shortcuts()
         self._configure_alert_auto_timer()

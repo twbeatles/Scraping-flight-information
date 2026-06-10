@@ -21,7 +21,13 @@ from database import PriceAlert
 from gui_v2 import MainWindow, resolve_log_level
 from scraper_v2 import FlightResult
 from ui.components import ResultTable, SearchPanel
-from ui.export_helpers import flight_export_headers, flight_to_export_row
+from ui.export_helpers import (
+    export_flights_to_csv,
+    export_flights_to_excel,
+    flight_export_headers,
+    flight_export_rows,
+    flight_to_export_row,
+)
 from ui.search_panel_params import get_panel_search_params
 
 
@@ -434,6 +440,79 @@ def test_search_finished_uses_single_render_path():
     assert ctx.results == results
     assert ctx.apply_calls == 1
     assert ctx.tabs.index == 0
+
+
+def test_search_finished_renders_results_when_db_persistence_fails():
+    class _DummySearchPanel:
+        def set_searching(self, _):
+            return None
+
+    class _DummyProgress:
+        def setRange(self, *_):
+            return None
+
+        def setValue(self, *_):
+            return None
+
+        def setFormat(self, *_):
+            return None
+
+    class _DummyTabs:
+        def __init__(self):
+            self.index = None
+
+        def setCurrentIndex(self, index):
+            self.index = index
+
+    class _FailingDb:
+        def add_price_history_batch(self, *_):
+            raise RuntimeError("history locked")
+
+        def log_search(self, *_):
+            raise RuntimeError("log locked")
+
+        def save_last_search_results(self, *_):
+            raise RuntimeError("snapshot locked")
+
+    class _DummyContext:
+        def __init__(self):
+            self.search_panel = _DummySearchPanel()
+            self.progress_bar = _DummyProgress()
+            self.log_viewer = _DummyLogViewer()
+            self.tabs = _DummyTabs()
+            self.current_search_params = {
+                "origin": "ICN",
+                "dest": "NRT",
+                "dep": "20260301",
+                "adults": 1,
+            }
+            self.db = _FailingDb()
+            self.all_results = []
+            self.results = []
+            self.apply_calls = 0
+            self.alert_calls = 0
+
+        def _apply_filter(self, filters=None):
+            self.apply_calls += 1
+
+        def _check_price_alerts(self, _results):
+            self.alert_calls += 1
+
+        def _record_persistence_warning(self, action_name, error):
+            return MainWindow._record_persistence_warning(self, action_name, error)
+
+        def _persist_successful_search(self, results):
+            return MainWindow._persist_successful_search(self, results)
+
+    ctx = _DummyContext()
+    results = [FlightResult(airline="A", price=100000, departure_time="10:00", arrival_time="12:00")]
+    MainWindow._search_finished(ctx, results)
+
+    assert ctx.all_results == results
+    assert ctx.apply_calls == 1
+    assert ctx.alert_calls == 1
+    assert ctx.tabs.index == 0
+    assert any("실패" in log for log in ctx.log_viewer.logs)
 
 
 def test_result_table_copy_row_info_uses_sorted_visual_row(qapp):
@@ -959,6 +1038,34 @@ def test_search_finished_empty_updates_table_and_shows_result_tab(monkeypatch):
     assert ctx.tabs.index == 0
 
 
+def test_auto_alert_db_read_failure_is_logged_without_worker():
+    class _FailingDb:
+        def get_active_alerts(self):
+            raise RuntimeError("db locked")
+
+    class _DummyContext:
+        def __init__(self):
+            self.alert_worker = None
+            self.db = _FailingDb()
+            self.log_viewer = _DummyLogViewer()
+            self.events = []
+            self._last_alert_auto_error = ""
+
+        def _get_running_workers(self):
+            return []
+
+        def _emit_telemetry_event(self, payload):
+            self.events.append(payload)
+
+    ctx = _DummyContext()
+    MainWindow._run_auto_alert_check(ctx, force=True)
+
+    assert ctx.alert_worker is None
+    assert "DB 조회 실패" in ctx._last_alert_auto_error
+    assert any("DB 조회 실패" in log for log in ctx.log_viewer.logs)
+    assert ctx.events[0]["error_code"] == "AUTO_ALERT_DB_READ_FAILED"
+
+
 def test_resolve_log_level_defaults_and_overrides(monkeypatch):
     monkeypatch.delenv("FLIGHTBOT_LOG_LEVEL", raising=False)
     assert resolve_log_level() == logging.INFO
@@ -1141,6 +1248,56 @@ def test_export_helper_contains_benefit_and_split_price_fields():
     assert data["혜택 정보"] == "카드 혜택"
     assert data["가는편 가격"] == 40000
     assert data["오는편 가격"] == 60000
+
+
+def test_export_rows_neutralize_formula_like_text():
+    flight = FlightResult(
+        airline="=HYPERLINK(\"http://example.test\")",
+        return_airline="+SUM(1,1)",
+        price=100000,
+        benefit_label="@cmd",
+        source="-danger",
+        departure_time="06:15",
+        arrival_time="07:30",
+    )
+
+    row = flight_export_rows([flight])[0]
+
+    assert row[0].startswith("'=")
+    assert row[1].startswith("'+")
+    assert row[4].startswith("'@")
+    assert row[11].startswith("'-")
+    assert row[2] == 100000
+
+
+def test_csv_and_xlsx_exports_neutralize_formula_like_text(tmp_path):
+    import openpyxl
+
+    flight = FlightResult(
+        airline="=cmd",
+        price=100000,
+        benefit_label="+promo",
+        source="@source",
+        departure_time="06:15",
+        arrival_time="07:30",
+    )
+    csv_path = tmp_path / "safe.csv"
+    xlsx_path = tmp_path / "safe.xlsx"
+
+    export_flights_to_csv(str(csv_path), [flight])
+    export_flights_to_excel(str(xlsx_path), [flight])
+
+    csv_content = csv_path.read_text(encoding="utf-8-sig")
+    assert "'=cmd" in csv_content
+    assert "'+promo" in csv_content
+    assert "'@source" in csv_content
+
+    workbook = openpyxl.load_workbook(xlsx_path, data_only=False)
+    worksheet = workbook.active
+    assert worksheet is not None
+    assert worksheet["A2"].value == "'=cmd"
+    assert worksheet["E2"].value == "'+promo"
+    assert worksheet["L2"].value == "'@source"
 
 
 def test_restore_search_from_history_restores_cabin_class(monkeypatch):

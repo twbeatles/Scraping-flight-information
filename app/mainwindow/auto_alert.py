@@ -36,7 +36,21 @@ class AutoAlertMixin:
                 self.log_viewer.append_log("🔔 다른 검색 작업이 진행 중이라 자동 알림 점검을 시작하지 않았습니다.")
             return
 
-        alerts = self.db.get_active_alerts()
+        try:
+            alerts = self.db.get_active_alerts()
+        except Exception as e:
+            summary = str(e).strip().splitlines()[0] if str(e).strip() else "알 수 없는 오류"
+            self._last_alert_auto_error = f"DB 조회 실패: {summary}"
+            self.log_viewer.append_log(f"⚠️ 자동 알림 점검 DB 조회 실패: {summary}")
+            self._emit_telemetry_event(
+                {
+                    "event_type": "auto_alert_cycle_start",
+                    "success": False,
+                    "error_code": "AUTO_ALERT_DB_READ_FAILED",
+                    "details": {"message": summary},
+                }
+            )
+            return
         if not alerts:
             if force:
                 self.log_viewer.append_log("🔔 점검할 활성 가격 알림이 없습니다.")
@@ -108,5 +122,4 @@ class AutoAlertMixin:
             }
         )
         self.alert_worker = None
-
 

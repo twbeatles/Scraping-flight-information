@@ -101,6 +101,7 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
             {
                 "api_total_count": api_total_count,
                 "fetched_pages": fetched_pages,
+                "api_fetched_pages": fetched_pages,
                 "api_item_count": len(normalized),
             }
         )
@@ -133,13 +134,16 @@ def _fetch_international_result_pages(
     payloads = [first_payload]
     page_meta = first_payload.get("page")
     if not isinstance(page_meta, dict):
+        _record_international_pagination_metrics(scraper, fetched_pages=1, total_pages=1, page_cap=1)
         return payloads
 
     total_count = _coerce_int(page_meta.get("totalCount"))
     page_size = max(_coerce_int(page_meta.get("pageSize")), 20)
     total_pages = max((total_count + page_size - 1) // page_size, 1)
+    page_cap = max(int(getattr(scraper_config, "INTERNATIONAL_API_MAX_PAGES", 50)), 1)
+    limited_total_pages = min(total_pages, page_cap)
 
-    for page_number in range(2, total_pages + 1):
+    for page_number in range(2, limited_total_pages + 1):
         payload = page_fetch_json(
             scraper,
             result_url,
@@ -150,7 +154,33 @@ def _fetch_international_result_pages(
             break
         payloads.append(payload)
 
+    _record_international_pagination_metrics(
+        scraper,
+        fetched_pages=len(payloads),
+        total_pages=total_pages,
+        page_cap=page_cap,
+    )
     return payloads
+
+
+def _record_international_pagination_metrics(
+    scraper: "PlaywrightScraper",
+    *,
+    fetched_pages: int,
+    total_pages: int,
+    page_cap: int,
+) -> None:
+    metrics = getattr(scraper, "_search_metrics", None)
+    if not isinstance(metrics, dict):
+        return
+    metrics.update(
+        {
+            "api_page_cap": page_cap,
+            "api_pages_truncated": total_pages > page_cap,
+            "api_total_pages_estimated": total_pages,
+            "api_fetched_pages": fetched_pages,
+        }
+    )
 
 
 def _record_international_api_failure(

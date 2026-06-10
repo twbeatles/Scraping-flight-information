@@ -15,6 +15,9 @@ from scraper_v2 import (
 from scraping.playwright_api import find_search_keys, page_fetch_json
 from scraping.playwright_results import _normalize_international_api_item
 from scraping.playwright_search import _handle_domestic_round_trip
+from scraping.domestic.results import extract_domestic_flights_data
+from scraping.domestic.api import extract_domestic_api_flights_data
+from scraping.international.api import _fetch_international_result_pages
 from ui.workers import AlertAutoCheckWorker, DateRangeWorker, MultiSearchWorker, SearchWorker
 
 
@@ -52,6 +55,138 @@ def test_date_range_worker_closes_searcher_when_cancelled_after_init(monkeypatch
     if _FakeSearcher.instances:
         assert all(instance.closed is True for instance in _FakeSearcher.instances)
     assert worker._active_searchers == set()
+
+
+def test_search_worker_cancel_before_run_does_not_search(monkeypatch):
+    calls = {"search": 0, "close": 0}
+
+    class _FakeSearcher:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        def search(self, *args, **kwargs):
+            calls["search"] += 1
+            return []
+
+        def close(self):
+            calls["close"] += 1
+
+        def is_manual_mode(self):
+            return False
+
+    monkeypatch.setattr("ui.workers.FlightSearcher", _FakeSearcher)
+
+    worker = SearchWorker("ICN", "NRT", "20260301", None, 1, max_results=10)
+    worker.cancel()
+    worker.run()
+
+    assert calls["search"] == 0
+    assert calls["close"] >= 1
+
+
+def test_domestic_api_pagination_respects_page_cap(monkeypatch):
+    calls = []
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = object()
+    scraper._last_search_context = {"cabin_class": "ECONOMY"}
+
+    monkeypatch.setattr("scraping.domestic.api.find_latest_search_key", lambda *_args, **_kwargs: "DOMESTIC::cap")
+    monkeypatch.setattr("scraping.domestic.api.scraper_config.DOMESTIC_API_MAX_PAGES", 2)
+
+    def _fake_fetch(_scraper, _url, *, method="GET", body=None):
+        page_number = int((body or {}).get("pageNumber", 1))
+        calls.append(page_number)
+        return {
+            "page": {"pageSize": 20, "totalCount": 100},
+            "items": [
+                {
+                    "key": f"flight-{page_number}",
+                    "schedule": {
+                        "departureAt": f"2026-03-01T{page_number + 7:02d}:00:00",
+                        "arrivalAt": f"2026-03-01T{page_number + 8:02d}:00:00",
+                        "marketingCarrier": "KE",
+                        "flightNumber": f"{100 + page_number}",
+                    },
+                    "fares": [{"totalPrice": 100000 + page_number}],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("scraping.domestic.api.page_fetch_json", _fake_fetch)
+
+    items, metadata = extract_domestic_api_flights_data(scraper)
+
+    assert calls == [1, 2]
+    assert len(items) == 2
+    assert metadata["pages_truncated"] is True
+    assert metadata["page_cap"] == 2
+    assert metadata["total_pages_estimated"] == 5
+
+
+def test_international_api_pagination_respects_page_cap(monkeypatch):
+    calls = []
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = object()
+    scraper._search_metrics = {}
+
+    monkeypatch.setattr("scraping.international.api.scraper_config.INTERNATIONAL_API_MAX_PAGES", 3)
+
+    def _fake_fetch(_scraper, _url, *, method="GET", body=None):
+        page_number = int((body or {}).get("pageNumber", 1))
+        calls.append(page_number)
+        return {
+            "page": {"currentPage": page_number, "pageSize": 20, "totalCount": 120},
+            "contents": [{"id": page_number}],
+        }
+
+    monkeypatch.setattr("scraping.international.api.page_fetch_json", _fake_fetch)
+
+    payloads = _fetch_international_result_pages(scraper, "INTERNATIONAL::cap")
+
+    assert calls == [1, 2, 3]
+    assert len(payloads) == 3
+    assert scraper._search_metrics["api_pages_truncated"] is True
+    assert scraper._search_metrics["api_page_cap"] == 3
+    assert scraper._search_metrics["api_total_pages_estimated"] == 6
+
+
+def test_domestic_prewait_failure_is_not_final_after_later_api_success(monkeypatch):
+    keys = iter(["", "DOMESTIC::ok"])
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = object()
+    scraper._last_search_context = {"cabin_class": "ECONOMY"}
+    scraper._search_metrics = {}
+
+    monkeypatch.setattr("scraping.domestic.api.find_latest_search_key", lambda *_args, **_kwargs: next(keys))
+
+    def _fake_fetch(_scraper, _url, *, method="GET", body=None):
+        return {
+            "page": {"pageSize": 20, "totalCount": 1},
+            "items": [
+                {
+                    "key": "flight-ok",
+                    "schedule": {
+                        "departureAt": "2026-03-01T09:00:00",
+                        "arrivalAt": "2026-03-01T10:00:00",
+                        "marketingCarrier": "KE",
+                        "flightNumber": "123",
+                    },
+                    "fares": [{"totalPrice": 100000}],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("scraping.domestic.api.page_fetch_json", _fake_fetch)
+
+    assert extract_domestic_flights_data(scraper) == []
+    assert scraper._manual_reason == "domestic_api_key_missing"
+
+    items = extract_domestic_flights_data(scraper)
+
+    assert items
+    assert scraper._manual_reason == ""
+    assert "api_failure_reason" not in scraper._search_metrics
+    assert scraper._search_metrics["prewait_api_failure_reason"] == "domestic_api_key_missing"
 
 
 def test_international_dedup_key_preserves_distinct_return_details():

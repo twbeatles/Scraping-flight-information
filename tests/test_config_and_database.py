@@ -3,8 +3,10 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
 import config
 from app.session_manager import SessionManager
+from core.file_io import write_text_atomic
 from config import PreferenceManager
 from database import FlightDatabase
 from scraper_v2 import FlightResult
@@ -22,6 +24,33 @@ def test_default_alert_auto_check_is_disabled(tmp_path: Path):
     cfg = prefs.get_alert_auto_check()
     assert cfg["enabled"] is False
     assert cfg["interval_min"] == 30
+
+
+def test_write_text_atomic_keeps_existing_file_when_replace_fails(tmp_path: Path, monkeypatch):
+    target = tmp_path / "prefs.json"
+    target.write_text("old", encoding="utf-8")
+
+    def _fail_replace(_src, _dst):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr("core.file_io.os.replace", _fail_replace)
+
+    with pytest.raises(OSError):
+        write_text_atomic(str(target), "new")
+
+    assert target.read_text(encoding="utf-8") == "old"
+
+
+def test_flight_database_recovers_corrupt_db_file(tmp_path: Path):
+    db_path = tmp_path / "flight_data.db"
+    db_path.write_text("not sqlite", encoding="utf-8")
+
+    db = FlightDatabase(db_path=str(db_path))
+    db.add_price_history("ICN", "NRT", "20260301", 100000, "Recovered")
+
+    backups = list(tmp_path.glob("flight_data.db.*.bak"))
+    assert backups
+    assert db.get_price_history("ICN", "NRT", days=365)[0].price == 100000
 
 
 def test_alert_check_summary_reports_active_last_checked_and_error(tmp_path: Path):
