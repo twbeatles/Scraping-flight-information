@@ -1,6 +1,14 @@
 """HistoryMixin methods extracted from MainWindow."""
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+    Qt,
+)
 from typing import TYPE_CHECKING, Any
 from ui.search_panel_params import apply_search_params_to_panel
 

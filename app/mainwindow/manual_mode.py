@@ -1,6 +1,9 @@
 """ManualModeMixin methods extracted from MainWindow."""
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    QMessageBox,
+    logger,
+)
 from scraping.manual_reasons import describe_manual_reason
 from typing import TYPE_CHECKING, Any
 

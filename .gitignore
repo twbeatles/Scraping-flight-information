@@ -16,6 +16,7 @@ env/
 .pyre/
 .pytype/
 .pre-commit-cache/
+.codegraph/
 
 # Coverage artifacts
 .coverage

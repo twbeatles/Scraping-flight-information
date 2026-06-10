@@ -1,6 +1,11 @@
 """ExportsMixin methods extracted from MainWindow."""
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    QApplication,
+    QFileDialog,
+    QMessageBox,
+    datetime,
+)
 from typing import TYPE_CHECKING, Any
 from ui.export_helpers import export_flights_to_csv
 

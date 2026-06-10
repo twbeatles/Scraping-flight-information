@@ -1,6 +1,34 @@
 """Main window composition module."""
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    AlertAutoCheckWorker,
+    DARK_THEME,
+    DateRangeWorker,
+    FilterPanel,
+    FlightDatabase,
+    FlightResult,
+    FlightSearcher,
+    LIGHT_THEME,
+    LogViewer,
+    MAX_PRICE_FILTER,
+    MultiSearchWorker,
+    QApplication,
+    QFrame,
+    QLabel,
+    QMainWindow,
+    QProgressBar,
+    QPushButton,
+    QTabWidget,
+    QTimer,
+    QWidget,
+    ResultTable,
+    SearchPanel,
+    SearchWorker,
+    config,
+    logging,
+    os,
+    sys,
+)
 from typing import Any
 
 from app.session_manager import SessionManager

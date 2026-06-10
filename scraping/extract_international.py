@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, List
 
 from scraping.models import FlightResult
-from scraping.playwright_results import (
+from scraping.international import (
     extract_international_prices as _extract_international_prices,
 )
 

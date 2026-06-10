@@ -1,6 +1,14 @@
 """SearchSingleMixin methods extracted from MainWindow."""
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    QMessageBox,
+    SearchWorker,
+    config,
+    datetime,
+    logger,
+    scraper_config,
+    time,
+)
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:

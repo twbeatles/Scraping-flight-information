@@ -1,6 +1,12 @@
 """Search panel preset/profile/state mixin."""
 
-from ui.search_panel_shared import *
+from typing import Any, cast
+
+import config
+from PyQt6.QtCore import QSettings
+from PyQt6.QtWidgets import QInputDialog, QMessageBox
+
+from ui.search_panel_shared import SearchPanelMixinBase
 from ui.search_panel_params import apply_search_params_to_panel, get_panel_search_params
 
 

@@ -1,6 +1,19 @@
 """FavoritesMixin methods extracted from MainWindow."""
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    QAbstractItemView,
+    QColor,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:

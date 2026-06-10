@@ -1,6 +1,14 @@
 """AppLifecycleMixin methods extracted from MainWindow."""
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    DARK_THEME,
+    LIGHT_THEME,
+    PriceAlertDialog,
+    QMessageBox,
+    SettingsDialog,
+    ShortcutsDialog,
+    logger,
+)
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:

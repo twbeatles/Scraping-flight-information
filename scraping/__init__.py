@@ -1,15 +1,22 @@
-"""Scraping package exports."""
+"""Scraping package exports.
+
+Runtime-heavy scraper classes are loaded lazily so configuration facades can
+import Interpark submodules without triggering Playwright scraper cycles.
+"""
 
 from scraping.errors import (
-    ScraperError,
     BrowserInitError,
-    NetworkError,
     DataExtractionError,
+    NetworkError,
+    ScraperError,
 )
 from scraping.models import FlightResult
-from scraping.playwright_scraper import PlaywrightScraper
-from scraping.searcher import FlightSearcher
-from scraping.parallel import ParallelSearcher
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from scraping.parallel import ParallelSearcher
+    from scraping.playwright_scraper import PlaywrightScraper
+    from scraping.searcher import FlightSearcher
 
 __all__ = [
     "ScraperError",
@@ -21,3 +28,19 @@ __all__ = [
     "FlightSearcher",
     "ParallelSearcher",
 ]
+
+
+def __getattr__(name: str):
+    if name == "PlaywrightScraper":
+        from scraping.playwright_scraper import PlaywrightScraper
+
+        return PlaywrightScraper
+    if name == "FlightSearcher":
+        from scraping.searcher import FlightSearcher
+
+        return FlightSearcher
+    if name == "ParallelSearcher":
+        from scraping.parallel import ParallelSearcher
+
+        return ParallelSearcher
+    raise AttributeError(name)

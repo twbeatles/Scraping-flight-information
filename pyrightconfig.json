@@ -1,6 +1,7 @@
 {
   "include": [
     "app",
+    "core",
     "scraping",
     "storage",
     "ui",

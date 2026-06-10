@@ -1,6 +1,10 @@
 """Search panel action/validation mixin."""
 
-from ui.search_panel_shared import *
+import config
+from PyQt6.QtCore import QDate
+from PyQt6.QtWidgets import QComboBox, QInputDialog, QMenu, QMessageBox
+
+from ui.search_panel_shared import SearchPanelMixinBase
 from ui.search_panel_params import get_panel_search_params
 from ui.airport_options import populate_airport_combo
 

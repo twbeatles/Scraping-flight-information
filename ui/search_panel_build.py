@@ -1,6 +1,21 @@
 """Search panel UI construction mixin."""
 
-from ui.search_panel_shared import *
+from PyQt6.QtCore import QDate, Qt
+from PyQt6.QtWidgets import (
+    QButtonGroup,
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QRadioButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from ui.components_primitives import NoWheelComboBox, NoWheelDateEdit, NoWheelSpinBox
+from ui.search_panel_shared import SearchPanelMixinBase
 from ui.airport_options import populate_airport_combo
 
 

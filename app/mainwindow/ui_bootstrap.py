@@ -2,7 +2,12 @@
 
 from typing import TYPE_CHECKING, Any
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    QKeySequence,
+    QShortcut,
+    scraper_config,
+    webbrowser,
+)
 from app.mainwindow.ui_bootstrap_sections import (
     add_filter_progress_section,
     add_header_section,

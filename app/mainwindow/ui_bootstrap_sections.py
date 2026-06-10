@@ -4,7 +4,22 @@ from __future__ import annotations
 
 from typing import Any, Tuple
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    FilterPanel,
+    LogViewer,
+    NoWheelTabWidget,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+    Qt,
+    ResultTable,
+    SearchPanel,
+)
 
 
 def create_scroll_container() -> Tuple[QScrollArea, QWidget, QVBoxLayout]:

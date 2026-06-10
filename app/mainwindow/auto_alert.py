@@ -1,6 +1,11 @@
 """AutoAlertMixin methods extracted from MainWindow."""
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    AlertAutoCheckWorker,
+    QMessageBox,
+    datetime,
+    logger,
+)
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 

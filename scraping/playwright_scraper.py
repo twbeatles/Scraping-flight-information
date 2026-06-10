@@ -18,7 +18,7 @@ from scraping.playwright_browser import (
     wait_for_domestic_return_view,
     wait_for_results,
 )
-from scraping.playwright_domestic import (
+from scraping.domestic import (
     build_domestic_results,
     combine_domestic_round_trip,
     extract_domestic_api_flights_data,
@@ -26,8 +26,8 @@ from scraping.playwright_domestic import (
     extract_domestic_flights_data,
     extract_domestic_prices,
 )
-from scraping.playwright_results import extract_international_prices, sort_and_limit_results
-from scraping.playwright_search import run_search
+from scraping.international import extract_international_prices, sort_and_limit_results
+from scraping.search_flow import run_search
 
 
 logger = logging.getLogger("ScraperV2")

@@ -1,6 +1,12 @@
 """SessionMixin methods extracted from MainWindow."""
 
-from app.mainwindow.shared import *
+from app.mainwindow.shared import (
+    QFileDialog,
+    QMessageBox,
+    config,
+    datetime,
+    logger,
+)
 from typing import TYPE_CHECKING, Any
 from app.session_manager import SessionManager
 
