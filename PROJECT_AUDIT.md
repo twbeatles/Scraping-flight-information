@@ -9,7 +9,7 @@
 > 후속 조치(2026-07-02): `pip install -r requirements.txt -c constraints.txt`, `playwright install chromium` 후 `python -m pytest -q` → **123 passed in 6.78s** (README/Claude.md 기준선과 일치).  
 > 구현 반영(2026-07-02): 감사 1~3단계 권장사항 대부분 코드 반영 후 `python -m pytest -q` → **130 passed** (`tests/test_audit_improvements.py` 7건 추가).  
 > 후속 완료(2026-07-02): network listener·adapter 분리·live selector probe·MainWindow E2E 테스트·PyInstaller hiddenimports 반영. `python -m pytest -q` → **137 passed** (추가 7건).  
-> 캐시 정책 분리(2026-07-02): foreground(180s)·background(90s)·alert(45s) TTL, child/infant cache key, `AlertAutoCheckWorker` → `cache_mode="alert"`.
+> 캐시 정책 분리(2026-07-02): foreground(180s)·background(90s)·alert(45s) TTL, child/infant cache key, `AlertAutoCheckWorker` → `cache_mode="alert"`. `python -m pytest -q` → **140 passed**.
 
 ---
 
