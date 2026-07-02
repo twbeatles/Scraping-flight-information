@@ -6,12 +6,14 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 import scraping.interpark as scraper_config
+from scraping.interpark.adapter import get_interpark_adapter
 from scraping.playwright_api import (
-    find_latest_search_key,
     get_api_meta,
     page_fetch_json,
     recent_api_resource_urls,
+    resolve_search_key,
 )
+from scraping.search_cancel import raise_if_search_cancelled
 from scraping.domestic.helpers import _coerce_int, _iso_timestamp_to_hhmm
 
 if TYPE_CHECKING:
@@ -49,7 +51,7 @@ def extract_domestic_api_flights_data(
     if not scraper.page:
         return [], {"total_count": 0, "fetched_pages": 0}
 
-    key = str(search_key or "").strip() or find_latest_search_key(scraper, trip_kind="domestic")
+    key = str(search_key or "").strip() or resolve_search_key(scraper, trip_kind="domestic")
     if not key:
         logger.info("국내선 API search key를 찾지 못했습니다.")
         _record_domestic_api_failure(scraper, "domestic_api_key_missing", {})
@@ -67,6 +69,7 @@ def extract_domestic_api_flights_data(
     seen: Dict[str, Dict[str, Any]] = {}
 
     while page_number <= total_pages:
+        raise_if_search_cancelled(scraper)
         payload = _fetch_domestic_search_page(scraper, key, page_number=page_number, page_size=page_size, cabin=cabin)
         if not payload:
             _record_domestic_api_failure(scraper, "domestic_api_result_fetch_failed", {})
@@ -140,7 +143,8 @@ def _fetch_domestic_search_page(
     page_size: int,
     cabin: str,
 ) -> Dict[str, Any]:
-    url = f"{scraper_config.INTERPARK_AIR_API_BASE}/domestic/flights/search/{search_key}"
+    adapter = get_interpark_adapter()
+    url = f"{adapter.air_api_base}{adapter.domestic_search_api_path}{search_key}"
     payload = page_fetch_json(
         scraper,
         url,

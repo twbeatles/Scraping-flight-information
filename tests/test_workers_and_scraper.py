@@ -21,6 +21,11 @@ from scraping.international.api import _fetch_international_result_pages
 from ui.workers import AlertAutoCheckWorker, DateRangeWorker, MultiSearchWorker, SearchWorker
 
 
+class _PlaywrightPageStubMixin:
+    def on(self, _event, _handler):
+        return None
+
+
 def test_date_range_worker_closes_searcher_when_cancelled_after_init(monkeypatch):
     class _FakeSearcher:
         instances = []
@@ -90,7 +95,7 @@ def test_domestic_api_pagination_respects_page_cap(monkeypatch):
     cast(Any, scraper).page = object()
     scraper._last_search_context = {"cabin_class": "ECONOMY"}
 
-    monkeypatch.setattr("scraping.domestic.api.find_latest_search_key", lambda *_args, **_kwargs: "DOMESTIC::cap")
+    monkeypatch.setattr("scraping.domestic.api.resolve_search_key", lambda *_args, **_kwargs: "DOMESTIC::cap")
     monkeypatch.setattr("scraping.domestic.api.scraper_config.DOMESTIC_API_MAX_PAGES", 2)
 
     def _fake_fetch(_scraper, _url, *, method="GET", body=None):
@@ -157,7 +162,7 @@ def test_domestic_prewait_failure_is_not_final_after_later_api_success(monkeypat
     scraper._last_search_context = {"cabin_class": "ECONOMY"}
     scraper._search_metrics = {}
 
-    monkeypatch.setattr("scraping.domestic.api.find_latest_search_key", lambda *_args, **_kwargs: next(keys))
+    monkeypatch.setattr("scraping.domestic.api.resolve_search_key", lambda *_args, **_kwargs: next(keys))
 
     def _fake_fetch(_scraper, _url, *, method="GET", body=None):
         return {
@@ -282,7 +287,7 @@ def test_enter_manual_mode_reinitializes_when_session_missing(monkeypatch):
 
     calls = {"init": 0, "goto": 0}
 
-    class _FakePage:
+    class _FakePage(_PlaywrightPageStubMixin):
         def goto(self, *args, **kwargs):
             calls["goto"] += 1
 
@@ -1218,12 +1223,14 @@ def test_alert_auto_check_worker_uses_alert_cabin_and_emits_hit(monkeypatch):
     observed_cabins = []
     observed_adults = []
     background_modes = []
+    cache_modes = []
 
     class _FakeSearcher:
         def search(self, *args, **kwargs):
             observed_cabins.append(kwargs.get("cabin_class"))
             observed_adults.append(kwargs.get("adults"))
             background_modes.append(kwargs.get("background_mode"))
+            cache_modes.append(kwargs.get("cache_mode"))
             return [FlightResult(airline="A", price=120000, departure_time="10:00", arrival_time="12:00")]
 
         def close(self):
@@ -1242,6 +1249,7 @@ def test_alert_auto_check_worker_uses_alert_cabin_and_emits_hit(monkeypatch):
     assert observed_cabins == ["BUSINESS"]
     assert observed_adults == [2]
     assert background_modes == [True]
+    assert cache_modes == ["alert"]
     assert len(hits) == 1
 
 
@@ -1373,7 +1381,7 @@ def test_domestic_round_trip_dedup_preserves_distinct_flight_numbers():
 
 
 def test_playwright_search_retries_on_network_error(monkeypatch):
-    class _FakePage:
+    class _FakePage(_PlaywrightPageStubMixin):
         def __init__(self):
             self.calls = 0
 
@@ -1395,7 +1403,7 @@ def test_playwright_search_retries_on_network_error(monkeypatch):
     page = _FakePage()
     scraper = PlaywrightScraper()
 
-    def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
+    def _fake_init_browser(*_args, **_kwargs):
         cast(Any, scraper).context = _FakeContext(page)
 
     monkeypatch.setattr(scraper, "_init_browser", _fake_init_browser)
@@ -1415,7 +1423,7 @@ def test_playwright_search_retries_on_network_error(monkeypatch):
 
 
 def test_international_search_attempts_api_extraction_before_dom_wait(monkeypatch):
-    class _FakePage:
+    class _FakePage(_PlaywrightPageStubMixin):
         def __init__(self):
             self.urls = []
 
@@ -1439,7 +1447,7 @@ def test_international_search_attempts_api_extraction_before_dom_wait(monkeypatc
     scraper = PlaywrightScraper()
     calls = {"wait": 0, "extract": 0}
 
-    def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
+    def _fake_init_browser(*_args, **_kwargs):
         cast(Any, scraper).context = _FakeContext(page)
 
     def _fake_wait(*_args, **_kwargs):
@@ -1472,7 +1480,7 @@ def test_international_search_attempts_api_extraction_before_dom_wait(monkeypatc
 
 
 def test_domestic_one_way_search_uses_api_first_extractor(monkeypatch):
-    class _FakePage:
+    class _FakePage(_PlaywrightPageStubMixin):
         def __init__(self):
             self.urls = []
 
@@ -1504,7 +1512,7 @@ def test_domestic_one_way_search_uses_api_first_extractor(monkeypatch):
         for i in range(25)
     ]
 
-    def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
+    def _fake_init_browser(*_args, **_kwargs):
         cast(Any, scraper).context = _FakeContext(page)
 
     def _fake_domestic_extract():
@@ -1528,7 +1536,7 @@ def test_domestic_one_way_search_uses_api_first_extractor(monkeypatch):
 
 
 def test_playwright_search_closes_between_network_retries(monkeypatch):
-    class _FakePage:
+    class _FakePage(_PlaywrightPageStubMixin):
         def __init__(self):
             self.calls = 0
 
@@ -1551,7 +1559,7 @@ def test_playwright_search_closes_between_network_retries(monkeypatch):
     scraper = PlaywrightScraper()
     close_calls = {"count": 0}
 
-    def _fake_init_browser(_log=None, _user_data_dir=None, headless=False):
+    def _fake_init_browser(*_args, **_kwargs):
         cast(Any, scraper).context = _FakeContext(page)
 
     def _fake_close():

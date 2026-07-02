@@ -883,6 +883,202 @@ def test_update_progress_dedup_suppresses_duplicate_logs():
     assert ctx._status_bar.messages[-1] == "new message"
 
 
+def test_start_search_passes_child_and_infant_to_worker(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class _Signal:
+        def connect(self, _):
+            return None
+
+    class _DummyWorker:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+        def start(self):
+            return None
+
+        progress = _Signal()
+        finished = _Signal()
+        error = _Signal()
+        manual_mode_signal = _Signal()
+
+    monkeypatch.setattr("app.mainwindow.search_single.SearchWorker", _DummyWorker)
+
+    class _DummyPrefs:
+        def add_history(self, *_):
+            return None
+
+        def save_last_search(self, *_):
+            return None
+
+        def get_max_results(self):
+            return 1000
+
+    class _DummySearchPanel:
+        rb_domestic = type("R", (), {"isChecked": lambda *_: False})()
+        spin_child = type("S", (), {"value": lambda *_: 2})()
+        spin_infant = type("S", (), {"value": lambda *_: 1})()
+
+        def set_searching(self, *_):
+            return None
+
+        def consume_force_refresh(self):
+            return False
+
+    class _DummyTable:
+        def setRowCount(self, *_):
+            return None
+
+    class _DummyManual:
+        def setVisible(self, *_):
+            return None
+
+    class _DummyTabs:
+        def setCurrentIndex(self, *_):
+            return None
+
+    class _DummyProgress:
+        def setRange(self, *_):
+            return None
+
+        def setFormat(self, *_):
+            return None
+
+    class _DummyStatus:
+        def showMessage(self, *_):
+            return None
+
+    class _DummyContext:
+        def __init__(self):
+            self.prefs = _DummyPrefs()
+            self.search_panel = _DummySearchPanel()
+            self.table = _DummyTable()
+            self.manual_frame = _DummyManual()
+            self.log_viewer = _DummyLogViewer()
+            self.tabs = _DummyTabs()
+            self.progress_bar = _DummyProgress()
+            self.active_searcher = None
+            self.worker = None
+            self.current_search_params = {}
+
+        def _stop_alert_worker_if_running(self):
+            return None
+
+        def _ensure_no_running_search(self):
+            return True
+
+        def _guard_manual_browser_for_new_search(self, _):
+            return True
+
+        def _update_progress(self, *_):
+            return None
+
+        def _search_finished(self, *_):
+            return None
+
+        def _search_error(self, *_):
+            return None
+
+        def _activate_manual_mode(self, *_):
+            return None
+
+        def _emit_telemetry_event(self, *_):
+            return None
+
+        def statusBar(self):
+            return _DummyStatus()
+
+    ctx = _DummyContext()
+    MainWindow._start_search(ctx, "ICN", "NRT", "20260301", None, 1, "ECONOMY")
+
+    assert captured["child"] == 2
+    assert captured["infant"] == 1
+    assert ctx.current_search_params["child"] == 2
+    assert ctx.current_search_params["infant"] == 1
+
+
+def test_search_finished_logs_api_page_truncation_warning():
+    class _DummySearchPanel:
+        def set_searching(self, _):
+            return None
+
+    class _DummyProgress:
+        def setRange(self, *_):
+            return None
+
+        def setValue(self, *_):
+            return None
+
+        def setFormat(self, *_):
+            return None
+
+    class _DummyTabs:
+        def __init__(self):
+            self.index = None
+
+        def setCurrentIndex(self, index):
+            self.index = index
+
+    class _DummySearcher:
+        def get_search_metrics(self):
+            return {"api_pages_truncated": True}
+
+    class _DummyWorker:
+        def __init__(self):
+            self.searcher = _DummySearcher()
+
+    class _DummyDb:
+        def add_price_history_batch(self, *_):
+            return None
+
+        def log_search(self, *_):
+            return None
+
+        def save_last_search_results(self, *_):
+            return None
+
+    class _DummyContext:
+        def __init__(self):
+            self.search_panel = _DummySearchPanel()
+            self.progress_bar = _DummyProgress()
+            self.log_viewer = _DummyLogViewer()
+            self.tabs = _DummyTabs()
+            self.current_search_params = {
+                "origin": "ICN",
+                "dest": "NRT",
+                "dep": "20260301",
+                "adults": 1,
+            }
+            self.db = _DummyDb()
+            self.all_results = []
+            self.results = []
+            self.apply_calls = 0
+            self.worker = _DummyWorker()
+            self.alert_calls = 0
+
+        def _apply_filter(self, filters=None):
+            self.apply_calls += 1
+
+        def _check_price_alerts(self, _results):
+            self.alert_calls += 1
+
+        def _record_persistence_warning(self, action_name, error):
+            return MainWindow._record_persistence_warning(self, action_name, error)
+
+        def _persist_successful_search(self, results):
+            return MainWindow._persist_successful_search(self, results)
+
+        def _emit_telemetry_event(self, _payload):
+            return None
+
+    ctx = _DummyContext()
+    results = [FlightResult(airline="A", price=100000, departure_time="10:00", arrival_time="12:00")]
+    MainWindow._search_finished(ctx, results)
+
+    assert ctx.apply_calls == 1
+    assert any("페이지 상한" in log for log in ctx.log_viewer.logs)
+
+
 def test_start_search_consumes_force_refresh_into_worker(monkeypatch):
     captured = {"force_refresh": None}
 

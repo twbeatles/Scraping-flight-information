@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+from scraping.interpark.adapter import InterparkAdapterConfig, get_interpark_adapter
 
 if TYPE_CHECKING:
     from scraping.playwright_scraper import PlaywrightScraper
@@ -91,7 +93,27 @@ def page_fetch_json(
     if not isinstance(result, dict):
         return {}
     _record_api_meta(scraper, result)
+    _maybe_cache_search_key_from_fetch(scraper, url, result)
     return result
+
+
+def _maybe_cache_search_key_from_fetch(
+    scraper: "PlaywrightScraper",
+    url: str,
+    payload: Dict[str, Any],
+) -> None:
+    adapter = get_interpark_adapter()
+    payload_key = extract_search_key_from_payload(payload)
+    if payload_key:
+        if adapter.domestic_search_api_path in url or payload_key.startswith(adapter.domestic_key_prefix):
+            cache_search_key(scraper, trip_kind="domestic", key=payload_key)
+        if adapter.international_search_api_path in url or payload_key.startswith(adapter.international_key_prefix):
+            cache_search_key(scraper, trip_kind="international", key=payload_key)
+        return
+
+    trip_kind, token = extract_search_key_from_url(url, adapter=adapter)
+    if trip_kind and token:
+        cache_search_key(scraper, trip_kind=trip_kind, key=token)
 
 
 def get_api_meta(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -128,7 +150,86 @@ def _record_api_meta(scraper: "PlaywrightScraper", payload: Dict[str, Any]) -> N
                 del failures[:-5]
 
 
+def _ensure_search_key_cache(scraper: "PlaywrightScraper") -> Dict[str, List[str]]:
+    cache = getattr(scraper, "_api_search_key_cache", None)
+    if not isinstance(cache, dict):
+        cache = {"domestic": [], "international": []}
+        scraper._api_search_key_cache = cache
+    return cache
+
+
+def cache_search_key(scraper: "PlaywrightScraper", *, trip_kind: str, key: str) -> None:
+    normalized = str(key or "").strip()
+    if not normalized:
+        return
+    bucket = _ensure_search_key_cache(scraper).setdefault(trip_kind, [])
+    if normalized not in bucket:
+        bucket.append(normalized)
+
+
+def get_cached_search_keys(scraper: "PlaywrightScraper", *, trip_kind: str) -> List[str]:
+    cache = _ensure_search_key_cache(scraper)
+    values = cache.get(trip_kind, [])
+    return [str(item) for item in values if str(item).strip()]
+
+
+def extract_search_key_from_url(
+    url: str,
+    *,
+    adapter: InterparkAdapterConfig | None = None,
+) -> Tuple[str, str]:
+    """Return `(trip_kind, key)` parsed from an Interpark API URL."""
+
+    config = adapter or get_interpark_adapter()
+    text = str(url or "")
+    if not text:
+        return "", ""
+
+    for trip_kind, prefix, path in (
+        ("domestic", config.domestic_key_prefix, config.domestic_search_api_path),
+        ("international", config.international_key_prefix, config.international_search_api_path),
+    ):
+        if prefix in text:
+            start = text.index(prefix)
+            token = text[start:].split("/")[0].split("?")[0]
+            if token:
+                return trip_kind, token
+        if path in text:
+            tail = text.split(path, 1)[-1]
+            token = tail.split("/")[0].split("?")[0]
+            if token.startswith(prefix):
+                return trip_kind, token
+    return "", ""
+
+
+def extract_search_key_from_payload(payload: Dict[str, Any]) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    for field in ("key", "searchKey", "search_key"):
+        value = str(payload.get(field) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def find_search_keys(
+    scraper: "PlaywrightScraper",
+    *,
+    trip_kind: str,
+) -> List[str]:
+    """Return search keys from cache and performance resources in stable order."""
+
+    keys: List[str] = []
+    for cached in get_cached_search_keys(scraper, trip_kind=trip_kind):
+        if cached not in keys:
+            keys.append(cached)
+    for discovered in find_search_keys_from_performance(scraper, trip_kind=trip_kind):
+        if discovered not in keys:
+            keys.append(discovered)
+    return keys
+
+
+def find_search_keys_from_performance(
     scraper: "PlaywrightScraper",
     *,
     trip_kind: str,
@@ -138,8 +239,13 @@ def find_search_keys(
     if not scraper.page:
         return []
 
-    prefix = "DOMESTIC::" if trip_kind == "domestic" else "INTERNATIONAL::"
-    pattern = "/domestic/flights/search/" if trip_kind == "domestic" else "/international/flights/search/v2/"
+    adapter = get_interpark_adapter()
+    prefix = adapter.domestic_key_prefix if trip_kind == "domestic" else adapter.international_key_prefix
+    pattern = (
+        adapter.domestic_search_api_path
+        if trip_kind == "domestic"
+        else adapter.international_search_api_path
+    )
     script = f"""
     () => {{
         const resources = performance.getEntriesByType('resource')
@@ -178,7 +284,12 @@ def recent_api_resource_urls(
     if not scraper.page:
         return []
 
-    pattern = "/domestic/flights/search/" if trip_kind == "domestic" else "/international/flights/search/v2/"
+    adapter = get_interpark_adapter()
+    pattern = (
+        adapter.domestic_search_api_path
+        if trip_kind == "domestic"
+        else adapter.international_search_api_path
+    )
     script = f"""
     () => performance.getEntriesByType('resource')
         .map((entry) => String(entry.name || ''))
@@ -194,13 +305,25 @@ def recent_api_resource_urls(
     return [_sanitize_resource_url(str(item)) for item in result if str(item).strip()]
 
 
+def resolve_search_key(
+    scraper: "PlaywrightScraper",
+    *,
+    trip_kind: str,
+    explicit_key: str | None = None,
+) -> str:
+    explicit = str(explicit_key or "").strip()
+    if explicit:
+        return explicit
+    keys = find_search_keys(scraper, trip_kind=trip_kind)
+    return keys[-1] if keys else ""
+
+
 def find_latest_search_key(
     scraper: "PlaywrightScraper",
     *,
     trip_kind: str,
 ) -> str:
-    keys = find_search_keys(scraper, trip_kind=trip_kind)
-    return keys[-1] if keys else ""
+    return resolve_search_key(scraper, trip_kind=trip_kind)
 
 
 def _sanitize_resource_url(url: str) -> str:

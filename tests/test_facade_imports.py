@@ -7,6 +7,8 @@ from core.search_params import normalize_search_params as core_normalize_search_
 from scraping.domestic import combine_domestic_round_trip as domestic_combine_round_trip
 from scraping.interpark.scripts import ScraperScripts as InterparkScraperScripts
 from scraping.interpark.selectors import REGEX_TIME as INTERPARK_REGEX_TIME
+from scraping.interpark.adapter import get_interpark_adapter
+from scraping.interpark.network_listener import attach_interpark_response_listener
 from scraping.interpark.urls import build_interpark_search_url as interpark_build_search_url
 from scraping.international.normalizer import (
     _normalize_international_api_item as direct_normalize_international_api_item,
@@ -60,6 +62,18 @@ def test_config_facade_still_exports_core_contracts():
     assert config.AIRPORTS is CORE_AIRPORTS
     assert config.normalize_search_params(params) == core_normalize_search_params(params)
     assert config._extract_airport_code("ICN 인천") == "ICN"
+
+
+def test_interpark_package_exports_adapter_and_network_listener():
+    from scraping.interpark import (
+        InterparkAdapterConfig,
+        attach_interpark_response_listener as package_attach_listener,
+        get_interpark_adapter as package_get_adapter,
+    )
+
+    assert package_get_adapter is get_interpark_adapter
+    assert package_attach_listener is attach_interpark_response_listener
+    assert isinstance(get_interpark_adapter(), InterparkAdapterConfig)
 
 
 def test_scraper_config_facade_still_exports_interpark_contracts():

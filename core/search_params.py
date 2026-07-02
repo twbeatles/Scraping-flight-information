@@ -20,7 +20,7 @@ def normalize_search_date(value: Any) -> str | None:
             return datetime.strptime(text, fmt).strftime("%Y%m%d")
         except ValueError:
             continue
-    return text
+    return None
 
 
 def _coerce_bool(value: Any, default: bool = False) -> bool:
@@ -57,6 +57,15 @@ def normalize_search_params(params: Dict[str, Any] | None) -> Dict[str, Any]:
         adults = 1
     adults = max(1, min(adults, 9))
 
+    try:
+        child = max(0, min(int(raw.get("child", 0) or 0), 9))
+    except Exception:
+        child = 0
+    try:
+        infant = max(0, min(int(raw.get("infant", 0) or 0), 9))
+    except Exception:
+        infant = 0
+
     cabin_class = str(raw.get("cabin_class", raw.get("cabin", "ECONOMY")) or "ECONOMY").upper()
     if cabin_class not in VALID_CABIN_CLASSES:
         cabin_class = "ECONOMY"
@@ -73,6 +82,8 @@ def normalize_search_params(params: Dict[str, Any] | None) -> Dict[str, Any]:
         "dep": dep or "",
         "ret": ret,
         "adults": adults,
+        "child": child,
+        "infant": infant,
         "cabin_class": cabin_class,
         "is_domestic": is_domestic,
     }

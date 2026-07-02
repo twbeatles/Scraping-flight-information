@@ -27,6 +27,7 @@ from scraping.domestic import (
     extract_domestic_prices,
 )
 from scraping.international import extract_international_prices, sort_and_limit_results
+from scraping.interpark.network_listener import attach_interpark_response_listener
 from scraping.search_flow import run_search
 
 
@@ -65,6 +66,9 @@ class PlaywrightScraper:
         self._last_search_context: Dict[str, Any] = {}
         self._manual_reason: str = ""
         self._search_metrics: Dict[str, Any] = {}
+        self._api_search_key_cache: Dict[str, List[str]] = {}
+        self._cancel_check: Optional[Callable[[], bool]] = None
+        self._network_listener_page_ids: set[int] = set()
 
     def _emit_telemetry(self, event_type: str, success: bool = True, **kwargs) -> None:
         if not self.telemetry_callback:
@@ -154,6 +158,8 @@ class PlaywrightScraper:
             if self.context is None:
                 return False
             self.page = self.context.new_page()
+            if self.page is not None:
+                attach_interpark_response_listener(self, self.page)
 
             if url and self.page is not None:
                 try:
@@ -214,6 +220,8 @@ class PlaywrightScraper:
         emit: Optional[Callable[[str], None]] = None,
         _retry_count: int = 0,
         background_mode: bool = False,
+        child: int = 0,
+        infant: int = 0,
     ) -> List[FlightResult]:
         return run_search(
             self,
@@ -227,6 +235,8 @@ class PlaywrightScraper:
             emit=emit,
             retry_count=_retry_count,
             background_mode=background_mode,
+            child=child,
+            infant=infant,
             time_module=time,
         )
 

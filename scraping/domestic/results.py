@@ -69,7 +69,18 @@ def build_domestic_results(
         if price <= 0 or not dep_time or not arr_time:
             continue
 
-        key = f"{airline}_{dep_time}_{arr_time}_{price}"
+        key = "|".join(
+            [
+                str(item.get("key", "") or ""),
+                airline,
+                dep_time,
+                arr_time,
+                str(price),
+                flight_number,
+                str(benefit_price),
+                benefit_label,
+            ]
+        )
         if key in seen:
             continue
         seen.add(key)

@@ -7,6 +7,7 @@ network, browser availability, and Interpark runtime behavior.
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
@@ -20,9 +21,10 @@ if str(ROOT_DIR) not in sys.path:
 from scraper_v2 import FlightSearcher
 
 
-DEFAULT_ROUTES: List[Tuple[str, str, str]] = [
-    ("domestic", "GMP", "CJU"),
-    ("international", "ICN", "NRT"),
+DEFAULT_ROUTES: List[Tuple[str, str, str, str | None]] = [
+    ("domestic", "GMP", "CJU", None),
+    ("domestic_roundtrip", "GMP", "CJU", "ret"),
+    ("international", "ICN", "NRT", None),
 ]
 
 
@@ -124,11 +126,23 @@ def main() -> int:
     parser.add_argument("--fail-on-cap", action="store_true", help="Fail if live search exceeds page caps or leaves stale final failure state.")
     parser.add_argument("--max-domestic-pages", type=int, default=30)
     parser.add_argument("--max-international-pages", type=int, default=50)
+    parser.add_argument(
+        "--selector-probe",
+        action="store_true",
+        help="After search smoke, run scripts/live_selector_probe.py against the live site.",
+    )
+    parser.add_argument("--selector-probe-wait-seconds", type=float, default=8.0)
     args = parser.parse_args()
 
     failed = False
-    for kind, origin, dest in DEFAULT_ROUTES:
-        ret = None if kind == "domestic" else args.ret
+    for route in DEFAULT_ROUTES:
+        kind, origin, dest, ret_mode = route
+        if ret_mode == "ret":
+            ret = args.ret
+        elif kind == "international":
+            ret = args.ret
+        else:
+            ret = None
         summary = _run_route(kind, origin, dest, args.dep, ret, args.max_results)
         print(
             f"[{summary['kind']}] {summary['route']} "
@@ -137,8 +151,23 @@ def main() -> int:
             f"cleanup_ok={summary['cleanup_ok']} metrics={summary['metrics']}"
         )
         if args.fail_on_cap:
-            page_cap = args.max_domestic_pages if kind == "domestic" else args.max_international_pages
+            if kind.startswith("domestic"):
+                page_cap = args.max_domestic_pages
+            else:
+                page_cap = args.max_international_pages
             failed = _violates_smoke_thresholds(summary, page_cap=page_cap) or failed
+
+    if args.selector_probe:
+        probe_script = ROOT_DIR / "scripts" / "live_selector_probe.py"
+        print("[selector-probe] starting live DOM selector probe")
+        probe_exit = subprocess.run(
+            [sys.executable, str(probe_script)],
+            cwd=str(ROOT_DIR),
+            check=False,
+        ).returncode
+        if probe_exit != 0:
+            print("[selector-probe] failed", file=sys.stderr)
+            failed = True
 
     return 1 if failed else 0
 

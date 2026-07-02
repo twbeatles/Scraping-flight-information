@@ -1,5 +1,11 @@
 """Interpark-specific scraping configuration and script helpers."""
 
+from scraping.interpark.adapter import (
+    InterparkAdapterConfig,
+    DEFAULT_INTERPARK_ADAPTER,
+    get_interpark_adapter,
+)
+from scraping.interpark.network_listener import attach_interpark_response_listener
 from scraping.interpark.runtime import (
     AUTO_BLOCK_RESOURCE_TYPES,
     AUTO_SEARCH_HEADLESS,
@@ -14,6 +20,11 @@ from scraping.interpark.runtime import (
     ENABLE_SEARCH_CACHE,
     FILTER_DEBOUNCE_MS,
     INTERNATIONAL_API_MAX_PAGES,
+    INTERNATIONAL_STATUS_MAX_POLLS,
+    INTERNATIONAL_STATUS_POLL_INITIAL_MS,
+    INTERNATIONAL_STATUS_POLL_MAX_MS,
+    INTERPARK_INTERNATIONAL_API_VERSION,
+    PARALLEL_SEARCH_LAUNCH_DELAY_SECONDS,
     INTERNATIONAL_MAX_SCROLLS,
     MAX_RETRY_COUNT,
     PAGE_LOAD_TIMEOUT_MS,
@@ -21,6 +32,8 @@ from scraping.interpark.runtime import (
     RETRY_DELAY_SECONDS,
     SCROLL_PAUSE_TIME,
     SEARCH_CACHE_MAX_ENTRIES,
+    SEARCH_CACHE_TTL_ALERT_SECONDS,
+    SEARCH_CACHE_TTL_BACKGROUND_SECONDS,
     SEARCH_CACHE_TTL_SECONDS,
     SEARCH_PAGE_STABILIZE_SECONDS,
     SELECTOR_HEALTH_WINDOW,
@@ -45,6 +58,10 @@ from scraping.interpark.urls import (
 from scraping.interpark.scripts import ScraperScripts
 
 __all__ = [
+    "DEFAULT_INTERPARK_ADAPTER",
+    "InterparkAdapterConfig",
+    "attach_interpark_response_listener",
+    "get_interpark_adapter",
     "AUTO_BLOCK_RESOURCE_TYPES",
     "AUTO_SEARCH_HEADLESS",
     "DATA_WAIT_TIMEOUT_SECONDS",
@@ -59,6 +76,11 @@ __all__ = [
     "FILTER_DEBOUNCE_MS",
     "INTERNATIONAL_API_MAX_PAGES",
     "INTERNATIONAL_MAX_SCROLLS",
+    "INTERNATIONAL_STATUS_MAX_POLLS",
+    "INTERNATIONAL_STATUS_POLL_INITIAL_MS",
+    "INTERNATIONAL_STATUS_POLL_MAX_MS",
+    "INTERPARK_INTERNATIONAL_API_VERSION",
+    "PARALLEL_SEARCH_LAUNCH_DELAY_SECONDS",
     "INTERPARK_AIR_API_BASE",
     "INTERPARK_SEARCH_URL_BASE",
     "MAX_RETRY_COUNT",
@@ -70,6 +92,8 @@ __all__ = [
     "RETRY_DELAY_SECONDS",
     "SCROLL_PAUSE_TIME",
     "SEARCH_CACHE_MAX_ENTRIES",
+    "SEARCH_CACHE_TTL_ALERT_SECONDS",
+    "SEARCH_CACHE_TTL_BACKGROUND_SECONDS",
     "SEARCH_CACHE_TTL_SECONDS",
     "SEARCH_PAGE_STABILIZE_SECONDS",
     "SELECTOR_HEALTH_WINDOW",

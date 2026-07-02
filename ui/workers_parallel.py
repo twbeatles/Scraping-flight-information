@@ -1,11 +1,13 @@
 """Background Workers for Flight Bot"""
 import logging
 import threading
+import time
 import traceback
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from PyQt6.QtCore import QThread, pyqtSignal
 
+import scraper_config
 from scraper_v2 import FlightSearcher, BrowserInitError, NetworkError
 
 logger = logging.getLogger(__name__)
@@ -121,6 +123,7 @@ class MultiSearchWorker(QThread):
                     max_results=self.max_results,
                     progress_callback=lambda msg: self.progress.emit(f"[{dest}] {msg}"),
                     background_mode=True,
+                    cancel_check=self.is_cancelled,
                 )
                 return index, dest, results, None
             except Exception as e:
@@ -132,6 +135,10 @@ class MultiSearchWorker(QThread):
                 except Exception:
                     pass
 
+        launch_delay = max(
+            float(getattr(scraper_config, "PARALLEL_SEARCH_LAUNCH_DELAY_SECONDS", 0.75)),
+            0.0,
+        )
         executor = ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS)
         pending = list(enumerate(self.destinations, 1))
         futures = {}
@@ -176,6 +183,9 @@ class MultiSearchWorker(QThread):
 
                     all_results[done_dest] = results
                     self.single_finished.emit(done_dest, results)
+
+                if launch_delay > 0 and pending and futures:
+                    time.sleep(launch_delay)
         finally:
             if futures:
                 _cancel_and_shutdown_executor(executor, futures)
@@ -285,13 +295,16 @@ class DateRangeWorker(QThread):
                     max_results=self.max_results,
                     progress_callback=lambda msg: self.progress.emit(msg),
                     background_mode=True,
+                    cancel_check=self.is_cancelled,
                 )
 
                 if searcher.is_manual_mode():
                     return date, (0, "수동모드"), "manual"
 
                 if results:
-                    min_price = min(r.price for r in results)
+                    from scraping.models import effective_flight_price
+
+                    min_price = min(effective_flight_price(r) for r in results)
                     min_airline = next(r.airline for r in results if r.price == min_price)
                     return date, (min_price, min_airline), "ok"
                 return date, (0, "N/A"), "empty"

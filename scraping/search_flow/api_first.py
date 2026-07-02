@@ -28,9 +28,6 @@ def _try_api_first_extraction(
     page = getattr(scraper, "page", None)
     if page is None or not hasattr(page, "evaluate"):
         return []
-    if is_domestic and is_round_trip:
-        return []
-
     if is_domestic:
         log("🇰🇷 국내선 API 우선 추출 시도")
     else:

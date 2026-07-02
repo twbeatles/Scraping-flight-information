@@ -4,8 +4,17 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, List
 
 import scraping.interpark as scraper_config
+from scraping.interpark.adapter import get_interpark_adapter
 from scraping.models import FlightResult
-from scraping.playwright_api import find_latest_search_key, get_api_meta, page_fetch_json, recent_api_resource_urls
+from scraping.playwright_api import (
+    cache_search_key,
+    extract_search_key_from_payload,
+    get_api_meta,
+    page_fetch_json,
+    recent_api_resource_urls,
+    resolve_search_key,
+)
+from scraping.search_cancel import raise_if_search_cancelled
 from scraping.international.helpers import _coerce_int, _result_unique_key
 from scraping.international.normalizer import _normalize_international_api_item
 
@@ -22,7 +31,7 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
         if not context or context.get("is_domestic"):
             return []
 
-        search_key = find_latest_search_key(scraper, trip_kind="international")
+        search_key = resolve_search_key(scraper, trip_kind="international")
         initial: Dict[str, Any] = {}
         if not search_key:
             search_url = scraper_config.build_interpark_international_api_search_url(
@@ -36,19 +45,34 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
                 infant=context.get("infant", 0),
             )
             initial = page_fetch_json(scraper, search_url)
-            search_key = str(initial.get("key") or "").strip()
+            search_key = extract_search_key_from_payload(initial)
+            if search_key:
+                cache_search_key(scraper, trip_kind="international", key=search_key)
         if not search_key:
             logger.info("국제선 API search key를 찾지 못했습니다: %s", initial)
             _record_international_api_failure(scraper, "international_api_key_missing", initial)
             return []
 
+        adapter = get_interpark_adapter()
         status_url = (
-            f"{scraper_config.INTERPARK_AIR_API_BASE}/international/flights/search/v2/{search_key}/status"
+            f"{adapter.air_api_base}{adapter.international_search_api_path}{search_key}/status"
         )
-        max_polls = max(int(scraper_config.DATA_WAIT_TIMEOUT_SECONDS), 1)
+        max_polls = max(
+            int(getattr(scraper_config, "INTERNATIONAL_STATUS_MAX_POLLS", 60)),
+            1,
+        )
+        poll_initial_ms = max(
+            int(getattr(scraper_config, "INTERNATIONAL_STATUS_POLL_INITIAL_MS", 1000)),
+            250,
+        )
+        poll_max_ms = max(
+            int(getattr(scraper_config, "INTERNATIONAL_STATUS_POLL_MAX_MS", 2000)),
+            poll_initial_ms,
+        )
         status_payload: Dict[str, Any] = {}
 
         for attempt in range(max_polls):
+            raise_if_search_cancelled(scraper)
             status_payload = page_fetch_json(scraper, status_url)
             status_meta = get_api_meta(status_payload)
             if status_meta and not bool(status_meta.get("ok", True)):
@@ -56,15 +80,20 @@ def _extract_international_prices_via_api(scraper: "PlaywrightScraper") -> List[
                 _record_international_api_failure(scraper, "international_api_http_failed", status_payload)
                 return []
             if str(status_payload.get("status") or "").upper() == "COMPLETE":
+                if isinstance(getattr(scraper, "_search_metrics", None), dict):
+                    scraper._search_metrics["api_status_poll_attempts"] = attempt + 1
                 break
             if status_payload.get("code"):
                 logger.info("국제선 API status 실패: %s", status_payload)
                 _record_international_api_failure(scraper, "international_api_status_failed", status_payload)
                 return []
             if scraper.page:
-                scraper.page.wait_for_timeout(1000)
+                wait_ms = min(poll_initial_ms * (attempt // 5 + 1), poll_max_ms)
+                scraper.page.wait_for_timeout(wait_ms)
             if attempt == max_polls - 1:
                 logger.info("국제선 API status polling timeout: %s", search_key)
+                if isinstance(getattr(scraper, "_search_metrics", None), dict):
+                    scraper._search_metrics["api_status_poll_attempts"] = attempt + 1
                 _record_international_api_failure(scraper, "international_api_status_timeout", status_payload)
                 return []
 
@@ -119,9 +148,8 @@ def _fetch_international_result_pages(
     scraper: "PlaywrightScraper",
     search_key: str,
 ) -> List[Dict[str, Any]]:
-    result_url = (
-        f"{scraper_config.INTERPARK_AIR_API_BASE}/international/flights/search/v2/{search_key}"
-    )
+    adapter = get_interpark_adapter()
+    result_url = f"{adapter.air_api_base}{adapter.international_search_api_path}{search_key}"
     first_payload = page_fetch_json(
         scraper,
         result_url,
@@ -144,6 +172,7 @@ def _fetch_international_result_pages(
     limited_total_pages = min(total_pages, page_cap)
 
     for page_number in range(2, limited_total_pages + 1):
+        raise_if_search_cancelled(scraper)
         payload = page_fetch_json(
             scraper,
             result_url,

@@ -145,10 +145,25 @@ class SearchPanelBuildMixin(SearchPanelMixinBase):
 
         # --- Row 3: Passengers, Cabin Class & Time ---
         # Passengers
+        passenger_layout = QHBoxLayout()
         self.spin_adults = NoWheelSpinBox()
         self.spin_adults.setRange(1, 9)
         self.spin_adults.setSuffix("명")
-        layout.addWidget(self._labeled_widget("성인 (Adults)", self.spin_adults), 3, 0)
+        self.spin_child = NoWheelSpinBox()
+        self.spin_child.setRange(0, 9)
+        self.spin_child.setSuffix("명")
+        self.spin_infant = NoWheelSpinBox()
+        self.spin_infant.setRange(0, 9)
+        self.spin_infant.setSuffix("명")
+        passenger_layout.addWidget(QLabel("성인"))
+        passenger_layout.addWidget(self.spin_adults)
+        passenger_layout.addWidget(QLabel("소아"))
+        passenger_layout.addWidget(self.spin_child)
+        passenger_layout.addWidget(QLabel("유아"))
+        passenger_layout.addWidget(self.spin_infant)
+        passenger_container = QWidget()
+        passenger_container.setLayout(passenger_layout)
+        layout.addWidget(self._labeled_widget("승객 (Adults/Child/Infant)", passenger_container), 3, 0)
         
         # Cabin Class (좌석등급)
         self.cb_cabin_class = NoWheelComboBox()

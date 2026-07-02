@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict
 
 import scraping.interpark as scraper_config
 from scraping.interpark.scripts import ScraperScripts
+from scraping.search_cancel import raise_if_search_cancelled
 
 if TYPE_CHECKING:
     from scraping.playwright_scraper import PlaywrightScraper
@@ -31,6 +32,7 @@ def extract_domestic_dom_flights_data(scraper: "PlaywrightScraper") -> list:
     try:
         scroll_index = -1
         for scroll_index in range(scraper_config.DOMESTIC_MAX_SCROLLS):
+            raise_if_search_cancelled(scraper)
             js_script = ScraperScripts.get_domestic_list_script(airlines_js)
             batch = scraper.page.evaluate(js_script)
 

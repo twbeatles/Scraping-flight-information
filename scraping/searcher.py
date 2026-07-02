@@ -4,10 +4,13 @@ from collections import OrderedDict
 import logging
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
+
+CacheMode = Literal["foreground", "background", "alert"]
 
 import scraper_config
 from scraping.models import FlightResult
+from scraping.search_cancel import clear_cancel_check, set_cancel_check
 from scraping.search_sources import InterparkAirSource, SearchSourceProtocol, create_search_source
 
 logger = logging.getLogger("ScraperV2")
@@ -39,6 +42,10 @@ class FlightSearcher:
         progress_callback: Optional[Callable[[str], None]] = None,
         background_mode: bool = False,
         force_refresh: bool = False,
+        cancel_check: Optional[Callable[[], bool]] = None,
+        child: int = 0,
+        infant: int = 0,
+        cache_mode: CacheMode | None = None,
     ) -> List[FlightResult]:
         """항공권 검색 진입점."""
 
@@ -54,6 +61,7 @@ class FlightSearcher:
         }.get(cabin_class.upper(), "이코노미")
         emit(f"🔍 {origin} → {destination} 항공권 검색 시작 ({cabin_label})")
 
+        resolved_cache_mode = self._resolve_cache_mode(background_mode, cache_mode)
         cache_key = self._build_cache_key(
             origin,
             destination,
@@ -62,8 +70,14 @@ class FlightSearcher:
             adults,
             cabin_class,
             max_results,
+            child,
+            infant,
         )
-        cached_results = self._get_cached_results(cache_key, force_refresh=force_refresh)
+        cached_results = self._get_cached_results(
+            cache_key,
+            force_refresh=force_refresh,
+            cache_mode=resolved_cache_mode,
+        )
         if cached_results is not None:
             self.last_results = cached_results
             if cached_results:
@@ -73,21 +87,27 @@ class FlightSearcher:
                 emit("⚡ 캐시 사용: 결과 없음")
             return cached_results
 
-        results = self.source.search(
-            {
-                "origin": origin,
-                "destination": destination,
-                "departure_date": departure_date,
-                "return_date": return_date,
-                "adults": adults,
-                "cabin_class": cabin_class,
-                "max_results": max_results,
-                "child": 0,
-                "infant": 0,
-            },
-            emit,
-            background_mode=background_mode,
-        )
+        if self.scraper is not None:
+            set_cancel_check(self.scraper, cancel_check)
+        try:
+            results = self.source.search(
+                {
+                    "origin": origin,
+                    "destination": destination,
+                    "departure_date": departure_date,
+                    "return_date": return_date,
+                    "adults": adults,
+                    "cabin_class": cabin_class,
+                    "max_results": max_results,
+                    "child": max(0, int(child or 0)),
+                    "infant": max(0, int(infant or 0)),
+                },
+                emit,
+                background_mode=background_mode,
+            )
+        finally:
+            if self.scraper is not None:
+                clear_cancel_check(self.scraper)
         self.last_results = results
 
         if results and not self.source.is_manual_mode():
@@ -125,6 +145,13 @@ class FlightSearcher:
             return ""
         return str(getattr(scraper, "_manual_reason", "") or "")
 
+    def get_search_metrics(self) -> Dict[str, Any]:
+        scraper = getattr(self.source, "scraper", None)
+        if scraper is None:
+            return {}
+        metrics = getattr(scraper, "_search_metrics", None)
+        return dict(metrics) if isinstance(metrics, dict) else {}
+
     def close(self) -> None:
         self.source.close()
 
@@ -132,6 +159,37 @@ class FlightSearcher:
         if self.last_results:
             return self.last_results[0]
         return None
+
+    @staticmethod
+    def _resolve_cache_mode(
+        background_mode: bool,
+        cache_mode: CacheMode | None = None,
+    ) -> CacheMode:
+        if cache_mode in ("foreground", "background", "alert"):
+            return cache_mode
+        return "background" if background_mode else "foreground"
+
+    @classmethod
+    def _resolve_cache_ttl(cls, cache_mode: CacheMode) -> int:
+        if cache_mode == "alert":
+            return max(
+                1,
+                int(getattr(scraper_config, "SEARCH_CACHE_TTL_ALERT_SECONDS", 45)),
+            )
+        if cache_mode == "background":
+            return max(
+                1,
+                int(getattr(scraper_config, "SEARCH_CACHE_TTL_BACKGROUND_SECONDS", 90)),
+            )
+        return max(1, int(getattr(scraper_config, "SEARCH_CACHE_TTL_SECONDS", 180)))
+
+    @classmethod
+    def _prune_cache_ttl_cap(cls) -> int:
+        return max(
+            cls._resolve_cache_ttl("foreground"),
+            cls._resolve_cache_ttl("background"),
+            cls._resolve_cache_ttl("alert"),
+        )
 
     @staticmethod
     def _build_cache_key(
@@ -142,6 +200,8 @@ class FlightSearcher:
         adults: int,
         cabin_class: str,
         max_results: int,
+        child: int = 0,
+        infant: int = 0,
     ) -> tuple:
         return (
             (origin or "").upper(),
@@ -151,11 +211,13 @@ class FlightSearcher:
             int(adults or 1),
             (cabin_class or "ECONOMY").upper(),
             int(max_results or 0),
+            max(0, int(child or 0)),
+            max(0, int(infant or 0)),
         )
 
     @classmethod
     def _prune_cache_locked(cls, now: float) -> None:
-        ttl = max(1, int(getattr(scraper_config, "SEARCH_CACHE_TTL_SECONDS", 180)))
+        ttl = cls._prune_cache_ttl_cap()
         max_entries = max(1, int(getattr(scraper_config, "SEARCH_CACHE_MAX_ENTRIES", 64)))
 
         expired_keys = [
@@ -184,18 +246,19 @@ class FlightSearcher:
         cache_key: tuple,
         *,
         force_refresh: bool = False,
+        cache_mode: CacheMode = "foreground",
     ) -> Optional[List[FlightResult]]:
         if force_refresh or not getattr(scraper_config, "ENABLE_SEARCH_CACHE", True):
             return None
 
         now = time.time()
+        ttl = cls._resolve_cache_ttl(cache_mode)
         with cls._cache_lock:
             cls._prune_cache_locked(now)
             item = cls._search_cache.get(cache_key)
             if not item:
                 return None
             saved_at, payload = item
-            ttl = max(1, int(getattr(scraper_config, "SEARCH_CACHE_TTL_SECONDS", 180)))
             if now - saved_at > ttl:
                 cls._search_cache.pop(cache_key, None)
                 return None

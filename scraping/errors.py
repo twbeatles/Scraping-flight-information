@@ -28,3 +28,11 @@ class DataExtractionError(ScraperError):
     def __init__(self, message: str = "항공편 데이터를 추출할 수 없습니다."):
         self.message = message
         super().__init__(self.message)
+
+
+class SearchCancelledError(ScraperError):
+    """사용자 또는 worker가 검색 취소를 요청한 경우."""
+
+    def __init__(self, message: str = "검색이 취소되었습니다."):
+        self.message = message
+        super().__init__(self.message)

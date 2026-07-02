@@ -37,3 +37,15 @@ class FlightResult:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+def effective_flight_price(flight: FlightResult | Any) -> int:
+    """비교·알림용 실질 가격. 혜택가가 있으면 기본가와 더 낮은 값을 사용한다."""
+
+    price = int(getattr(flight, "price", 0) or 0)
+    benefit = int(getattr(flight, "benefit_price", 0) or 0)
+    if benefit > 0:
+        if price > 0:
+            return min(price, benefit)
+        return benefit
+    return price

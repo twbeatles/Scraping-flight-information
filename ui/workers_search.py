@@ -39,6 +39,8 @@ class SearchWorker(QThread):
         max_results=1000,
         telemetry_callback=None,
         force_refresh=False,
+        child=0,
+        infant=0,
     ):
         super().__init__()
         self.origin = origin
@@ -49,6 +51,8 @@ class SearchWorker(QThread):
         self.cabin_class = cabin_class
         self.max_results = max_results
         self.force_refresh = force_refresh
+        self.child = max(0, int(child or 0))
+        self.infant = max(0, int(infant or 0))
         searcher_cls = _searcher_cls()
         try:
             self.searcher = searcher_cls(telemetry_callback=telemetry_callback)
@@ -92,6 +96,9 @@ class SearchWorker(QThread):
                 progress_callback=lambda msg: self.progress.emit(msg),
                 background_mode=False,
                 force_refresh=self.force_refresh,
+                cancel_check=self.is_cancelled,
+                child=self.child,
+                infant=self.infant,
             )
             
             if self.is_cancelled():

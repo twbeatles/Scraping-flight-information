@@ -120,6 +120,8 @@ hiddenimports = [
     'scraping.international.orchestration',
     'scraping.international.sorting',
     'scraping.interpark',
+    'scraping.interpark.adapter',
+    'scraping.interpark.network_listener',
     'scraping.interpark.runtime',
     'scraping.interpark.selectors',
     'scraping.interpark.urls',

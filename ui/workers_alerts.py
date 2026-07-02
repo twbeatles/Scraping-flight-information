@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from scraper_v2 import FlightSearcher, BrowserInitError, NetworkError
+from scraping.models import effective_flight_price
 
 logger = logging.getLogger(__name__)
 MAX_DATE_RANGE_SEARCHES = 30
@@ -102,9 +103,11 @@ class AlertAutoCheckWorker(QThread):
                     max_results=self.max_results,
                     progress_callback=lambda _msg: None,
                     background_mode=True,
+                    cache_mode="alert",
+                    cancel_check=self.is_cancelled,
                 )
                 if results:
-                    current_price = min(r.price for r in results)
+                    current_price = min(effective_flight_price(r) for r in results)
                 else:
                     no_result = True
             except Exception as e:

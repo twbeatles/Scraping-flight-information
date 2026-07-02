@@ -5,11 +5,46 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
 
 import scraper_config
+from core.search_params import normalize_search_params
 from scraping.models import FlightResult
 from scraping.playwright_scraper import PlaywrightScraper
 
 SearchParams = Dict[str, Any]
 ProgressEmitter = Optional[Callable[[str], None]]
+
+
+def _normalize_interpark_params(params: SearchParams) -> Dict[str, Any]:
+    normalized = normalize_search_params(
+        {
+            "origin": params.get("origin", ""),
+            "dest": params.get("destination", params.get("dest", "")),
+            "dep": params.get("departure_date", params.get("dep", "")),
+            "ret": params.get("return_date", params.get("ret")),
+            "adults": params.get("adults", 1),
+            "cabin_class": params.get("cabin_class", "ECONOMY"),
+            "is_domestic": params.get("is_domestic"),
+        }
+    )
+    try:
+        child = max(0, int(params.get("child", 0) or 0))
+    except Exception:
+        child = 0
+    try:
+        infant = max(0, int(params.get("infant", 0) or 0))
+    except Exception:
+        infant = 0
+    return {
+        "origin": normalized.get("origin", ""),
+        "destination": normalized.get("dest", ""),
+        "departure_date": normalized.get("dep", ""),
+        "return_date": normalized.get("ret"),
+        "adults": normalized.get("adults", 1),
+        "cabin_class": normalized.get("cabin_class", "ECONOMY"),
+        "child": child,
+        "infant": infant,
+        "max_results": params.get("max_results", 1000),
+        "is_domestic": normalized.get("is_domestic", False),
+    }
 
 
 @runtime_checkable
@@ -48,15 +83,16 @@ class InterparkAirSource:
         self.scraper = PlaywrightScraper(telemetry_callback=telemetry_callback)
 
     def build_search_url(self, params: SearchParams) -> str:
+        normalized = _normalize_interpark_params(params)
         return scraper_config.build_interpark_search_url(
-            params.get("origin", ""),
-            params.get("destination", ""),
-            params.get("departure_date", ""),
-            params.get("return_date"),
-            cabin=params.get("cabin_class", "ECONOMY"),
-            adults=params.get("adults", 1),
-            infant=params.get("infant", 0),
-            child=params.get("child", 0),
+            normalized["origin"],
+            normalized["destination"],
+            normalized["departure_date"],
+            normalized["return_date"],
+            cabin=normalized["cabin_class"],
+            adults=normalized["adults"],
+            infant=normalized["infant"],
+            child=normalized["child"],
         )
 
     def search(
@@ -65,16 +101,19 @@ class InterparkAirSource:
         emit: ProgressEmitter = None,
         background_mode: bool = False,
     ) -> List[FlightResult]:
+        normalized = _normalize_interpark_params(params)
         return self.scraper.search(
-            params.get("origin", ""),
-            params.get("destination", ""),
-            params.get("departure_date", ""),
-            params.get("return_date"),
-            adults=int(params.get("adults", 1) or 1),
-            cabin_class=str(params.get("cabin_class", "ECONOMY") or "ECONOMY"),
-            max_results=int(params.get("max_results", 1000) or 1000),
+            normalized["origin"],
+            normalized["destination"],
+            normalized["departure_date"],
+            normalized["return_date"],
+            adults=int(normalized["adults"] or 1),
+            cabin_class=str(normalized["cabin_class"] or "ECONOMY"),
+            max_results=int(normalized.get("max_results", 1000) or 1000),
             emit=emit,
             background_mode=background_mode,
+            child=int(normalized.get("child", 0) or 0),
+            infant=int(normalized.get("infant", 0) or 0),
         )
 
     def extract_manual(self) -> List[FlightResult]:

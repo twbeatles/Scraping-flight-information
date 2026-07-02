@@ -16,10 +16,13 @@ from scraping.errors import (
     DataExtractionError,
     ManualModeActivationError,
     NetworkError,
+    SearchCancelledError,
 )
+from scraping.search_cancel import raise_if_search_cancelled
 from scraping.models import FlightResult
 from scraping.search_flow.api_first import _try_api_first_extraction
 from scraping.search_flow.domestic_flow import _handle_domestic_round_trip
+from scraping.interpark.network_listener import attach_interpark_response_listener
 from scraping.search_flow.manual_mode import _activate_manual_mode_or_raise
 
 if TYPE_CHECKING:
@@ -41,6 +44,8 @@ def run_search(
     emit: Optional[Callable[[str], None]] = None,
     retry_count: int = 0,
     background_mode: bool = False,
+    child: int = 0,
+    infant: int = 0,
     *,
     time_module,
 ) -> List[FlightResult]:
@@ -97,13 +102,14 @@ def run_search(
         "return_date": normalized_return_date,
         "adults": adults,
         "cabin_class": cabin,
-        "child": 0,
-        "infant": 0,
+        "child": max(0, int(child or 0)),
+        "infant": max(0, int(infant or 0)),
         "is_domestic": is_domestic,
     }
 
     try:
         for attempt_idx in range(start_attempt, max_attempts):
+            raise_if_search_cancelled(scraper)
             attempt_no = attempt_idx + 1
             scraper.manual_mode = False
             scraper._manual_reason = ""
@@ -167,6 +173,7 @@ def run_search(
                 page = scraper.page
                 if page is None:
                     raise BrowserInitError("브라우저 페이지를 생성할 수 없습니다.")
+                attach_interpark_response_listener(scraper, page)
 
                 _, origin_code = scraper_config.resolve_interpark_location(origin_upper)
                 _, dest_code = scraper_config.resolve_interpark_location(destination_upper)
@@ -177,8 +184,8 @@ def run_search(
                     normalized_return_date,
                     cabin=cabin,
                     adults=adults,
-                    infant=0,
-                    child=0,
+                    infant=scraper._last_search_context.get("infant", 0),
+                    child=scraper._last_search_context.get("child", 0),
                 )
 
                 if is_domestic:
@@ -230,6 +237,7 @@ def run_search(
                         log("🌍 국제선은 DOM 대기 실패 시에도 API 우선 추출을 시도합니다.")
                     elif background_mode:
                         log("백그라운드 모드에서는 수동 모드 전환 없이 종료합니다.")
+                        scraper._search_metrics["background_failure_reason"] = "selector_wait_failed"
                         break
 
                 if is_domestic and normalized_return_date and found_data:
@@ -308,6 +316,11 @@ def run_search(
                     time_module.sleep(delay)
                     continue
                 raise
+            except SearchCancelledError:
+                log("검색이 취소되었습니다.")
+                scraper.manual_mode = False
+                scraper._search_metrics["cancelled"] = True
+                break
             except BrowserInitError:
                 raise
             except ManualModeActivationError:
@@ -316,6 +329,7 @@ def run_search(
                 if background_mode:
                     log(f"⚠️ {exc} - 백그라운드 모드 종료")
                     scraper.manual_mode = False
+                    scraper._search_metrics["background_failure_reason"] = str(exc)
                 else:
                     log(f"⚠️ {exc} - 수동 모드로 전환")
                     if not scraper._manual_reason:

@@ -28,6 +28,11 @@ class SearchSingleMixin:
             force_refresh = bool(force_refresh or self.search_panel.consume_force_refresh())
 
         # Save search params for later use
+        panel_params = {}
+        if hasattr(self.search_panel, "spin_child"):
+            panel_params["child"] = self.search_panel.spin_child.value()
+        if hasattr(self.search_panel, "spin_infant"):
+            panel_params["infant"] = self.search_panel.spin_infant.value()
         self.current_search_params = config.normalize_search_params(
             {
                 "origin": origin,
@@ -38,6 +43,7 @@ class SearchSingleMixin:
                 "cabin_class": cabin_class,
                 "is_domestic": bool(self.search_panel.rb_domestic.isChecked()),
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                **panel_params,
             }
         )
         
@@ -78,6 +84,8 @@ class SearchSingleMixin:
             max_results,
             telemetry_callback=self._emit_telemetry_event,
             force_refresh=force_refresh,
+            child=self.current_search_params.get("child", 0),
+            infant=self.current_search_params.get("infant", 0),
         )
         self.worker.progress.connect(self._update_progress)
         self.worker.finished.connect(self._search_finished)
@@ -123,9 +131,22 @@ class SearchSingleMixin:
             if self.current_search_params:
                 self._persist_successful_search(results)
             
-            best_price = results[0].price
+            from scraping.models import effective_flight_price
+
+            best_price = effective_flight_price(results[0])
             self.progress_bar.setFormat(f"✨ 검색 완료! 최저가: {best_price:,}원 🏆")
             self.log_viewer.append_log(f"✅ 검색 완료. {len(results)}건 발견, 최저가: {best_price:,}원")
+            if hasattr(self, "worker") and self.worker and hasattr(self.worker, "searcher"):
+                metrics = self.worker.searcher.get_search_metrics()
+                if metrics.get("api_pages_truncated"):
+                    self.log_viewer.append_log(
+                        "⚠️ Interpark API 페이지 상한에 도달해 일부 결과가 누락됐을 수 있습니다."
+                    )
+                poll_attempts = metrics.get("api_status_poll_attempts")
+                if metrics.get("api_failure_reason") == "international_api_status_timeout":
+                    self.log_viewer.append_log(
+                        f"⚠️ 국제선 API 상태 대기 시간 초과 (poll {poll_attempts}회)"
+                    )
             self._apply_filter()
             self.tabs.setCurrentIndex(0)  # Switch to results
         else:

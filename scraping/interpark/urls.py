@@ -3,10 +3,11 @@
 from datetime import datetime
 
 from core.airports import CITY_CODES_MAP
+from scraping.interpark.adapter import get_interpark_adapter
 
-
-INTERPARK_SEARCH_URL_BASE = "https://travel.interpark.com/air/search"
-INTERPARK_AIR_API_BASE = "https://travel.interpark.com/air/air-api/inpark-air-web-api"
+_ADAPTER = get_interpark_adapter()
+INTERPARK_SEARCH_URL_BASE = _ADAPTER.search_url_base
+INTERPARK_AIR_API_BASE = _ADAPTER.air_api_base
 
 
 def normalize_interpark_date(date_text: str | None) -> str:
@@ -101,7 +102,7 @@ def build_interpark_international_api_search_url(
         route = f"{route}/{dest_code}-{origin_code}/{returning}"
 
     return (
-        f"{INTERPARK_AIR_API_BASE}/flights/search/{route}"
+        f"{_ADAPTER.air_api_base}{_ADAPTER.international_initial_search_api_path}{route}"
         f"?adult={safe_adults}&child={int(child)}&infant={int(infant)}"
         f"&cabins={safe_cabin}&freeBaggageOnly=false"
     )

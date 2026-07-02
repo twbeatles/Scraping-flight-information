@@ -32,6 +32,8 @@ def get_panel_search_params(
         "dep": panel.date_dep.date().toString("yyyyMMdd"),
         "ret": panel.date_ret.date().toString("yyyyMMdd") if panel.rb_round.isChecked() else None,
         "adults": panel.spin_adults.value(),
+        "child": panel.spin_child.value() if hasattr(panel, "spin_child") else 0,
+        "infant": panel.spin_infant.value() if hasattr(panel, "spin_infant") else 0,
         "cabin_class": panel.cb_cabin_class.currentData() or "ECONOMY",
     }
     if hasattr(panel, "rb_domestic"):
@@ -90,6 +92,16 @@ def apply_search_params_to_panel(panel: Any, params: dict[str, Any] | None) -> d
         panel.spin_adults.setValue(int(normalized.get("adults", 1) or 1))
     except Exception:
         panel.spin_adults.setValue(1)
+    if hasattr(panel, "spin_child"):
+        try:
+            panel.spin_child.setValue(int(normalized.get("child", 0) or 0))
+        except Exception:
+            panel.spin_child.setValue(0)
+    if hasattr(panel, "spin_infant"):
+        try:
+            panel.spin_infant.setValue(int(normalized.get("infant", 0) or 0))
+        except Exception:
+            panel.spin_infant.setValue(0)
 
     cabin = normalized.get("cabin_class")
     if cabin:
