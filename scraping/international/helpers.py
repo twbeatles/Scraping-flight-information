@@ -118,6 +118,58 @@ def _coerce_int(value: Any) -> int:
         return 0
 
 
+def _schedule_airports(schedule: Optional[Dict[str, Any]]) -> tuple[str, str]:
+    """Return (departure_airport, arrival_airport) IATA codes from segments."""
+    if not isinstance(schedule, dict):
+        return "", ""
+    segments = schedule.get("segments")
+    if not isinstance(segments, list) or not segments:
+        return "", ""
+    first = segments[0] if isinstance(segments[0], dict) else {}
+    last = segments[-1] if isinstance(segments[-1], dict) else {}
+    dep = str(_nested_get(first, "departure", "airport", "code") or "").strip().upper()
+    arr = str(_nested_get(last, "arrival", "airport", "code") or "").strip().upper()
+    return dep, arr
+
+
+def _format_free_baggage(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    allowance = value.get("allowance")
+    unit = str(value.get("unit") or "").strip().upper()
+    if allowance is None or allowance == "":
+        return ""
+    try:
+        amount = int(allowance)
+    except (TypeError, ValueError):
+        text = str(allowance).strip()
+        return text
+    if amount <= 0:
+        return ""
+    if unit in {"WEIGHT_KG", "KG", "WEIGHT"}:
+        return f"{amount}kg"
+    if unit in {"QUANTITY", "PIECE", "PC", "PCS"}:
+        return f"{amount}개"
+    return str(amount)
+
+
+def _schedule_baggage(schedule: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(schedule, dict):
+        return ""
+    direct = _format_free_baggage(schedule.get("freeBaggage"))
+    if direct:
+        return direct
+    segments = schedule.get("segments")
+    if isinstance(segments, list):
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            label = _format_free_baggage(segment.get("freeBaggage"))
+            if label:
+                return label
+    return ""
+
+
 def _select_international_fare(item: Dict[str, Any]) -> Dict[str, Any]:
     base_price = _first_positive_int(
         item,
@@ -138,18 +190,29 @@ def _select_international_fare(item: Dict[str, Any]) -> Dict[str, Any]:
             if fare_price <= 0:
                 continue
             benefit_price, benefit_label = _extract_international_benefit(fare)
+            promo_label = _promotion_label_from_fare(fare)
+            if promo_label and not benefit_label:
+                benefit_label = promo_label
+            elif promo_label and promo_label not in benefit_label:
+                benefit_label = f"{benefit_label} / {promo_label}" if benefit_label else promo_label
             candidates.append(
                 {
                     "price": fare_price,
                     "benefit_price": benefit_price,
                     "benefit_label": benefit_label,
+                    "avail": _coerce_int(fare.get("avail")),
                 }
             )
 
     if candidates:
         selected = min(candidates, key=lambda value: value["price"])
     else:
-        selected = {"price": base_price, "benefit_price": 0, "benefit_label": ""}
+        selected = {
+            "price": base_price,
+            "benefit_price": 0,
+            "benefit_label": "",
+            "avail": 0,
+        }
 
     top_benefit_price, top_benefit_label = _extract_international_benefit(item)
     if selected["benefit_price"] <= 0 and top_benefit_price > 0:
@@ -159,6 +222,22 @@ def _select_international_fare(item: Dict[str, Any]) -> Dict[str, Any]:
     if selected["benefit_price"] > 0 and not selected["benefit_label"]:
         selected["benefit_label"] = "혜택가"
     return selected
+
+
+def _promotion_label_from_fare(fare: Dict[str, Any]) -> str:
+    items = fare.get("items")
+    if not isinstance(items, list):
+        return ""
+    labels: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        principle = item.get("promotionPrinciple")
+        if isinstance(principle, dict):
+            name = str(principle.get("promotionName") or "").strip()
+            if name:
+                labels.append(name)
+    return " / ".join(labels[:2])
 
 
 def _extract_international_benefit(container: Dict[str, Any]) -> tuple[int, str]:

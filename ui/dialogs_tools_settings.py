@@ -102,7 +102,8 @@ class SettingsDialog(QDialog):
 
         # Alert auto-check settings
         grp_alert = QGroupBox("🔔 자동 가격 알림 점검")
-        ga_layout = QHBoxLayout(grp_alert)
+        ga_layout = QVBoxLayout(grp_alert)
+        row_alert = QHBoxLayout()
         self.chk_alert_auto = QCheckBox("자동 점검 활성화")
         auto_cfg = self.prefs.get_alert_auto_check()
         self.chk_alert_auto.setChecked(auto_cfg.get("enabled", False))
@@ -114,12 +115,17 @@ class SettingsDialog(QDialog):
         btn_save_alert.clicked.connect(self._save_alert_auto_check)
         btn_run_alert = QPushButton("지금 검사")
         btn_run_alert.clicked.connect(self._run_alert_auto_check_now)
-        ga_layout.addWidget(self.chk_alert_auto)
-        ga_layout.addWidget(QLabel("주기:"))
-        ga_layout.addWidget(self.spin_alert_interval)
-        ga_layout.addWidget(btn_save_alert)
-        ga_layout.addWidget(btn_run_alert)
-        ga_layout.addStretch()
+        row_alert.addWidget(self.chk_alert_auto)
+        row_alert.addWidget(QLabel("주기:"))
+        row_alert.addWidget(self.spin_alert_interval)
+        row_alert.addWidget(btn_save_alert)
+        row_alert.addWidget(btn_run_alert)
+        row_alert.addStretch()
+        ga_layout.addLayout(row_alert)
+        self.chk_alert_hit_modal = QCheckBox("알림 발동 시 모달 표시")
+        self.chk_alert_hit_modal.setChecked(bool(auto_cfg.get("hit_modal_enabled", True)))
+        self.chk_alert_hit_modal.setToolTip("끄면 로그/목록 상태만 갱신하고 팝업을 띄우지 않습니다.")
+        ga_layout.addWidget(self.chk_alert_hit_modal)
         layout.addWidget(grp_alert)
 
         self.lbl_alert_auto_status = QLabel("")
@@ -154,6 +160,8 @@ class SettingsDialog(QDialog):
             self.chk_alert_auto.isChecked(),
             self.spin_alert_interval.value(),
         )
+        if hasattr(self.prefs, "set_alert_hit_modal_enabled"):
+            self.prefs.set_alert_hit_modal_enabled(self.chk_alert_hit_modal.isChecked())
         self._refresh_alert_auto_status()
         QMessageBox.information(self, "저장", "자동 알림 점검 설정이 저장되었습니다.")
 

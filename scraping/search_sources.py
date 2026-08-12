@@ -93,6 +93,7 @@ class InterparkAirSource:
             adults=normalized["adults"],
             infant=normalized["infant"],
             child=normalized["child"],
+            is_domestic=bool(normalized.get("is_domestic")),
         )
 
     def search(

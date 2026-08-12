@@ -68,16 +68,28 @@ def combine_domestic_round_trip(
             seen.add(dedup_key)
             seq += 1
 
+            outbound_seats = _coerce_int(outbound.get("seatAvailability"))
+            return_seats = _coerce_int(returning.get("seatAvailability"))
+            seat_availability = 0
+            if outbound_seats > 0 and return_seats > 0:
+                seat_availability = min(outbound_seats, return_seats)
+            elif outbound_seats > 0:
+                seat_availability = outbound_seats
+            elif return_seats > 0:
+                seat_availability = return_seats
+
             flight = FlightResult(
                 airline=outbound["airline"],
                 price=total_price,
                 departure_time=outbound["depTime"],
                 arrival_time=outbound["arrTime"],
+                duration=str(outbound.get("duration", "") or ""),
                 stops=outbound["stops"],
                 flight_number=str(outbound.get("flightNumber", "") or ""),
                 source="Interpark (국내선)",
                 return_departure_time=returning["depTime"],
                 return_arrival_time=returning["arrTime"],
+                return_duration=str(returning.get("duration", "") or ""),
                 return_stops=returning["stops"],
                 is_round_trip=True,
                 outbound_price=outbound["price"],
@@ -85,6 +97,11 @@ def combine_domestic_round_trip(
                 return_airline=returning["airline"],
                 benefit_price=_coerce_int(outbound.get("benefitPrice")) + _coerce_int(returning.get("benefitPrice")),
                 benefit_label=_combine_benefit_labels(outbound, returning),
+                departure_airport=str(outbound.get("depAirport", "") or "").upper(),
+                arrival_airport=str(outbound.get("arrAirport", "") or "").upper(),
+                return_departure_airport=str(returning.get("depAirport", "") or "").upper(),
+                return_arrival_airport=str(returning.get("arrAirport", "") or "").upper(),
+                seat_availability=seat_availability,
                 confidence=0.8,
                 extraction_source="domestic_combined",
             )

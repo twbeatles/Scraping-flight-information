@@ -15,6 +15,14 @@ def test_selector_candidates_exist_for_domestic_and_international():
     assert scraper_config.INTERNATIONAL_WAIT_SELECTORS
     assert any("data-index" in s for s in scraper_config.INTERNATIONAL_WAIT_SELECTORS)
 
+    from scraping.interpark.selectors import (
+        DOMESTIC_RESULT_ROOT_SELECTORS,
+        INTERNATIONAL_RESULT_CARD_SELECTORS,
+    )
+
+    assert len(DOMESTIC_RESULT_ROOT_SELECTORS) >= 1
+    assert any("data-index" in item for item in INTERNATIONAL_RESULT_CARD_SELECTORS)
+
 
 def test_regex_patterns_match_fixture_sample():
     fixture = Path(__file__).resolve().parent / "fixtures" / "interpark_sample_result.html"

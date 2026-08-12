@@ -32,6 +32,18 @@ class FlightResult:
     benefit_price: int = 0
     benefit_label: str = ""
 
+    # 공항 / 수하물 / 좌석 / 일정 메타 (API 확장 필드)
+    departure_airport: str = ""
+    arrival_airport: str = ""
+    return_departure_airport: str = ""
+    return_arrival_airport: str = ""
+    baggage: str = ""
+    return_baggage: str = ""
+    seat_availability: int = 0
+    arrival_day_offset: int = 0
+    return_arrival_day_offset: int = 0
+    recommendation_tag: str = ""
+
     confidence: float = 0.0
     extraction_source: str = ""
 

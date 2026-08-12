@@ -7,6 +7,8 @@ from scraping.international.helpers import (
     _coerce_int,
     _iso_duration_to_text,
     _schedule_airline,
+    _schedule_airports,
+    _schedule_baggage,
     _schedule_bounds,
     _select_international_fare,
 )
@@ -38,6 +40,9 @@ def _normalize_international_api_item(item: Dict[str, Any]) -> Optional[FlightRe
     if is_round_trip and not return_airline:
         return_airline = airline
 
+    dep_airport, arr_airport = _schedule_airports(outbound)
+    ret_dep_airport, ret_arr_airport = _schedule_airports(inbound) if inbound else ("", "")
+
     return FlightResult(
         airline=airline,
         return_airline=return_airline,
@@ -54,6 +59,16 @@ def _normalize_international_api_item(item: Dict[str, Any]) -> Optional[FlightRe
         is_round_trip=is_round_trip,
         benefit_price=fare_summary["benefit_price"],
         benefit_label=fare_summary["benefit_label"],
+        departure_airport=dep_airport,
+        arrival_airport=arr_airport,
+        return_departure_airport=ret_dep_airport,
+        return_arrival_airport=ret_arr_airport,
+        baggage=_schedule_baggage(outbound),
+        return_baggage=_schedule_baggage(inbound) if inbound else "",
+        seat_availability=_coerce_int(fare_summary.get("avail")),
+        arrival_day_offset=_coerce_int(outbound.get("addDay")),
+        return_arrival_day_offset=_coerce_int(inbound.get("addDay")) if inbound else 0,
+        recommendation_tag=str(item.get("recommendationTag") or "").strip(),
         confidence=0.98,
         extraction_source="international_api",
     )

@@ -53,6 +53,7 @@ class PreferenceManager:
             "theme": "dark",
             "alert_auto_check_enabled": False,
             "alert_auto_check_interval_min": 30,
+            "alert_hit_modal_enabled": True,
             "max_results": 1000,
         }
 
@@ -170,6 +171,10 @@ class PreferenceManager:
         except Exception:
             interval_min = default_prefs["alert_auto_check_interval_min"]
         prefs["alert_auto_check_interval_min"] = max(5, min(interval_min, 1440))
+        prefs["alert_hit_modal_enabled"] = _coerce_bool(
+            raw_dict.get("alert_hit_modal_enabled", default_prefs["alert_hit_modal_enabled"]),
+            default_prefs["alert_hit_modal_enabled"],
+        )
         prefs["schema_version"] = SEARCH_PARAMS_SCHEMA_VERSION
         return prefs
 
@@ -372,7 +377,15 @@ class PreferenceManager:
         return {
             "enabled": bool(self.preferences.get("alert_auto_check_enabled", False)),
             "interval_min": max(5, min(interval_min, 1440)),
+            "hit_modal_enabled": bool(self.preferences.get("alert_hit_modal_enabled", True)),
         }
+
+    def set_alert_hit_modal_enabled(self, enabled: bool) -> None:
+        self.preferences["alert_hit_modal_enabled"] = bool(enabled)
+        self.save()
+
+    def get_alert_hit_modal_enabled(self) -> bool:
+        return bool(self.preferences.get("alert_hit_modal_enabled", True))
 
     def export_all_settings(self, filepath: str) -> bool:
         try:

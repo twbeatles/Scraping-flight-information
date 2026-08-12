@@ -1,4 +1,7 @@
-"""Domestic extraction helpers."""
+"""Backward-compatible domestic extraction helpers.
+
+Prefer `scraping.domestic` for new code.
+"""
 
 from __future__ import annotations
 

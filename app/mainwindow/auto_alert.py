@@ -105,11 +105,17 @@ class AutoAlertMixin:
         self.log_viewer.append_log(
             f"🔔 자동 알림 발동! {origin}->{dest} [{cabin}] {price:,}원 (목표 {target:,}원 이하)"
         )
-        QMessageBox.information(
-            self,
-            "🔔 자동 가격 알림",
-            f"노선: {origin} → {dest}\n좌석: {cabin}\n최저가: {price:,}원\n목표가: {target:,}원 이하",
-        )
+        show_modal = True
+        try:
+            show_modal = bool(self.prefs.get_alert_hit_modal_enabled())
+        except Exception:
+            show_modal = True
+        if show_modal:
+            QMessageBox.information(
+                self,
+                "🔔 자동 가격 알림",
+                f"노선: {origin} → {dest}\n좌석: {cabin}\n최저가: {price:,}원\n목표가: {target:,}원 이하",
+            )
     def _on_auto_alert_done(self: Any, checked: int, hits: int):
         self._last_alert_auto_check_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.log_viewer.append_log(f"🔔 자동 점검 완료: {checked}건 확인, {hits}건 발동")

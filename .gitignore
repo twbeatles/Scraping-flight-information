@@ -57,6 +57,11 @@ logs/
 logs/*.jsonl
 logs/*.jsonl.*
 
+# Local agent / session tooling dumps (not product source)
+agent-tools/
+terminals/
+mcps/
+
 # IDE
 .vscode/*
 !.vscode/settings.json

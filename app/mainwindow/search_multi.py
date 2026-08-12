@@ -53,6 +53,13 @@ class SearchMultiMixin:
         self.tabs.setCurrentIndex(2)  # Logs tab
         
         max_results = self.prefs.get_max_results()
+        child = 0
+        infant = 0
+        if hasattr(self, "search_panel"):
+            if hasattr(self.search_panel, "spin_child"):
+                child = int(self.search_panel.spin_child.value())
+            if hasattr(self.search_panel, "spin_infant"):
+                infant = int(self.search_panel.spin_infant.value())
         self.multi_worker = MultiSearchWorker(
             origin,
             destinations,
@@ -62,6 +69,8 @@ class SearchMultiMixin:
             cabin_class,
             max_results,
             telemetry_callback=self._emit_telemetry_event,
+            child=child,
+            infant=infant,
         )
         self.multi_worker.progress.connect(self._update_progress)
         self.multi_worker.single_finished.connect(self._on_multi_single_finished)
@@ -69,9 +78,11 @@ class SearchMultiMixin:
         self.multi_worker.start()
     def _on_multi_single_finished(self: Any, dest, results):
         if results:
-            best = min(results, key=lambda x: x.price)
+            from scraping.models import effective_flight_price
+
+            best = min(results, key=effective_flight_price)
             self.log_viewer.append_log(
-                f"📌 [{dest}] 중간 결과: {len(results)}건, 최저가 {best.price:,}원 ({best.airline})"
+                f"📌 [{dest}] 중간 결과: {len(results)}건, 최저가 {effective_flight_price(best):,}원 ({best.airline})"
             )
         else:
             self.log_viewer.append_log(f"📌 [{dest}] 중간 결과: 검색 결과 없음")

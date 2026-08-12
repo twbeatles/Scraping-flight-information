@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+import time
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from scraping.interpark.adapter import InterparkAdapterConfig, get_interpark_adapter
+from scraping.interpark import runtime as interpark_runtime
 
 if TYPE_CHECKING:
     from scraping.playwright_scraper import PlaywrightScraper
@@ -88,11 +90,49 @@ def page_fetch_json(
     """
     try:
         result = scraper.page.evaluate(script)
-    except Exception:
-        return {}
+    except Exception as exc:
+        failure = {
+            "ok": False,
+            "error": str(exc),
+            "__flightbot_api_meta": {
+                "status": 0,
+                "ok": False,
+                "url": url,
+                "method": method.upper(),
+                "error": str(exc),
+                "payload_keys": ["error"],
+            },
+        }
+        _record_api_meta(scraper, failure)
+        return failure
     if not isinstance(result, dict):
-        return {}
+        failure = {
+            "ok": False,
+            "error": "non_dict_payload",
+            "__flightbot_api_meta": {
+                "status": 0,
+                "ok": False,
+                "url": url,
+                "method": method.upper(),
+                "error": "non_dict_payload",
+                "payload_keys": ["error"],
+            },
+        }
+        _record_api_meta(scraper, failure)
+        return failure
     _record_api_meta(scraper, result)
+    meta = get_api_meta(result)
+    if meta and not bool(meta.get("ok", True)):
+        metrics = getattr(scraper, "_search_metrics", None)
+        if isinstance(metrics, dict):
+            metrics["last_api_http_ok"] = False
+            metrics["last_api_http_status"] = int(meta.get("status") or 0)
+    else:
+        metrics = getattr(scraper, "_search_metrics", None)
+        if isinstance(metrics, dict):
+            metrics["last_api_http_ok"] = True
+            if meta:
+                metrics["last_api_http_status"] = int(meta.get("status") or 0)
     _maybe_cache_search_key_from_fetch(scraper, url, result)
     return result
 
@@ -205,7 +245,8 @@ def extract_search_key_from_url(
 def extract_search_key_from_payload(payload: Dict[str, Any]) -> str:
     if not isinstance(payload, dict):
         return ""
-    for field in ("key", "searchKey", "search_key"):
+    adapter = get_interpark_adapter()
+    for field in adapter.search_key_fields:
         value = str(payload.get(field) or "").strip()
         if value:
             return value
@@ -310,20 +351,91 @@ def resolve_search_key(
     *,
     trip_kind: str,
     explicit_key: str | None = None,
+    exclude_keys: Iterable[str] | None = None,
 ) -> str:
     explicit = str(explicit_key or "").strip()
     if explicit:
         return explicit
+    excluded = _normalize_exclude_keys(exclude_keys)
     keys = find_search_keys(scraper, trip_kind=trip_kind)
-    return keys[-1] if keys else ""
+    for key in reversed(keys):
+        if key and key not in excluded:
+            return key
+    return ""
+
+
+def wait_for_search_key(
+    scraper: "PlaywrightScraper",
+    *,
+    trip_kind: str,
+    timeout_seconds: float | None = None,
+    poll_ms: int | None = None,
+    exclude_keys: Iterable[str] | None = None,
+) -> str:
+    """Poll network/performance caches until a usable search key appears.
+
+    When the scraper has no real Playwright page (unit tests with stubs), this
+    performs a single resolve pass and returns immediately.
+    """
+
+    timeout = float(
+        timeout_seconds
+        if timeout_seconds is not None
+        else getattr(interpark_runtime, "SEARCH_KEY_WAIT_TIMEOUT_SECONDS", 12.0)
+    )
+    poll = max(
+        int(
+            poll_ms
+            if poll_ms is not None
+            else getattr(interpark_runtime, "SEARCH_KEY_WAIT_POLL_MS", 250)
+        ),
+        50,
+    )
+    excluded = _normalize_exclude_keys(exclude_keys)
+    deadline = time.monotonic() + max(timeout, 0.0)
+
+    while True:
+        key = resolve_search_key(scraper, trip_kind=trip_kind, exclude_keys=excluded)
+        if key:
+            _record_key_wait(scraper, trip_kind=trip_kind, source="key_wait")
+            return key
+
+        page = getattr(scraper, "page", None)
+        can_wait = page is not None and hasattr(page, "wait_for_timeout")
+        if not can_wait or time.monotonic() >= deadline:
+            return ""
+
+        try:
+            wait_for_timeout = getattr(page, "wait_for_timeout", None)
+            if not callable(wait_for_timeout):
+                return ""
+            wait_for_timeout(poll)
+        except Exception:
+            return ""
 
 
 def find_latest_search_key(
     scraper: "PlaywrightScraper",
     *,
     trip_kind: str,
+    exclude_keys: Iterable[str] | None = None,
 ) -> str:
-    return resolve_search_key(scraper, trip_kind=trip_kind)
+    return resolve_search_key(scraper, trip_kind=trip_kind, exclude_keys=exclude_keys)
+
+
+def _normalize_exclude_keys(exclude_keys: Iterable[str] | None) -> Set[str]:
+    if not exclude_keys:
+        return set()
+    return {str(item).strip() for item in exclude_keys if str(item or "").strip()}
+
+
+def _record_key_wait(scraper: "PlaywrightScraper", *, trip_kind: str, source: str) -> None:
+    metrics = getattr(scraper, "_search_metrics", None)
+    if not isinstance(metrics, dict):
+        return
+    bucket = metrics.setdefault("api_key_sources", {})
+    if isinstance(bucket, dict):
+        bucket[trip_kind] = source
 
 
 def _sanitize_resource_url(url: str) -> str:

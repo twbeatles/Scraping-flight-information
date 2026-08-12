@@ -1,4 +1,7 @@
-"""International extraction helpers."""
+"""Backward-compatible international extraction helpers.
+
+Prefer `scraping.international` for new code.
+"""
 
 from __future__ import annotations
 

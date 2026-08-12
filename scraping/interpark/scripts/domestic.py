@@ -1,14 +1,23 @@
 """Domestic-result JavaScript builders for Interpark pages."""
 
-from scraping.interpark.selectors import REGEX_STOPS, REGEX_TIME
+from scraping.interpark.selectors import (
+    DOMESTIC_RESULT_ITEM_SELECTORS,
+    DOMESTIC_RESULT_ROOT_SELECTORS,
+    REGEX_STOPS,
+    REGEX_TIME,
+)
 
 
 def get_domestic_list_script(airlines_js_list):
     """Build JS that extracts domestic flight list rows."""
+    roots_js = list(DOMESTIC_RESULT_ROOT_SELECTORS)
+    items_js = list(DOMESTIC_RESULT_ITEM_SELECTORS)
     return f"""
         () => {{
             const results = [];
             const airlines = {airlines_js_list};
+            const rootSelectors = {roots_js!r};
+            const itemSelectors = {items_js!r};
 
             const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
             const exactPricePattern = /^(\\d{{1,3}}(?:,\\d{{3}}){{1,2}})\\s*원$/;
@@ -92,7 +101,23 @@ def get_domestic_list_script(airlines_js_list):
                 return text.includes('경유') ? 1 : 0;
             }};
 
-            for (const btn of document.querySelectorAll('button')) {{
+            const collectButtons = () => {{
+                const scoped = [];
+                for (const rootSel of rootSelectors) {{
+                    for (const root of document.querySelectorAll(rootSel)) {{
+                        for (const itemSel of itemSelectors) {{
+                            scoped.push(...root.querySelectorAll(itemSel));
+                        }}
+                    }}
+                    if (scoped.length > 0) {{
+                        return scoped;
+                    }}
+                }}
+                // Fallback: page-wide buttons when no scoped root yields candidates.
+                return Array.from(document.querySelectorAll(itemSelectors.join(',')));
+            }};
+
+            for (const btn of collectButtons()) {{
                 try {{
                     const text = normalize(btn.textContent);
                     const timeMatch = text.match(/{REGEX_TIME}/);

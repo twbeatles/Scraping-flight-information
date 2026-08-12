@@ -119,6 +119,14 @@ def test_get_interpark_adapter_exposes_canonical_api_paths():
     assert adapter.air_api_base.endswith("/inpark-air-web-api")
     assert adapter.domestic_search_api_path == "/domestic/flights/search/"
     assert adapter.international_search_api_path.endswith("/")
+    assert adapter.status_path_suffix == "/status"
+    assert "items" in adapter.domestic_result_buckets
+    assert "bestFares" in adapter.international_result_buckets
+    assert "key" in adapter.search_key_fields
+    assert adapter.build_international_status_url("INTERNATIONAL::abc").endswith(
+        "/INTERNATIONAL::abc/status"
+    )
+    assert adapter.build_domestic_result_url("DOMESTIC::abc").endswith("/DOMESTIC::abc")
 
 
 class _FakeNetworkResponse:
@@ -178,6 +186,176 @@ def test_network_listener_attaches_once_per_page():
     attach_interpark_response_listener(scraper, cast(Any, page), adapter=adapter)
 
     assert len(scraper._network_listener_page_ids) == 1
+
+
+def test_wait_for_search_key_returns_existing_key_without_page_wait():
+    from scraping.playwright_api import wait_for_search_key
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = object()
+    cache_search_key(scraper, trip_kind="domestic", key="DOMESTIC::ready")
+
+    assert wait_for_search_key(scraper, trip_kind="domestic") == "DOMESTIC::ready"
+
+
+def test_wait_for_search_key_excludes_known_keys():
+    from scraping.playwright_api import wait_for_search_key
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = object()
+    cache_search_key(scraper, trip_kind="domestic", key="DOMESTIC::outbound")
+    cache_search_key(scraper, trip_kind="domestic", key="DOMESTIC::return")
+
+    assert (
+        wait_for_search_key(
+            scraper,
+            trip_kind="domestic",
+            exclude_keys={"DOMESTIC::outbound"},
+        )
+        == "DOMESTIC::return"
+    )
+
+
+def test_wait_for_search_key_returns_empty_on_stub_page_without_keys():
+    from scraping.playwright_api import wait_for_search_key
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = object()
+
+    assert wait_for_search_key(scraper, trip_kind="domestic", timeout_seconds=1) == ""
+
+
+def test_international_api_normalizer_maps_airport_baggage_and_meta():
+    from scraping.international.normalizer import _normalize_international_api_item
+
+    item = {
+        "recommendationTag": "LOWEST_PRICE",
+        "adultPrice": 144500,
+        "schedules": [
+            {
+                "totalFlightTime": "PT2H10M",
+                "addDay": 0,
+                "stop": 0,
+                "freeBaggage": {"unit": "WEIGHT_KG", "allowance": 15},
+                "carrier": {"code": "WE", "name": "파라타항공"},
+                "segments": [
+                    {
+                        "departure": {
+                            "airport": {"code": "ICN"},
+                            "at": "2026-09-11T09:50:00",
+                        },
+                        "arrival": {
+                            "airport": {"code": "NRT"},
+                            "at": "2026-09-11T12:00:00",
+                        },
+                    }
+                ],
+            }
+        ],
+        "fares": [
+            {
+                "adultPrice": 144500,
+                "avail": 2,
+                "items": [
+                    {
+                        "promotionPrinciple": {
+                            "promotionName": "우리카드",
+                        }
+                    }
+                ],
+            }
+        ],
+    }
+
+    result = _normalize_international_api_item(item)
+    assert result is not None
+    assert result.departure_airport == "ICN"
+    assert result.arrival_airport == "NRT"
+    assert result.baggage == "15kg"
+    assert result.seat_availability == 2
+    assert result.recommendation_tag == "LOWEST_PRICE"
+    assert result.duration == "02시간 10분"
+    assert "우리카드" in result.benefit_label
+
+
+def test_export_includes_extended_airport_and_baggage_columns():
+    from ui.export_helpers import flight_export_headers, flight_to_export_row
+
+    flight = FlightResult(
+        airline="대한항공",
+        price=200000,
+        departure_time="10:00",
+        arrival_time="12:00",
+        departure_airport="ICN",
+        arrival_airport="HND",
+        baggage="1개",
+        seat_availability=4,
+        recommendation_tag="LOWEST_PRICE",
+        flight_number="KE701",
+        duration="02시간 20분",
+    )
+    headers = flight_export_headers()
+    row = dict(zip(headers, flight_to_export_row(flight)))
+    assert row["출발공항"] == "ICN"
+    assert row["도착공항"] == "HND"
+    assert row["수하물"] == "1개"
+    assert row["잔여석"] == 4
+    assert row["편명"] == "KE701"
+
+
+def test_result_table_shows_extended_fields_and_effective_price_badge(qapp):
+    from ui.components_result_table import ResultTable
+
+    del qapp
+    table = ResultTable()
+    cheap_benefit = FlightResult(
+        airline="A",
+        price=200000,
+        benefit_price=100000,
+        departure_time="10:00",
+        arrival_time="12:00",
+        departure_airport="ICN",
+        arrival_airport="NRT",
+        baggage="15kg",
+        seat_availability=3,
+    )
+    expensive = FlightResult(
+        airline="B",
+        price=150000,
+        departure_time="11:00",
+        arrival_time="13:00",
+        departure_airport="ICN",
+        arrival_airport="HND",
+        baggage="1개",
+        seat_availability=1,
+    )
+    table.update_data([expensive, cheap_benefit])
+
+    assert table.columnCount() == 12
+
+    def _cell(row: int, col: int) -> str:
+        item = table.item(row, col)
+        return item.text() if item is not None else ""
+
+    # effective price ranks cheap_benefit (100k) as best even if base price is higher
+    assert "🏆" in _cell(0, 1) or "🏆" in _cell(1, 1)
+    airport_cells = [_cell(r, 8) for r in range(2)]
+    assert any("ICN" in cell and "NRT" in cell for cell in airport_cells)
+    bag_cells = [_cell(r, 9) for r in range(2)]
+    assert "15kg" in bag_cells
+    seat_cells = [_cell(r, 10) for r in range(2)]
+    assert "3" in seat_cells
+
+
+def test_preference_alert_hit_modal_flag(tmp_path):
+    from core.preferences import PreferenceManager
+
+    prefs = PreferenceManager(filepath=str(tmp_path / "prefs.json"))
+    assert prefs.get_alert_hit_modal_enabled() is True
+    prefs.set_alert_hit_modal_enabled(False)
+    assert prefs.get_alert_hit_modal_enabled() is False
+    cfg = prefs.get_alert_auto_check()
+    assert cfg.get("hit_modal_enabled") is False
 
 
 def test_resolve_cache_mode_maps_background_and_explicit_alert():

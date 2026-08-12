@@ -89,6 +89,172 @@ def test_search_worker_cancel_before_run_does_not_search(monkeypatch):
     assert calls["close"] >= 1
 
 
+def test_api_first_domestic_round_trip_uses_combination_path(monkeypatch):
+    """Domestic round-trip must not early-return one-way outbound API lists."""
+    from scraping.search_flow.api_first import _try_api_first_extraction
+    from scraping.models import FlightResult
+
+    class _FakePage:
+        def evaluate(self, *_args, **_kwargs):
+            return []
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = _FakePage()
+    called = {"round_trip": False, "one_way": False}
+
+    def _fake_round_trip(*_args, **_kwargs):
+        called["round_trip"] = True
+        return [
+            FlightResult(
+                airline="제주항공",
+                price=70000,
+                departure_time="07:00",
+                arrival_time="08:10",
+                return_departure_time="18:00",
+                return_arrival_time="19:10",
+                is_round_trip=True,
+                outbound_price=30000,
+                return_price=40000,
+                return_airline="대한항공",
+            )
+        ]
+
+    def _fake_one_way():
+        called["one_way"] = True
+        return [
+            FlightResult(
+                airline="제주항공",
+                price=30000,
+                departure_time="07:00",
+                arrival_time="08:10",
+                is_round_trip=False,
+            )
+        ]
+
+    monkeypatch.setattr(
+        "scraping.search_flow.api_first._handle_domestic_round_trip",
+        _fake_round_trip,
+    )
+    monkeypatch.setattr(scraper, "_extract_domestic_prices", _fake_one_way)
+    monkeypatch.setattr(
+        "scraping.search_flow.api_first.scraper_config.SEARCH_PAGE_STABILIZE_SECONDS",
+        0,
+    )
+
+    results = _try_api_first_extraction(
+        scraper,
+        is_domestic=True,
+        is_round_trip=True,
+        log=lambda _m: None,
+        time_module=SimpleNamespace(sleep=lambda *_a, **_k: None),
+        max_results=10,
+        background_mode=True,
+    )
+
+    assert called["round_trip"] is True
+    assert called["one_way"] is False
+    assert results and results[0].is_round_trip is True
+    assert results[0].price == 70000
+
+
+def test_combine_round_trip_preserves_airports_and_seats():
+    scraper = PlaywrightScraper()
+    outbound = [
+        {
+            "key": "o1",
+            "airline": "제주항공",
+            "price": 30000,
+            "depTime": "07:30",
+            "arrTime": "08:40",
+            "stops": 0,
+            "flightNumber": "7C111",
+            "depAirport": "GMP",
+            "arrAirport": "CJU",
+            "seatAvailability": 4,
+            "benefitPrice": 0,
+            "benefitLabel": "",
+        }
+    ]
+    inbound = [
+        {
+            "key": "i1",
+            "airline": "대한항공",
+            "price": 40000,
+            "depTime": "18:10",
+            "arrTime": "19:20",
+            "stops": 0,
+            "flightNumber": "KE2001",
+            "depAirport": "CJU",
+            "arrAirport": "GMP",
+            "seatAvailability": 2,
+            "benefitPrice": 0,
+            "benefitLabel": "",
+        }
+    ]
+    combined = scraper._combine_domestic_round_trip(outbound, inbound, max_results=5)
+    assert len(combined) == 1
+    assert combined[0].departure_airport == "GMP"
+    assert combined[0].arrival_airport == "CJU"
+    assert combined[0].return_departure_airport == "CJU"
+    assert combined[0].return_arrival_airport == "GMP"
+    assert combined[0].seat_availability == 2
+
+
+def test_domestic_api_retries_once_on_invalid_cache_search_key(monkeypatch):
+    from scraping.domestic.api import extract_domestic_api_flights_data
+
+    scraper = PlaywrightScraper()
+    cast(Any, scraper).page = object()
+    scraper._last_search_context = {"cabin_class": "ECONOMY"}
+    scraper._search_metrics = {}
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        "scraping.domestic.api.resolve_search_key",
+        lambda *_args, **_kwargs: "DOMESTIC::expired",
+    )
+    monkeypatch.setattr(
+        "scraping.domestic.api.wait_for_search_key",
+        lambda *_args, **_kwargs: "DOMESTIC::fresh",
+    )
+
+    def _fake_fetch(_scraper, search_key, **_kwargs):
+        calls.append(search_key)
+        if search_key == "DOMESTIC::expired":
+            return {
+                "code": "INVALID_CACHE_SEARCH_KEY",
+                "title": "만료",
+                "message": "해당 항공편 조회시간이 경과되었습니다.",
+            }
+        return {
+            "page": {"pageSize": 20, "totalCount": 1},
+            "items": [
+                {
+                    "key": "ok",
+                    "schedule": {
+                        "departureAt": "2026-03-01T09:00:00",
+                        "arrivalAt": "2026-03-01T10:00:00",
+                        "marketingCarrier": "7C",
+                        "flightNumber": "7C101",
+                    },
+                    "fares": [{"totalPrice": 50000}],
+                    "seatAvailability": 3,
+                }
+            ],
+        }
+
+    monkeypatch.setattr("scraping.domestic.api._fetch_domestic_search_page", _fake_fetch)
+
+    items, meta = extract_domestic_api_flights_data(scraper)
+
+    assert calls == ["DOMESTIC::expired", "DOMESTIC::fresh"]
+    assert len(items) == 1
+    assert items[0]["price"] == 50000
+    assert items[0]["seatAvailability"] == 3
+    assert meta["fetched_pages"] == 1
+    assert scraper._search_metrics.get("api_key_retry_count") == 1
+
+
 def test_domestic_api_pagination_respects_page_cap(monkeypatch):
     calls = []
     scraper = PlaywrightScraper()
@@ -795,9 +961,15 @@ def test_domestic_round_trip_return_key_missing_falls_back_to_dom(monkeypatch):
             "flightNumber": "KE2001",
         }
     ]
-    key_iter = iter(["DOMESTIC::outbound", "DOMESTIC::outbound"])
 
-    monkeypatch.setattr("scraping.playwright_search.find_latest_search_key", lambda *_args, **_kwargs: next(key_iter))
+    monkeypatch.setattr(
+        "scraping.playwright_search.find_latest_search_key",
+        lambda *_args, **_kwargs: "DOMESTIC::outbound",
+    )
+    monkeypatch.setattr(
+        "scraping.playwright_search.wait_for_search_key",
+        lambda *_args, **_kwargs: "",
+    )
     monkeypatch.setattr(
         scraper,
         "_extract_domestic_api_flights_data",
@@ -826,6 +998,88 @@ def test_domestic_round_trip_return_key_missing_falls_back_to_dom(monkeypatch):
     assert scraper._search_metrics["api_total_count"] == 2
     assert scraper._search_metrics["fetched_pages"] == 1
     assert scraper._search_metrics["api_item_count"] == 2
+    assert scraper._search_metrics["outbound_clicked"] is True
+
+
+def test_domestic_round_trip_retries_next_candidate_on_click_miss(monkeypatch):
+    class _FakePage:
+        def __init__(self):
+            self.detail_clicks = 0
+
+        def evaluate(self, script):
+            # Detail-click scripts contain the scored matcher; generic fallback always fails.
+            if "const scored" in script:
+                self.detail_clicks += 1
+                # First candidate misses, second candidate hits.
+                return self.detail_clicks >= 2
+            return False
+
+    scraper = PlaywrightScraper()
+    page = _FakePage()
+    cast(Any, scraper).page = page
+    outbound = [
+        {
+            "airline": "제주항공",
+            "price": 30000,
+            "depTime": "07:30",
+            "arrTime": "08:40",
+            "stops": 0,
+            "flightNumber": "7C111",
+        },
+        {
+            "airline": "진에어",
+            "price": 32000,
+            "depTime": "09:00",
+            "arrTime": "10:10",
+            "stops": 0,
+            "flightNumber": "LJ222",
+        },
+    ]
+    inbound = [
+        {
+            "airline": "대한항공",
+            "price": 40000,
+            "depTime": "18:10",
+            "arrTime": "19:20",
+            "stops": 0,
+            "flightNumber": "KE2001",
+        }
+    ]
+
+    monkeypatch.setattr(
+        "scraping.playwright_search.find_latest_search_key",
+        lambda *_args, **_kwargs: "DOMESTIC::outbound",
+    )
+    monkeypatch.setattr(
+        "scraping.playwright_search.wait_for_search_key",
+        lambda *_args, **_kwargs: "DOMESTIC::return",
+    )
+    monkeypatch.setattr(
+        scraper,
+        "_extract_domestic_api_flights_data",
+        lambda **kwargs: (
+            (outbound, {"total_count": 2, "fetched_pages": 1})
+            if kwargs.get("search_key") == "DOMESTIC::outbound"
+            else (inbound, {"total_count": 1, "fetched_pages": 1})
+        ),
+    )
+    monkeypatch.setattr(scraper, "_wait_for_domestic_return_view", lambda: True)
+
+    results = _handle_domestic_round_trip(
+        scraper,
+        lambda _msg: None,
+        max_results=5,
+        background_mode=False,
+        time_module=SimpleNamespace(sleep=lambda *_args, **_kwargs: None),
+    )
+
+    assert results is not None
+    # All outbound legs are still combined with the collected return leg.
+    assert len(results) == 2
+    assert results[0].price == 70000
+    assert results[1].price == 72000
+    assert scraper._search_metrics["outbound_click_attempts"] == 2
+    assert scraper._search_metrics["outbound_clicked"] is True
 
 
 def test_international_dom_fallback_detects_virtualized_index_gap():
@@ -932,7 +1186,22 @@ def test_build_interpark_search_url_normalizes_hyphenated_dates():
 def test_build_interpark_search_url_treats_sel_as_city_code():
     url = scraper_config.build_interpark_search_url("SEL", "CJU", "2026-05-01")
 
-    assert "/c:SEL-c:CJU-20260501" in url
+    # SEL is a pure city code; CJU stays as airport on domestic routes.
+    assert "/c:SEL-a:CJU-20260501" in url
+
+
+def test_build_interpark_search_url_keeps_domestic_airport_codes():
+    url = scraper_config.build_interpark_search_url("GMP", "CJU", "2026-05-01")
+
+    assert "/a:GMP-a:CJU-20260501" in url
+    assert "c:SEL" not in url
+
+
+def test_build_interpark_search_url_international_still_uses_city_map():
+    url = scraper_config.build_interpark_search_url(
+        "ICN", "NRT", "2026-05-01", is_domestic=False
+    )
+    assert "/c:SEL-c:TYO-20260501" in url
 
 
 def test_build_interpark_international_api_search_url_uses_city_route_types():

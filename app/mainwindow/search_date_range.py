@@ -36,6 +36,13 @@ class SearchDateRangeMixin:
         self.tabs.setCurrentIndex(2)  # Logs tab
         
         max_results = self.prefs.get_max_results()
+        child = 0
+        infant = 0
+        if hasattr(self, "search_panel"):
+            if hasattr(self.search_panel, "spin_child"):
+                child = int(self.search_panel.spin_child.value())
+            if hasattr(self.search_panel, "spin_infant"):
+                infant = int(self.search_panel.spin_infant.value())
         self.date_worker = DateRangeWorker(
             origin,
             dest,
@@ -45,6 +52,8 @@ class SearchDateRangeMixin:
             cabin_class,
             max_results,
             telemetry_callback=self._emit_telemetry_event,
+            child=child,
+            infant=infant,
         )
         self.date_worker.progress.connect(self._update_progress)
         self.date_worker.date_result.connect(self._on_date_range_result)

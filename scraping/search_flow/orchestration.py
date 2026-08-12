@@ -175,8 +175,12 @@ def run_search(
                     raise BrowserInitError("브라우저 페이지를 생성할 수 없습니다.")
                 attach_interpark_response_listener(scraper, page)
 
-                _, origin_code = scraper_config.resolve_interpark_location(origin_upper)
-                _, dest_code = scraper_config.resolve_interpark_location(destination_upper)
+                _, origin_code = scraper_config.resolve_interpark_location(
+                    origin_upper, is_domestic=is_domestic
+                )
+                _, dest_code = scraper_config.resolve_interpark_location(
+                    destination_upper, is_domestic=is_domestic
+                )
                 url = scraper_config.build_interpark_search_url(
                     origin_upper,
                     destination_upper,
@@ -186,6 +190,7 @@ def run_search(
                     adults=adults,
                     infant=scraper._last_search_context.get("infant", 0),
                     child=scraper._last_search_context.get("child", 0),
+                    is_domestic=is_domestic,
                 )
 
                 if is_domestic:
@@ -213,6 +218,8 @@ def run_search(
                     is_round_trip=bool(normalized_return_date),
                     log=log,
                     time_module=time_module,
+                    max_results=max_results,
+                    background_mode=background_mode,
                 )
                 if api_first_results:
                     results = scraper._sort_and_limit_results(api_first_results, max_results, log)

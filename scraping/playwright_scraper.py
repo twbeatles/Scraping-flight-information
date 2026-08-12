@@ -27,6 +27,7 @@ from scraping.domestic import (
     extract_domestic_prices,
 )
 from scraping.international import extract_international_prices, sort_and_limit_results
+from scraping.interpark.contract.carriers import DOMESTIC_AIRLINE_NAMES
 from scraping.interpark.network_listener import attach_interpark_response_listener
 from scraping.search_flow import run_search
 
@@ -37,19 +38,8 @@ logger = logging.getLogger("ScraperV2")
 class PlaywrightScraper:
     """Context-managed Playwright scraper entry point."""
 
-    DOMESTIC_AIRLINES = [
-        "대한항공",
-        "아시아나",
-        "제주항공",
-        "진에어",
-        "티웨이",
-        "에어부산",
-        "에어서울",
-        "이스타항공",
-        "하이에어",
-        "에어프레미아",
-        "플라이강원",
-    ]
+    # Shared with DOM scripts; source of truth is interpark.contract.carriers.
+    DOMESTIC_AIRLINES = list(DOMESTIC_AIRLINE_NAMES)
 
     def __init__(self, telemetry_callback: Optional[Callable[[Dict[str, Any]], None]] = None):
         self.playwright: Optional[Playwright] = None

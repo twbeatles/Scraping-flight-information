@@ -1,4 +1,7 @@
-"""Backward-compatible facade for international result helpers."""
+"""Backward-compatible facade for international result helpers.
+
+Prefer importing from `scraping.international` for new code.
+"""
 
 from scraping.international import (
     _advance_results_scroll,

@@ -1,4 +1,7 @@
-"""Backward-compatible facade for domestic result helpers."""
+"""Backward-compatible facade for domestic result helpers.
+
+Prefer importing from `scraping.domestic` for new code.
+"""
 
 from scraping.domestic import (
     _coerce_int,

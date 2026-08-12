@@ -4,7 +4,7 @@
 
 ## Current Baseline
 
-- 기준일: 2026-06-11
+- 기준일: 2026-08-12
 - 실행: `python gui_v2.py`
 - GUI: PyQt6
 - Scraper: Playwright
@@ -36,11 +36,11 @@ python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec
 
 최근 확인 결과:
 
-- `python -m pytest -q` -> `123 passed`
+- `python -m pytest -q` -> `153 passed`
 - `pyright --warnings` -> `0 errors, 0 warnings`
-- `python scripts\check_tracked_text.py --check-lf` -> `Checked 142 tracked text files: OK`
-- live smoke with page-cap guard -> 국내선/국제선 실사이트 검색 통과
-- `FlightBot_v2.5.exe` 6초 실행 스모크 통과
+- `python scripts\check_tracked_text.py --check-lf` -> tracked text OK
+- live smoke / selector probe -> 릴리스 전 권장
+- PyInstaller 빌드 -> 배포 전 권장
 
 ## Package Map
 
@@ -52,6 +52,11 @@ core/
 └─ preferences.py
 
 scraping/interpark/
+├─ adapter.py
+├─ contract/
+│  ├─ carriers.py
+│  └─ schemas.py
+├─ network_listener.py
 ├─ runtime.py
 ├─ urls.py
 ├─ selectors.py
@@ -76,54 +81,23 @@ scraping/search_flow/
 ├─ domestic_flow.py
 ├─ manual_mode.py
 └─ orchestration.py
+
+docs/
+└─ interpark_site_contract.md
 ```
 
-## Stable Interfaces
+## Key Scraping Rules
 
-리팩터링 중 아래 경로와 타입은 호환성을 유지해야 한다.
+- 국내 검색 URL은 공항 단위 (`a:GMP`), 국제는 city map (`c:SEL`).
+- 국내 왕복 API-first는 편도 목록으로 종료하지 않고 조합 경로를 사용한다.
+- search key 만료 시 soft reload 재시도.
+- `FlightResult` 확장 필드(공항/수하물/잔여석 등)는 export·테이블·조합에 전파.
+- 비교/알림/테이블 최저가는 `effective_flight_price` 기준.
 
-```python
-import config
-import scraper_config
-from scraper_v2 import FlightResult, FlightSearcher, PlaywrightScraper, ParallelSearcher
-from database import FlightDatabase
-from gui_v2 import MainWindow
-```
+## Related Docs
 
-핵심 계약:
-
-- `FlightResult`
-- `PreferenceManager`
-- `FlightDatabase`
-- `ScraperScripts`
-- `build_interpark_search_url()`
-- `normalize_search_params()`
-
-## Functional Rules
-
-- API-first 추출을 우선하고, 실패 시 DOM fallback 또는 수동 모드로 전환한다.
-- API pagination은 runtime page cap을 지키고 truncation telemetry를 남긴다.
-- API 성공 후 pre-wait 실패 사유를 최종 실패 사유로 유지하지 않는다.
-- 검색 결과 shape, DB schema, 세션 JSON schema, preferences JSON schema는 임의 변경하지 않는다.
-- preferences/session JSON 저장은 atomic write를 사용한다.
-- 손상된 기본 DB는 timestamp backup으로 격리한 뒤 재생성을 시도한다.
-- `FlightResult.price`는 국내선 기본가 기준이며 혜택가는 별도 필드에 보존한다.
-- 검색 파라미터는 `origin`, `dest`, `dep`, `ret`, `adults`, `cabin_class`, `is_domestic`를 기준으로 저장/복원한다.
-- `user_preferences.json`과 세션 JSON은 `schema_version = 2`를 유지한다.
-- telemetry는 JSONL과 DB 양쪽에 기록한다.
-- 다중 목적지/날짜 범위/자동 가격 알림 검색은 background mode로 실행한다.
-- 자동 가격 알림 DB 조회 실패는 worker 실행 없이 상태/log/telemetry로 노출한다.
-- CSV/Excel export는 formula-like 셀을 중립화한다.
-
-## Packaging And Ignore Rules
-
-- spec 3종은 facade와 새 split package, `core.file_io`를 모두 hiddenimports에 포함한다.
-- `.gitignore`는 build/dist, logs, DB, sessions, Playwright profile, test cache, `.codegraph/`를 제외한다.
-- 신규 런타임 산출물은 커밋하지 않는다.
-
-## Change Checklist
-
-1. 코드 이동 시 facade re-export가 기존과 같은지 테스트한다.
-2. 새 모듈을 추가하면 spec hiddenimports를 점검한다.
-3. 문서에는 현재 코드 기준만 남기고 이미 완료된 수정 이력은 길게 유지하지 않는다.
-4. 커밋 전 `pytest`, `pyright`, LF check, `git diff --check`를 실행한다.
+- `README.md` — 사용자 설치/실행
+- `claude.md` — 에이전트 개발 규칙
+- `SCRAPING_AUDIT.md` — 스크래핑 구조 검증 기준
+- `PROJECT_AUDIT.md` — 기능 감사 및 remediation 상태
+- `docs/interpark_site_contract.md` — Interpark 사이트 계약

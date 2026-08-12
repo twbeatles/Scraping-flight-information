@@ -52,6 +52,8 @@ class MultiSearchWorker(QThread):
         cabin_class="ECONOMY",
         max_results=1000,
         telemetry_callback=None,
+        child=0,
+        infant=0,
     ):
         super().__init__()
         self.origin = origin
@@ -62,6 +64,8 @@ class MultiSearchWorker(QThread):
         self.cabin_class = cabin_class
         self.max_results = max_results
         self.telemetry_callback = telemetry_callback
+        self.child = max(0, int(child or 0))
+        self.infant = max(0, int(infant or 0))
         self._cancelled = False
         self._cancel_lock = threading.Lock()
         self._active_searchers = set()
@@ -124,6 +128,8 @@ class MultiSearchWorker(QThread):
                     progress_callback=lambda msg: self.progress.emit(f"[{dest}] {msg}"),
                     background_mode=True,
                     cancel_check=self.is_cancelled,
+                    child=self.child,
+                    infant=self.infant,
                 )
                 return index, dest, results, None
             except Exception as e:
@@ -211,6 +217,8 @@ class DateRangeWorker(QThread):
         cabin_class="ECONOMY",
         max_results=1000,
         telemetry_callback=None,
+        child=0,
+        infant=0,
     ):
         super().__init__()
         self.origin = origin
@@ -221,6 +229,8 @@ class DateRangeWorker(QThread):
         self.cabin_class = cabin_class
         self.max_results = max_results
         self.telemetry_callback = telemetry_callback
+        self.child = max(0, int(child or 0))
+        self.infant = max(0, int(infant or 0))
         self._cancelled = False
         self._cancel_lock = threading.Lock()
         self._active_searchers = set()
@@ -295,6 +305,8 @@ class DateRangeWorker(QThread):
                     max_results=self.max_results,
                     progress_callback=lambda msg: self.progress.emit(msg),
                     background_mode=True,
+                    child=self.child,
+                    infant=self.infant,
                     cancel_check=self.is_cancelled,
                 )
 
@@ -304,9 +316,8 @@ class DateRangeWorker(QThread):
                 if results:
                     from scraping.models import effective_flight_price
 
-                    min_price = min(effective_flight_price(r) for r in results)
-                    min_airline = next(r.airline for r in results if r.price == min_price)
-                    return date, (min_price, min_airline), "ok"
+                    best = min(results, key=effective_flight_price)
+                    return date, (effective_flight_price(best), best.airline), "ok"
                 return date, (0, "N/A"), "empty"
             except Exception as e:
                 return date, (0, "Error"), str(e)

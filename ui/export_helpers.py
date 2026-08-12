@@ -21,6 +21,20 @@ EXPORT_HEADERS = [
     "출처",
     "가는편 가격",
     "오는편 가격",
+    # Extended fields (appended for backward-compatible column growth)
+    "편명",
+    "소요시간",
+    "오는편 소요시간",
+    "출발공항",
+    "도착공항",
+    "오는편 출발공항",
+    "오는편 도착공항",
+    "수하물",
+    "오는편 수하물",
+    "잔여석",
+    "도착일+N",
+    "오는편 도착일+N",
+    "추천태그",
 ]
 FORMULA_TRIGGER_PREFIXES = ("=", "+", "-", "@")
 
@@ -54,6 +68,19 @@ def flight_to_export_row(flight: Any) -> list[Any]:
         getattr(flight, "source", ""),
         getattr(flight, "outbound_price", 0),
         getattr(flight, "return_price", 0),
+        getattr(flight, "flight_number", ""),
+        getattr(flight, "duration", ""),
+        getattr(flight, "return_duration", ""),
+        getattr(flight, "departure_airport", ""),
+        getattr(flight, "arrival_airport", ""),
+        getattr(flight, "return_departure_airport", ""),
+        getattr(flight, "return_arrival_airport", ""),
+        getattr(flight, "baggage", ""),
+        getattr(flight, "return_baggage", ""),
+        getattr(flight, "seat_availability", 0),
+        getattr(flight, "arrival_day_offset", 0),
+        getattr(flight, "return_arrival_day_offset", 0),
+        getattr(flight, "recommendation_tag", ""),
     ]
 
 
@@ -78,14 +105,17 @@ def export_flights_to_excel(filepath: str, flights: Iterable[Any], *, sheet_titl
     wb = openpyxl.Workbook()
     ws = wb.active
     if ws is None:
-        raise RuntimeError("worksheet initialization failed")
-    ws.title = sheet_title
-    ws.append(flight_export_headers())
+        ws = wb.create_sheet(title=sheet_title)
+    else:
+        ws.title = sheet_title
+
+    headers = flight_export_headers()
+    ws.append(headers)
     for row in flight_export_rows(flights):
         ws.append(row)
 
-    for col_idx, col in enumerate(ws.columns, start=1):
-        max_length = max(len(str(cell.value or "")) for cell in col)
-        ws.column_dimensions[get_column_letter(col_idx)].width = max_length + 2
+    for index in range(1, len(headers) + 1):
+        letter = get_column_letter(index)
+        ws.column_dimensions[letter].width = min(28, max(10, len(str(headers[index - 1])) + 2))
 
     wb.save(filepath)

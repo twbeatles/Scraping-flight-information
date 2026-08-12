@@ -91,6 +91,7 @@ def build_domestic_results(
                 price=price,
                 departure_time=dep_time,
                 arrival_time=arr_time,
+                duration=str(item.get("duration", "") or ""),
                 stops=stops,
                 flight_number=flight_number,
                 source=source,
@@ -100,6 +101,9 @@ def build_domestic_results(
                 is_round_trip=False,
                 benefit_price=benefit_price,
                 benefit_label=benefit_label,
+                departure_airport=str(item.get("depAirport", "") or "").upper(),
+                arrival_airport=str(item.get("arrAirport", "") or "").upper(),
+                seat_availability=_coerce_int(item.get("seatAvailability")),
                 confidence=confidence,
                 extraction_source=extraction_source,
             )

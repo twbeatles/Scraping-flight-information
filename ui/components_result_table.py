@@ -25,6 +25,7 @@ except ImportError:
     HAS_OPENPYXL = False
 
 import config
+from scraping.models import effective_flight_price
 from ui.export_helpers import export_flights_to_csv, export_flights_to_excel
 
 logger = logging.getLogger(__name__)
@@ -36,19 +37,19 @@ class ResultTable(QTableWidget):
         super().__init__()
         self.results_data = []  # Store flight results for access
         
-        self.setColumnCount(9)
+        self.setColumnCount(12)
         self.setHorizontalHeaderLabels([
             "항공사", "가격", "가는편 출발", "가는편 도착", "경유",
-            "오는편 출발", "오는편 도착", "경유", "출처"
+            "오는편 출발", "오는편 도착", "경유", "공항", "수하물", "잔여석", "출처"
         ])
         
         # 열 너비 설정: 내용에 맞게 자동 조절 + 마지막 열 스트레치
         header = self.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        initial_widths = [220, 180, 110, 110, 95, 110, 110, 95, 140]
+        initial_widths = [200, 160, 100, 100, 85, 100, 100, 85, 90, 80, 70, 120]
         for idx, width in enumerate(initial_widths):
-            if idx == 8:
+            if idx == 11:
                 if header is not None:
                     header.setSectionResizeMode(idx, QHeaderView.ResizeMode.Stretch)
             else:
@@ -109,7 +110,7 @@ class ResultTable(QTableWidget):
             placeholder_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             placeholder_item.setForeground(self._color_placeholder)
             placeholder_item.setFont(self._font_placeholder)
-            self.setSpan(0, 0, 1, 9)
+            self.setSpan(0, 0, 1, 12)
             self.setItem(0, 0, placeholder_item)
             self.setRowHeight(0, 80)
             self.setSortingEnabled(False)
@@ -120,12 +121,14 @@ class ResultTable(QTableWidget):
         self.clearSpans()
         self.setRowCount(len(results))
         
-        # Calculate price range for color coding
-        min_price = min(r.price for r in results)
-        max_price = max(r.price for r in results)
+        # Effective price (benefit-aware) for badge/color consistency with alerts.
+        effective_prices = [effective_flight_price(r) for r in results]
+        min_price = min(effective_prices)
+        max_price = max(effective_prices)
         price_range = max_price - min_price if max_price > min_price else 1
         
         for i, flight in enumerate(results):
+            eff_price = effective_prices[i]
             # Store flight object in first column's data
             airline_str = flight.airline
             if hasattr(flight, 'return_airline') and flight.return_airline and flight.airline != flight.return_airline:
@@ -133,28 +136,34 @@ class ResultTable(QTableWidget):
             
             airline_item = QTableWidgetItem(airline_str)
             airline_item.setData(Qt.ItemDataRole.UserRole + 1, i)
-            # 툴팁에 상세 정보 표시
+            airline_tips = []
             if hasattr(flight, 'return_airline') and flight.return_airline:
-                 airline_item.setToolTip(f"가는편: {flight.airline}\\n오는편: {flight.return_airline}")
+                airline_tips.append(f"가는편: {flight.airline}")
+                airline_tips.append(f"오는편: {flight.return_airline}")
+            if getattr(flight, "flight_number", ""):
+                airline_tips.append(f"편명: {flight.flight_number}")
+            if getattr(flight, "recommendation_tag", ""):
+                airline_tips.append(f"추천: {flight.recommendation_tag}")
+            if airline_tips:
+                airline_item.setToolTip("\n".join(airline_tips))
             self.setItem(i, 0, airline_item)
             
-            # Price (Color-coded: green=cheap, red=expensive)
-            # 국내선: 가는편/오는편 가격 분리 표시
-            # Add best price badge for minimum price
-            if flight.price == min_price:
-                if hasattr(flight, 'outbound_price') and flight.outbound_price > 0:
-                    price_text = f"🏆 {flight.price:,}원 ({flight.outbound_price:,}+{flight.return_price:,})"
-                else:
-                    price_text = f"🏆 {flight.price:,}원"
-            elif hasattr(flight, 'outbound_price') and flight.outbound_price > 0:
-                price_text = f"{flight.price:,}원 ({flight.outbound_price:,}+{flight.return_price:,})"
+            # Price (Color-coded by effective price)
+            badge = "🏆 " if eff_price == min_price else ""
+            if hasattr(flight, 'outbound_price') and flight.outbound_price > 0:
+                price_text = f"{badge}{flight.price:,}원 ({flight.outbound_price:,}+{flight.return_price:,})"
             else:
-                price_text = f"{flight.price:,}원"
+                price_text = f"{badge}{flight.price:,}원"
+            if getattr(flight, "benefit_price", 0) > 0 and flight.benefit_price != flight.price:
+                price_text = f"{price_text} / 혜택 {flight.benefit_price:,}"
             
             price_item = QTableWidgetItem(price_text)
-            price_item.setData(Qt.ItemDataRole.UserRole, flight.price)
+            price_item.setData(Qt.ItemDataRole.UserRole, eff_price)
             price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            tooltip_lines = [f"기본가: {flight.price:,}원"]
+            tooltip_lines = [
+                f"기본가: {flight.price:,}원",
+                f"비교가(혜택 반영): {eff_price:,}원",
+            ]
             if hasattr(flight, 'outbound_price') and flight.outbound_price > 0:
                 tooltip_lines.append(
                     f"구성: {flight.outbound_price:,}원 + {flight.return_price:,}원"
@@ -163,10 +172,14 @@ class ResultTable(QTableWidget):
                 tooltip_lines.append(f"혜택가: {flight.benefit_price:,}원")
             if getattr(flight, 'benefit_label', ''):
                 tooltip_lines.append(f"혜택 정보: {flight.benefit_label}")
+            if getattr(flight, "duration", ""):
+                tooltip_lines.append(f"소요시간: {flight.duration}")
+            if getattr(flight, "arrival_day_offset", 0):
+                tooltip_lines.append(f"도착일 +{flight.arrival_day_offset}")
             price_item.setToolTip("\n".join(tooltip_lines))
             
-            # Color coding based on price position
-            ratio = (flight.price - min_price) / price_range if price_range else 0
+            # Color coding based on effective price position
+            ratio = (eff_price - min_price) / price_range if price_range else 0
             if ratio < 0.2:
                 price_color = self._color_price_cheap  # Green - cheapest
             elif ratio < 0.5:
@@ -182,7 +195,10 @@ class ResultTable(QTableWidget):
             
             # Outbound
             self._set_time_item(i, 2, flight.departure_time)
-            self._set_time_item(i, 3, flight.arrival_time)
+            arr_text = flight.arrival_time
+            if getattr(flight, "arrival_day_offset", 0):
+                arr_text = f"{arr_text}(+{flight.arrival_day_offset})"
+            self._set_time_item(i, 3, arr_text)
             
             # Stops - highlight direct flights
             stops_item = QTableWidgetItem("✈️ 직항" if not flight.stops else f"{flight.stops}회 경유")
@@ -195,7 +211,10 @@ class ResultTable(QTableWidget):
             # Inbound
             if hasattr(flight, 'is_round_trip') and flight.is_round_trip:
                 self._set_time_item(i, 5, flight.return_departure_time)
-                self._set_time_item(i, 6, flight.return_arrival_time)
+                ret_arr = flight.return_arrival_time
+                if getattr(flight, "return_arrival_day_offset", 0):
+                    ret_arr = f"{ret_arr}(+{flight.return_arrival_day_offset})"
+                self._set_time_item(i, 6, ret_arr)
                 ret_stops = QTableWidgetItem("✈️ 직항" if not flight.return_stops else f"{flight.return_stops}회 경유")
                 if not flight.return_stops:
                     ret_stops.setForeground(self._color_stops_direct)
@@ -206,12 +225,46 @@ class ResultTable(QTableWidget):
                 self.setItem(i, 5, QTableWidgetItem("-"))
                 self.setItem(i, 6, QTableWidgetItem("-"))
                 self.setItem(i, 7, QTableWidgetItem("-"))
+
+            # Airports
+            dep_ap = getattr(flight, "departure_airport", "") or ""
+            arr_ap = getattr(flight, "arrival_airport", "") or ""
+            ret_dep_ap = getattr(flight, "return_departure_airport", "") or ""
+            ret_arr_ap = getattr(flight, "return_arrival_airport", "") or ""
+            if dep_ap or arr_ap:
+                airport_text = f"{dep_ap or '?'}→{arr_ap or '?'}"
+                if getattr(flight, "is_round_trip", False) and (ret_dep_ap or ret_arr_ap):
+                    airport_text = f"{airport_text} / {ret_dep_ap or '?'}→{ret_arr_ap or '?'}"
+            else:
+                airport_text = "-"
+            airport_item = QTableWidgetItem(airport_text)
+            airport_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.setItem(i, 8, airport_item)
+
+            # Baggage
+            bag = getattr(flight, "baggage", "") or ""
+            ret_bag = getattr(flight, "return_baggage", "") or ""
+            if bag and ret_bag and bag != ret_bag:
+                bag_text = f"{bag} / {ret_bag}"
+            else:
+                bag_text = bag or ret_bag or "-"
+            bag_item = QTableWidgetItem(bag_text)
+            bag_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.setItem(i, 9, bag_item)
+
+            # Seats
+            seats = int(getattr(flight, "seat_availability", 0) or 0)
+            seats_text = str(seats) if seats > 0 else "-"
+            seats_item = QTableWidgetItem(seats_text)
+            seats_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            seats_item.setData(Qt.ItemDataRole.UserRole, seats)
+            self.setItem(i, 10, seats_item)
                 
             # Source
-            self.setItem(i, 8, QTableWidgetItem(flight.source))
+            self.setItem(i, 11, QTableWidgetItem(flight.source))
             
-            # 최저가 행 배경색 강조 (더 눈에 띄게)
-            if flight.price == min_price:
+            # 최저가 행 배경색 강조 (혜택 반영 비교가 기준)
+            if eff_price == min_price:
                 for col in range(self.columnCount()):
                     item = self.item(i, col)
                     if item:

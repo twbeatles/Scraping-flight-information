@@ -16,22 +16,24 @@ python scripts\live_smoke_search.py --max-results 5 --fail-on-cap --max-domestic
 python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec
 ```
 
-최근 로컬 기준선:
+최근 로컬 기준선 (2026-08-12):
 
-- `python -m pytest -q` -> `123 passed`
+- `python -m pytest -q` -> `153 passed`
 - `pyright --warnings` -> `0 errors, 0 warnings`
-- `python scripts\check_tracked_text.py --check-lf` -> `Checked 142 tracked text files: OK`
-- `python scripts\live_smoke_search.py --max-results 5 --fail-on-cap --max-domestic-pages 30 --max-international-pages 50` -> 국내선/국제선 실사이트 검색 통과
-- `FlightBot_v2.5.spec` PyInstaller 빌드 및 `dist\FlightBot_v2.5.exe` 6초 실행 스모크 통과
+- `python scripts\check_tracked_text.py --check-lf` -> tracked text OK
+- `python scripts\live_smoke_search.py --max-results 5 --fail-on-cap --max-domestic-pages 30 --max-international-pages 50` -> 릴리스 전 권장
+- `FlightBot_v2.5.spec` PyInstaller 빌드 및 실행 스모크 권장
 
 ## Features
 
-- 국내선/국제선, 왕복/편도, 좌석 등급, 성인 인원 검색
+- 국내선/국제선, 왕복/편도, 좌석 등급, 성인·소아·유아 인원 검색
 - Interpark 동일 출처 API 우선 추출, 실패 시 DOM fallback
-- 국내선 기본가와 혜택가 분리 보존
+- 국내선 공항 단위 URL (`a:GMP`), 국제선 도시 맵 (`c:SEL`)
+- 국내선 기본가/혜택가 분리, 왕복 조합, 키 만료 재시도
+- 공항·수하물·잔여석·추천 태그 메타 (테이블/export)
 - 다중 목적지 검색, 날짜 범위 검색, 캘린더 최저가 보기
 - 즐겨찾기, 검색 기록, 세션 저장/복원
-- 가격 알림 및 자동 점검 옵션
+- 가격 알림 및 자동 점검 (발동 모달 on/off)
 - CSV/Excel 내보내기, formula-like 셀 중립화
 - JSONL + SQLite telemetry 기록
 
@@ -78,6 +80,11 @@ Scraping-flight-information/
 ├─ scraper_v2.py                # scraper public facade
 ├─ scraper_config.py            # Interpark config facade
 ├─ config.py                    # core public facade
+├─ docs/interpark_site_contract.md  # Interpark URL/API/DOM 계약
+├─ scraping/interpark/contract/ # endpoints schema, carriers
+├─ scraping/domestic/           # 국내선 API/DOM
+├─ scraping/international/      # 국제선 API/DOM
+├─ scraping/search_flow/        # 검색 orchestration
 ├─ database.py                  # storage public facade
 ├─ app/main_window.py           # MainWindow composition
 ├─ app/mainwindow/              # MainWindow feature mixins

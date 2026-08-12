@@ -2,12 +2,15 @@
 
 from datetime import datetime
 
-from core.airports import CITY_CODES_MAP
+from core.airports import CITY_CODES_MAP, DOMESTIC_AIRPORT_CODES
 from scraping.interpark.adapter import get_interpark_adapter
 
 _ADAPTER = get_interpark_adapter()
 INTERPARK_SEARCH_URL_BASE = _ADAPTER.search_url_base
 INTERPARK_AIR_API_BASE = _ADAPTER.air_api_base
+
+# Pure city codes that should keep the city prefix even on domestic routes.
+_DOMESTIC_CITY_CODES = frozenset({"SEL"})
 
 
 def normalize_interpark_date(date_text: str | None) -> str:
@@ -31,16 +34,50 @@ def normalize_interpark_api_date(date_text: str | None) -> str:
     return datetime.strptime(compact, "%Y%m%d").strftime("%Y-%m-%d")
 
 
-def resolve_interpark_location(code: str) -> tuple[str, str]:
-    """Return the route prefix and normalized city/airport code for URLs."""
+def _is_domestic_airport_code(code: str) -> bool:
     normalized = (code or "").strip().upper()
+    if not normalized:
+        return False
+    if normalized in DOMESTIC_AIRPORT_CODES:
+        return True
+    mapped = CITY_CODES_MAP.get(normalized, normalized)
+    return mapped in DOMESTIC_AIRPORT_CODES
+
+
+def infer_interpark_is_domestic(origin: str, destination: str) -> bool:
+    """True when both ends are domestic airport/city codes."""
+    return _is_domestic_airport_code(origin) and _is_domestic_airport_code(destination)
+
+
+def resolve_interpark_location(
+    code: str,
+    *,
+    is_domestic: bool = False,
+) -> tuple[str, str]:
+    """Return the route prefix and normalized city/airport code for URLs.
+
+    Domestic routes keep airport codes (a:GMP) so Gimpo/Incheon are not collapsed
+    into the Seoul city code. International routes keep the city-map behaviour
+    (ICN→SEL, NRT→TYO). Explicit city codes like SEL remain c:SEL.
+    """
+    normalized = (code or "").strip().upper()
+    if not normalized:
+        return "a", ""
+
+    if is_domestic:
+        if normalized in _DOMESTIC_CITY_CODES:
+            return "c", normalized
+        # Prefer the airport code itself; do not map GMP/ICN → SEL.
+        return "a", normalized
+
     if normalized in CITY_CODES_MAP:
         return "c", CITY_CODES_MAP[normalized]
     return "a", normalized
 
 
 def _interpark_api_location(code: str) -> str:
-    prefix, normalized = resolve_interpark_location(code)
+    """International API location token (CITY/AIRPORT). Always city-map based."""
+    prefix, normalized = resolve_interpark_location(code, is_domestic=False)
     route_type = "CITY" if prefix == "c" else "AIRPORT"
     return f"{route_type}:{normalized}"
 
@@ -55,10 +92,16 @@ def build_interpark_search_url(
     adults: int = 1,
     infant: int = 0,
     child: int = 0,
+    is_domestic: bool | None = None,
 ) -> str:
     """Build a canonical Interpark search URL with compact dates."""
-    origin_prefix, origin_code = resolve_interpark_location(origin)
-    dest_prefix, dest_code = resolve_interpark_location(destination)
+    domestic = (
+        bool(is_domestic)
+        if is_domestic is not None
+        else infer_interpark_is_domestic(origin, destination)
+    )
+    origin_prefix, origin_code = resolve_interpark_location(origin, is_domestic=domestic)
+    dest_prefix, dest_code = resolve_interpark_location(destination, is_domestic=domestic)
     departure = normalize_interpark_date(departure_date)
     returning = normalize_interpark_date(return_date) if return_date else ""
 
