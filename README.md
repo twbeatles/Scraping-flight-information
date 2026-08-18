@@ -1,217 +1,441 @@
-# Flight Bot v2.5
+# ✈️ Flight Bot v2.5
 
-Playwright 기반 Interpark 항공권 검색 결과를 PyQt6 데스크톱 UI에서 비교, 저장, 내보내기 하는 도구입니다.
+> **Playwright 기반 인터파크 항공권 실시간 최저가 검색, 다차원 비교 분석 및 자동 모니터링 데스크톱 앱**
 
-## Current Status
+Flight Bot은 인터파크 투어/항공의 국내선 및 국제선 항공권 정보를 초고속으로 실시간 수집하고, 직관적인 PyQt6 데스크톱 GUI 환경에서 가격 비교, 다차원 필터링, 캘린더 최저가 시각화, 목표 가격 알림 및 데이터 내보내기(Excel/CSV)를 제공하는 올인원 항공권 분석 도구입니다.
 
-2026-06-11 기준 코드베이스는 책임별 패키지 구조로 분리되어 있습니다. 기존 외부 진입점은 유지하고, 실제 구현은 `core/*`, `scraping/interpark/*`, `scraping/domestic/*`, `scraping/international/*`, `scraping/search_flow/*`로 이동했습니다.
+---
 
-현재 검증 기준:
+## 📑 목차 (Table of Contents)
 
-```powershell
-python -m pytest -q
-pyright --warnings
-python scripts\check_tracked_text.py --check-lf
-python scripts\live_smoke_search.py --max-results 5 --fail-on-cap --max-domestic-pages 30 --max-international-pages 50
-python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec
-```
+1. [✨ 주요 특징 (Key Features)](#-주요-특징-key-features)
+2. [🚀 빠른 시작 (Quick Start)](#-빠른-시작-quick-start)
+   - [시스템 요구사항](#시스템-요구사항)
+   - [설치 방법](#설치-방법)
+   - [실행 방법](#실행-방법)
+3. [🖥️ 기능별 상세 사용 가이드 (User Guide)](#️-기능별-상세-사용-가이드-user-guide)
+   - [1. 기본 항공권 검색 (단일 노선)](#1-기본-항공권-검색-단일-노선)
+   - [2. 검색 결과 분석 및 상호작용](#2-검색-결과-분석-및-상호작용)
+   - [3. 실시간 다차원 스마트 필터링](#3-실시간-다차원-스마트-필터링)
+   - [4. 🌍 다중 목적지 일괄 비교 검색](#4--다중-목적지-일괄-비교-검색)
+   - [5. 📅 날짜 범위 검색 & 최저가 캘린더 뷰](#5--날짜-범위-검색--최저가-캘린더-뷰)
+   - [6. 🔔 가격 알림 및 자동 백그라운드 모니터링](#6--가격-알림-및-자동-백그라운드-모니터링)
+   - [7. ⭐ 즐겨찾기, 검색 기록 및 세션 관리](#7--즐겨찾기-검색-기록-및-세션-관리)
+   - [8. 🖐️ 스마트 수동 모드 (Manual Fallback Mode)](#8-️-스마트-수동-모드-manual-fallback-mode)
+4. [⌨️ 키보드 단축키 (Keyboard Shortcuts)](#️-키보드-단축키-keyboard-shortcuts)
+5. [⚙️ 환경 설정 및 데이터 관리](#️-환경-설정-및-데이터-관리)
+6. [💻 개발자 가이드 및 CLI 활용 (Developer & CLI)](#-개발자-가이드-및-cli-활용-developer--cli)
+   - [Python 라이브러리로 활용](#python-라이브러리로-활용)
+   - [CLI 스모크 테스트 스크립트](#cli-스모크-테스트-스크립트)
+   - [품질 점검 및 단위 테스트](#품질-점검-및-단위-테스트)
+   - [PyInstaller 단독 실행파일 빌드](#pyinstaller-단독-실행파일-빌드)
+7. [📂 프로젝트 구조 (Project Structure)](#-프로젝트-구조-project-structure)
+8. [❓ 문제 해결 및 FAQ (Troubleshooting)](#-문제-해결-및-faq-troubleshooting)
 
-최근 로컬 기준선 (2026-08-12):
+---
 
-- `python -m pytest -q` -> `153 passed`
-- `pyright --warnings` -> `0 errors, 0 warnings`
-- `python scripts\check_tracked_text.py --check-lf` -> tracked text OK
-- `python scripts\live_smoke_search.py --max-results 5 --fail-on-cap --max-domestic-pages 30 --max-international-pages 50` -> 릴리스 전 권장
-- `FlightBot_v2.5.spec` PyInstaller 빌드 및 실행 스모크 권장
+## ✨ 주요 특징 (Key Features)
 
-## Features
+- **API-First 초고속 스크래핑 & DOM 폴백**: 인터파크 내부 통신 API를 우선 가로채 대량의 항공편 데이터를 수 초 내 수집하며, 차단이나 응답 지연 시 브라우저 DOM 파싱으로 자동 전환됩니다.
+- **국내선 & 국제선 완벽 지원**:
+  - **국내선**: 김포(GMP), 제주(CJU), 김해/부산(PUS), 대구(TAE) 등 공항 코드 기반 검색, 카드사 혜택가/기본가 분리 및 왕복 조합 최적화.
+  - **국제선**: 나리타(NRT), 하네다(HND), 간사이(KIX), 후쿠오카(FUK), 방콕(BKK), 다낭(DAD) 등 전 세계 주요 공항 및 도시 코드(`SEL`, `TYO`, `OSA` 등) 자동 정규화.
+- **다양한 탐색 모드**:
+  - **다중 목적지 검색**: 출발지 1곳에서 도쿄, 오사카, 후쿠오카, 방콕 등 여러 도시를 동시에 검색하여 최저가 비교.
+  - **날짜 범위 검색 & 캘린더 뷰**: 특정 기간(예: 7~14일 간) 중 가장 저렴한 출발일을 달력 상에 색상별(초록/노랑/빨강)로 시각화.
+- **스마트 가격 알림 (Price Alert)**: 목표 가격을 설정해두면 설정된 주기(5분~1440분)마다 백그라운드에서 자동 점검하여 목표가 이하 항공편 발견 시 실시간 팝업 안내.
+- **강력한 데스크톱 UI & 테마**: PyQt6 기반 다크 모드(Dark) / 라이트 모드(Light) 테마 지원, HiDPI 고해상도 모니터 완벽 대응.
+- **데이터 저장 & 내보내기**: 엑셀(XLSX) 및 CSV 내보내기(스프레드시트 수식 삽입 공격 방지 적용), SQLite 검색 이력 관리, JSON 세션 파일 백업/복원.
+- **스마트 수동 모드(Manual Mode)**: 봇 감지나 캡차가 발생해도 프로그램을 중단하지 않고 브라우저를 유지하여 사용자가 직접 확인 후 [데이터 추출하기] 버튼으로 크롤링 재개 가능.
 
-- 국내선/국제선, 왕복/편도, 좌석 등급, 성인·소아·유아 인원 검색
-- Interpark 동일 출처 API 우선 추출, 실패 시 DOM fallback
-- 국내선 공항 단위 URL (`a:GMP`), 국제선 도시 맵 (`c:SEL`)
-- 국내선 기본가/혜택가 분리, 왕복 조합, 키 만료 재시도
-- 공항·수하물·잔여석·추천 태그 메타 (테이블/export)
-- 다중 목적지 검색, 날짜 범위 검색, 캘린더 최저가 보기
-- 즐겨찾기, 검색 기록, 세션 저장/복원
-- 가격 알림 및 자동 점검 (발동 모달 on/off)
-- CSV/Excel 내보내기, formula-like 셀 중립화
-- JSONL + SQLite telemetry 기록
+---
 
-## Requirements
+## 🚀 빠른 시작 (Quick Start)
 
-- Windows 10/11
-- Python 3.10+
-- Chrome, Edge 또는 Playwright Chromium
+### 시스템 요구사항
+- **운영체제**: Windows 10 / 11 (64-bit 권장)
+- **Python 버전**: Python 3.10 이상
+- **브라우저**: Playwright Chromium (설치 명령어로 자동 구성)
 
-## Install
+### 설치 방법
 
-```powershell
-git clone https://github.com/twbeatles/Scraping-flight-information.git
-cd Scraping-flight-information
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt -c constraints.txt
-playwright install chromium
-```
+1. **저장소 복제(Clone)**
+   ```powershell
+   git clone https://github.com/twbeatles/Scraping-flight-information.git
+   cd Scraping-flight-information
+   ```
 
-`constraints.txt` 없이 `pip install -r requirements.txt`도 가능하지만, 재현 가능한 로컬 검증에는 constraints 사용을 권장합니다.
+2. **가상환경(venv) 생성 및 활성화**
+   ```powershell
+   python -m venv venv
+   venv\Scripts\activate
+   ```
 
-## Run
+3. **필수 패키지 설치**
+   ```powershell
+   # 재현 가능한 안정적 빌드를 위해 constraints 사용 권장
+   pip install -r requirements.txt -c constraints.txt
+   ```
+
+4. **Playwright 브라우저 바이너리 설치**
+   ```powershell
+   playwright install chromium
+   ```
+
+### 실행 방법
 
 ```powershell
 python gui_v2.py
 ```
 
-주요 단축키:
+---
 
-| 동작 | 단축키 |
-| --- | --- |
-| 검색 시작 | `Ctrl+Enter` |
-| 강제 재조회 | `Ctrl+Shift+Enter` |
-| 검색 취소 | `Esc` |
-| 새로고침 | `F5` |
-| CSV 내보내기 | `Ctrl+E` |
-
-## Project Structure
+## 🖥️ 기능별 상세 사용 가이드 (User Guide)
 
 ```text
-Scraping-flight-information/
-├─ gui_v2.py                    # GUI 실행 facade
-├─ scraper_v2.py                # scraper public facade
-├─ scraper_config.py            # Interpark config facade
-├─ config.py                    # core public facade
-├─ docs/interpark_site_contract.md  # Interpark URL/API/DOM 계약
-├─ scraping/interpark/contract/ # endpoints schema, carriers
-├─ scraping/domestic/           # 국내선 API/DOM
-├─ scraping/international/      # 국제선 API/DOM
-├─ scraping/search_flow/        # 검색 orchestration
-├─ database.py                  # storage public facade
-├─ app/main_window.py           # MainWindow composition
-├─ app/mainwindow/              # MainWindow feature mixins
-├─ core/
-│  ├─ airports.py               # airport/city/airline constants and validation
-│  ├─ file_io.py                # atomic text writes
-│  ├─ search_params.py          # search parameter schema and normalization
-│  └─ preferences.py            # PreferenceManager and user settings
-├─ scraping/
-│  ├─ playwright_*.py           # compatibility wrappers
-│  ├─ interpark/                # URL, selectors, runtime constants, JS builders
-│  ├─ search_flow/              # retry, API-first, manual mode orchestration
-│  ├─ domestic/                 # domestic API/DOM extraction and round-trip pairing
-│  └─ international/            # international API/DOM extraction and normalization
-├─ storage/                     # SQLite schema, models, persistence
-├─ ui/                          # PyQt panels, dialogs, workers, export helpers
-├─ tests/                       # regression tests
-└─ scripts/                     # text checks and live smoke utilities
++-----------------------------------------------------------------------------------+
+|  ✈️ Flight Bot v2.5  [🌍다중목적지] [📅날짜범위] [📠캘린더뷰] [🔔가격알림] [💾] [🌙] [⚙️] |
++-----------------------------------------------------------------------------------+
+| [▼ 검색 설정]                                                                     |
+|  여정: (o) 왕복  ( ) 편도   |   노선: ( ) 국내선  (o) 국제선   |   프로필: [ 선택 ▼ ] [저장] |
+|  출발지: [ ICN 인천 ▼ ] [+]   ✈️   도착지: [ NRT 도쿄 나리타 ▼ ] [+]              |
+|  가는 날: [ 2026-08-25 📅 ]         오는 날: [ 2026-08-28 📅 ]                     |
+|  승객: 성인 [1] 소아 [0] 유아 [0]   |   좌석: [💺 이코노미 ▼] | 선호: [0시]~[24시]    |
+|  [                     🔍 최저가 항공권 검색하기 (Ctrl+Enter)               ] [강제재조회] |
++-----------------------------------------------------------------------------------+
+| 🎯 필터: [ ] 직항만  [v] 경유 포함 | 항공사: [전체 ▼] | 가는편: [0]~[24]시 | 💰: [0]~[9999]만 |
+| 🔄 상태: [================================ 100% ================================] |
++-----------------------------------------------------------------------------------+
+| [ 🔍 검색 결과 ]  [ ⭐ 즐겨찾기 ]  [ 📋 로그 ]  [ 📚 검색 기록 ]  | [📥 CSV 저장] [📋 복사] |
+| --------------------------------------------------------------------------------- |
+| 항공사      | 가격        | 가는편    | 도착     | 경유   | 오는편    | 수하물 | 잔여석 |
+| 🏆 진에어   | 245,000원   | 08:30    | 11:00    | ✈️직항 | 13:00    | 15kg   | 9     |
+|   제주항공  | 258,000원   | 10:15    | 12:45    | ✈️직항 | 15:30    | 15kg   | 4     |
+|   대한항공  | 380,000원   | 09:00    | 11:25    | ✈️직항 | 18:00    | 23kg   | 7     |
++-----------------------------------------------------------------------------------+
 ```
 
-## Public Compatibility
+---
 
-아래 import 경로는 외부 스크립트와 기존 테스트 호환을 위해 유지합니다.
+### 1. 기본 항공권 검색 (단일 노선)
+
+메인 화면의 **검색 설정 패널**에서 여행 조건을 설정하고 검색합니다.
+
+1. **여정 및 노선 선택**:
+   - **여정**: `왕복` 또는 `편도` 선택 (`편도` 선택 시 오는 날 입력 비활성화).
+   - **노선**: `🇰🇷 국내선` 또는 `✈️ 국제선` 선택 (선택에 따라 출발지/도착지 공항 목록이 자동 전환됨).
+2. **출발지 및 도착지 설정**:
+   - 드롭다운 목록에서 선택하거나, IATA 공항 코드(예: `ICN`, `NRT`, `CJU`, `BKK`)를 직접 입력할 수 있습니다.
+   - 우측의 `➕` 버튼을 눌러 나만의 공항/도시 프리셋을 즉시 추가하고 관리할 수 있습니다.
+3. **일정 및 인원/좌석 설정**:
+   - **가는 날 / 오는 날**: 달력 팝업을 통해 날짜를 선택합니다.
+   - **승객 수**: 성인(1~9명), 소아(0~9명), 유아(0~9명)를 각각 설정합니다.
+   - **좌석 등급**: `💺 이코노미`, `💼 비즈니스`, `👑 일등석` 중 선택합니다.
+   - **선호 시간**: 원하는 출발 시간대(예: 08시 ~ 14시)를 지정하여 검색 범위를 좁힙니다.
+4. **검색 실행**:
+   - **`🔍 최저가 항공권 검색하기`** 버튼 클릭 (또는 단축키 **`Ctrl + Enter`**).
+   - **강제 재조회**: 최근 검색 캐시를 무시하고 인터파크 실시간 데이터를 새로 긁어오려면 **`강제 재조회`** 버튼(또는 **`Ctrl + Shift + Enter`**)을 누릅니다.
+5. **검색 프로필 저장/불러오기**:
+   - 자주 찾는 조건(예: "도쿄 3박 4일 이코노미")을 상단 우측의 `💾 저장` 버튼으로 프로필에 등록하고, 드롭다운에서 언제든 원클릭으로 불러올 수 있습니다.
+
+---
+
+### 2. 검색 결과 분석 및 상호작용
+
+검색이 완료되면 **12개 열(Column)**로 구성된 상세 테이블에 실시간 결과가 나열됩니다.
+
+- **결과 테이블 컬럼 안내**:
+  1. **항공사**: 항공사명 표시 (왕복의 경우 가는편+오는편 조합 표시, 마우스 호버 시 편명/추천 태그 툴팁 제공).
+  2. **가격**: 
+     - 전체 검색 결과 중 **최저가 항공편에는 `🏆` 배지와 초록색 강조 하이라이트**가 적용됩니다.
+     - 카드사/제휴 혜택가가 있을 경우 `250,000원 / 혜택 235,000원` 형태로 병기됩니다.
+     - 마우스 호버 시 기본가, 혜택 정보, 소요시간, 도착일 편차(+1일 등) 툴팁이 표시됩니다.
+  3. **가는편 출발 / 도착**: 출발/도착 시간 (익일 도착 시 `(+1)` 표기).
+  4. **가는편 경유**: `✈️ 직항`(초록색 강조) 또는 `1회 경유` 등 경유 횟수 표시.
+  5. **오는편 출발 / 도착 / 경유**: 왕복 검색 시 귀국편 정보 표시.
+  6. **공항**: 출발/도착 공항 코드 매핑 (예: `ICN→NRT / NRT→ICN`).
+  7. **수하물**: 무료 위탁 수하물 정보 (예: `15kg`, `23kg`).
+  8. **잔여석**: 실시간 잔여 좌석 수 (예: `9`, `3` 등).
+  9. **출처**: 데이터 수집 방식 (`interpark_api`, `dom_scrape`, `manual_extract` 등).
+- **편리한 인터랙션 기능**:
+  - **테이블 행 더블 클릭**: 해당 항공편의 인터파크 실시간 예약/조회 웹페이지가 기본 웹 브라우저에서 즉시 열립니다.
+  - **테이블 우클릭 컨텍스트 메뉴**:
+    - `⭐ 즐겨찾기 추가`: 관심 항공편으로 등록.
+    - `📋 정보 복사`: 항공사/가격/시간 요약 텍스트를 클립보드에 복사.
+    - `📊 Excel로 내보내기` / `📥 CSV로 내보내기`: 현재 필터링된 검색 결과를 파일로 저장.
+  - **컬럼 헤더 클릭**: 가격순, 시간순, 경유수순 등으로 오름차순/내림차순 즉시 정렬.
+
+---
+
+### 3. 실시간 다차원 스마트 필터링
+
+검색 결과가 수백 개에 달할 때, 재검색 없이 **필터 패널**에서 즉시 원하는 조건만 걸러낼 수 있습니다.
+
+- **직항/경유 필터**: `직항만` 체크박스를 켜면 경유 노선이 즉시 숨겨집니다.
+- **항공사 분류 필터**:
+  - `전체`: 모든 항공사 표시
+  - `🏷️ LCC (저비용)`: 진에어, 제주항공, 티웨이, 에어부산, 비엣젯, 피치 등 LCC만 표시
+  - `✈️ FSC (일반)`: 대한항공, 아시아나항공, JAL, ANA, 싱가포르항공 등 대형 항공사만 표시
+- **시간대 슬라이더**: 가는편/오는편 출발 시간(0시~24시)을 조절하여 새벽/심야 항공편 제외.
+- **최대 경유 횟수**: 0회(직항) ~ 5회까지 허용 경유 수 지정.
+- **가격 범위 지정**: 최소 가격 ~ 최대 가격(만원 단위)을 입력하여 예산 범위 내 항공편만 필터링.
+- **`↺ 초기화` 버튼**: 모든 필터 조건을 기본값으로 즉시 리셋.
+
+---
+
+### 4. 🌍 다중 목적지 일괄 비교 검색
+
+"어디로 갈지 아직 정하지 못했을 때", 여러 여행지의 최저가를 동시에 검색하고 비교할 수 있습니다.
+
+1. 상단 툴바의 **`🌍 다중 목적지`** 버튼을 클릭합니다.
+2. 출발지(예: `ICN 인천`)를 선택하고, 비교할 도착지들을 체크박스로 다중 선택합니다 (예: 도쿄, 오사카, 후쿠오카, 삿포로, 방콕, 다낭 등).
+3. 가는 날과 오는 날, 인원을 설정한 후 **`검색 시작`**을 누릅니다.
+4. 백그라운드 병렬 워커가 각 목적지별 최저가를 순차 수집하여 **도시별 최저가 비교 요약 창**에 정리해 보여줍니다.
+5. 요약 창에서 마음에 드는 목적지를 더블 클릭하면 메인 화면에서 해당 목적지의 전체 상세 결과로 전환됩니다.
+
+---
+
+### 5. 📅 날짜 범위 검색 & 최저가 캘린더 뷰
+
+"언제 떠나는 것이 가장 저렴한지" 확인하고 싶을 때 유용합니다.
+
+1. 상단 툴바의 **`📅 날짜 범위`** 버튼을 클릭합니다.
+2. 출발지와 도착지를 지정하고, **검색 기간 범위(시작일 ~ 종료일)**와 **여행 기간(예: 3박 또는 0=편도)**을 설정합니다.
+3. 검색을 시작하면 지정된 기간 내 매일의 항공권 최저가를 일괄 조회합니다.
+4. 조회가 완료되면 **`📠 캘린더뷰`** 다이얼로그가 열리며, 달력 상에 날짜별 최저가와 색상(🟢 최저가, 🟡 보통, 🔴 비쌈)이 직관적으로 렌더링됩니다.
+5. 달력에서 가장 저렴한 날짜를 클릭하면 메인 검색 창의 날짜가 자동으로 해당 날짜로 설정됩니다.
+
+---
+
+### 6. 🔔 가격 알림 및 자동 백그라운드 모니터링
+
+원하는 노선의 목표 가격을 등록해두면, 주기적으로 최저가를 추적하여 목표가 이하로 떨어졌을 때 알림을 줍니다.
+
+1. 상단 툴바의 **`🔔 가격알림`** 버튼을 클릭합니다.
+2. **새 알림 추가**: 노선, 출발일, 귀국일(또는 편도), 목표 가격(예: 300,000원 이하)을 입력하고 등록합니다.
+3. **자동 점검 설정**:
+   - 상단 `⚙️ 설정` → `일반` 탭에서 **[자동 가격 알림 점검]** 활성화.
+   - 점검 주기(예: 30분, 60분 등)를 설정합니다.
+   - `알림 발동 시 모달 표시` 옵션을 켜두면 목표가 이하 티켓 발견 시 화면에 즉시 팝업 안내창이 표시됩니다.
+4. 앱이 켜져 있는 동안 타이머에 의해 백그라운드에서 조용히 검색을 수행하며 결과를 `flight_data.db`에 기록합니다.
+
+---
+
+### 7. ⭐ 즐겨찾기, 검색 기록 및 세션 관리
+
+- **⭐ 즐겨찾기 탭**: 
+  - 마음에 드는 항공편을 우클릭하여 즐겨찾기에 등록하고 간단한 메모(예: "여름 휴가 후보 1순위")를 남겨 관리합니다.
+- **📚 검색 기록 탭**:
+  - 과거에 수행한 모든 검색 이력이 타임스탬프와 함께 자동 저장됩니다.
+  - 목록의 항목을 더블 클릭하면 과거 검색 조건이 메인 패널에 그대로 복원됩니다.
+- **💾 세션 저장 / 📂 세션 불러오기 (`💶` / `💛` 아이콘 버튼)**:
+  - 현재 화면에 로딩된 검색 결과 전체를 `.json` 세션 파일로 로컬에 영구 저장하거나 다시 불러올 수 있습니다.
+- **자동 복원 기능**:
+  - 프로그램을 재실행하면 마지막으로 검색했던 결과와 검색 조건을 자동으로 감지하여 즉시 복원해 줍니다.
+
+---
+
+### 8. 🖐️ 스마트 수동 모드 (Manual Fallback Mode)
+
+인터파크 웹사이트에서 일시적인 트래픽 폭증, 봇 감지(Cloudflare/reCAPTCHA), 네트워크 지연 등이 발생할 경우 앱이 멈추지 않고 **수동 모드**로 안전하게 진입합니다.
+
+1. 자동 추출 실패 시 브라우저 창이 닫히지 않고 열린 상태를 유지하며, 메인 화면 하단에 **"수동 모드 활성화됨"** 패널이 나타납니다.
+2. 화면에 떠 있는 브라우저에서 캡차를 풀거나 원하는 날짜/조건을 직접 클릭하여 결과 화면이 나오도록 합니다.
+3. 메인 화면의 **`데이터 추출하기`** 버튼을 누르면 현재 열려있는 브라우저 화면의 최신 항공편 목록을 즉시 파싱하여 결과 테이블에 표시합니다.
+4. 작업이 끝나면 **`브라우저 닫기`** 버튼을 눌러 브라우저 프로세스를 깔끔하게 종료할 수 있습니다.
+
+---
+
+## ⌨️ 키보드 단축키 (Keyboard Shortcuts)
+
+| 단축키 | 동작 | 설명 |
+| :--- | :--- | :--- |
+| **`Ctrl + Enter`** | **검색 시작** | 현재 입력된 조건으로 항공권 검색 시작 |
+| **`Ctrl + Shift + Enter`** | **강제 재조회** | 캐시를 우회하고 인터파크 실시간 데이터 강제 검색 |
+| **`Esc`** | **검색 취소 / 닫기** | 진행 중인 검색 중단 또는 열려있는 다이얼로그 닫기 |
+| **`F5`** | **새로고침** | 현재 결과에 필터 조건 재적용 |
+| **`Ctrl + F`** | **필터 포커스** | 항공사 필터 드롭다운으로 즉시 포커스 이동 |
+| **`Ctrl + E`** | **CSV 내보내기** | 검색 결과를 CSV 파일로 즉시 저장 |
+| **마우스 더블클릭** | **웹페이지 열기** | 선택한 항공권의 인터파크 실시간 조회 페이지 열기 |
+| **마우스 우클릭** | **컨텍스트 메뉴** | 즐겨찾기 등록, 정보 복사, 엑셀/CSV 내보내기 |
+
+---
+
+## ⚙️ 환경 설정 및 데이터 관리
+
+상단 툴바의 **`⚙️ 설정`** 버튼을 통해 다양한 환경을 맞춤 설정할 수 있습니다.
+
+1. **일반 탭**:
+   - **기본 선호 시간대**: 기본 출발 선호 시간(0시~24시) 기본값 설정.
+   - **검색 결과 제한**: 한 번에 수집할 최대 항공편 수(기본 1000개, 50~2000개 조절 가능).
+   - **자동 가격 알림 점검**: 자동 모니터링 활성화 여부, 점검 주기(분), 모달 팝업 여부 설정.
+   - **진단(Diagnostics)**: 최근 24시간 스크래핑 성공률, 수동모드 전환률, 셀렉터 헬스(Selector Health) 상태 점검.
+2. **목적지 관리 탭**:
+   - 사용자가 직접 추가한 커스텀 공항/도시 코드 프리셋 목록 확인 및 삭제.
+3. **데이터 관리 탭**:
+   - **📦 설정 백업/복원**: 프리셋, 프로필, 시간대, 테마 등 모든 설정을 `.json` 파일로 일괄 내보내기/가져오기.
+   - **📊 엑셀 가져오기(Import)**: 엑셀 파일(출발지, 도착지, 출발일, 귀국일, 인원 등)을 읽어 검색 프로필로 일괄 등록.
+   - **📊 엑셀 내보내기(Export)**: 현재 전체 검색 결과를 `.xlsx` 파일로 저장.
+
+---
+
+## 💻 개발자 가이드 및 CLI 활용 (Developer & CLI)
+
+Flight Bot은 데스크톱 GUI뿐만 아니라 파이썬 스크립트 라이브러리 및 CLI 도구로도 활용할 수 있도록 모듈화되어 있습니다.
+
+### Python 라이브러리로 활용
+
+`scraper_v2.FlightSearcher`를 사용하여 Python 코드에서 직접 항공권을 검색할 수 있습니다.
 
 ```python
-import config
-import scraper_config
-from scraper_v2 import FlightResult, FlightSearcher, PlaywrightScraper, ParallelSearcher
-from database import FlightDatabase
-from gui_v2 import MainWindow
-from ui.components import SearchPanel, ResultTable, FilterPanel
-from ui.dialogs import CalendarViewDialog, MultiDestDialog, PriceAlertDialog
-from ui.workers import SearchWorker, MultiSearchWorker, DateRangeWorker
+from scraper_v2 import FlightSearcher
+
+# 검색기 인스턴스 생성
+searcher = FlightSearcher()
+
+try:
+    # 인천(ICN) -> 도쿄 나리타(NRT) 왕복 검색
+    results = searcher.search(
+        origin="ICN",
+        destination="NRT",
+        departure_date="20260901",
+        return_date="20260905",
+        adults=1,
+        cabin_class="ECONOMY",
+        max_results=50,
+        background_mode=True  # 헤드리스 백그라운드 브라우저 모드
+    )
+
+    print(f"총 {len(results)}건 검색 완료")
+    for flight in results[:5]:
+        print(f"[{flight.airline}] {flight.price:,}원 | {flight.departure_time} -> {flight.arrival_time} ({flight.stops}회 경유)")
+
+finally:
+    searcher.close()
 ```
 
-새 코드에서는 가능하면 책임별 패키지를 직접 사용합니다.
+### CLI 스모크 테스트 스크립트
 
-| 영역 | 권장 모듈 |
-| --- | --- |
-| 공항/도시/항공사 상수 | `core.airports` |
-| atomic text write | `core.file_io` |
-| 검색 파라미터 정규화 | `core.search_params` |
-| 사용자 설정 | `core.preferences` |
-| Interpark URL/selector/script | `scraping.interpark.*` |
-| 국내선 추출 | `scraping.domestic.*` |
-| 국제선 추출 | `scraping.international.*` |
-| 검색 흐름 orchestration | `scraping.search_flow.*` |
-
-## Data And Config
-
-- 사용자 설정: `user_preferences.json`
-- 기본 DB: `flight_data.db`
-- telemetry JSONL: `logs/flightbot_events.jsonl`
-- 세션 파일: `flight_session_*.json`
-- preferences/session root schema: `schema_version = 2`
-- preferences/session JSON은 atomic write를 사용합니다.
-- 기본 DB 파일이 손상되어 초기화에 실패하면 timestamp backup으로 격리한 뒤 재생성을 시도합니다.
-
-런타임 산출물, DB, 로그, Playwright profile, 빌드 결과, `.codegraph/`는 `.gitignore`에서 제외합니다.
-
-## Packaging
-
-세 spec 파일은 같은 hidden import 정책을 유지합니다.
-
-- `FlightBot_v2.5.spec`
-- `FlightBot_Simple.spec`
-- `flight_bot.spec`
-
-필수 포함 범위:
-
-- facade: `database`, `scraper_v2`, `config`, `scraper_config`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`
-- package roots: `app`, `app.mainwindow`, `core`, `scraping`, `storage`, `ui`
-- split modules: `core.file_io`, `scraping.interpark.*`, `scraping.domestic.*`, `scraping.international.*`, `scraping.search_flow.*`
-- compatibility modules: `scraping.playwright_*`, `scraping.playwright_api`, `scraping.search_sources`, `scraping.manual_reasons`
-
-빌드:
+인터파크 사이트의 실시간 API 및 DOM 응답 상태를 검증하기 위한 CLI 스모크 테스트 도구를 제공합니다.
 
 ```powershell
+# 주요 국내선 및 국제선 기본 스모크 테스트
+python scripts\live_smoke_search.py --max-results 5 --fail-on-cap --max-domestic-pages 30 --max-international-pages 50
+
+# 단일 노선 빠른 진단 (예: 김포 -> 제주)
+python scripts\live_smoke_search.py --domestic-only --max-results 10
+```
+
+### 품질 점검 및 단위 테스트
+
+코드 수정 후 로컬 회귀 테스트 및 정적 타입 검사를 수행합니다.
+
+```powershell
+# 1. pytest 단위/통합 테스트 (150+ 테스트 케이스)
+python -m pytest -q
+
+# 2. Pyright 정적 타입 검사
+pyright --warnings
+
+# 3. 텍스트 인코딩 및 줄바꿈(LF) 검사
+python scripts\check_tracked_text.py --check-lf
+```
+
+### PyInstaller 단독 실행파일 빌드
+
+Python이 설치되지 않은 PC에서도 실행할 수 있는 단독 실행 파일(`.exe`)을 빌드합니다.
+
+```powershell
+# PyInstaller 빌드 실행
 python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec
-```
 
-스모크:
-
-```powershell
+# 생성된 실행 파일 실행
 dist\FlightBot_v2.5.exe
 ```
 
-## Quality Checks
+---
 
-로컬에서 변경 전후 아래 명령을 기준으로 확인합니다.
+## 📂 프로젝트 구조 (Project Structure)
 
-```powershell
-python -m pytest -q
-pyright --warnings
-python scripts\check_tracked_text.py --check-lf
-git diff --check
+```text
+Scraping-flight-information/
+├─ gui_v2.py                         # GUI 애플리케이션 진입점 (Facade)
+├─ scraper_v2.py                     # Scraper 라이브러리 공개 진입점
+├─ scraper_config.py                 # 인터파크 URL/셀렉터/타임아웃 설정
+├─ config.py                         # 공통 설정 및 사용자 선호도(Preferences)
+├─ database.py                       # SQLite DB 공개 인터페이스
+├─ requirements.txt                  # 의존 패키지 목록
+├─ constraints.txt                   # 패키지 고정 버전 명세
+├─ FlightBot_v2.5.spec               # PyInstaller 빌드 명세서
+│
+├─ app/                              # 메인 윈도우 UI 및 컨트롤러
+│  ├─ main_window.py                 # MainWindow 클래스 조립
+│  └─ mainwindow/                    # 기능별 믹스인 (검색, 필터, 알림, 즐겨찾기 등)
+│
+├─ core/                             # 핵심 도메인 로직
+│  ├─ airports.py                    # 공항/도시/항공사 코드 매핑 및 유효성 검증
+│  ├─ file_io.py                     # 원자적(Atomic) 파일 쓰기 보장
+│  ├─ search_params.py               # 검색 파라미터 정규화 스키마
+│  └─ preferences.py                 # 사용자 설정 저장/관리자 (PreferenceManager)
+│
+├─ scraping/                         # 스크래핑 엔진
+│  ├─ models.py                      # FlightResult 데이터 모델
+│  ├─ searcher.py                    # FlightSearcher 오케스트레이션 및 캐시 계층
+│  ├─ search_sources.py              # 검색 소스 어댑터 (인터파크 항공 등)
+│  ├─ interpark/                     # 인터파크 전용 셀렉터, 액션 JS 빌더, 계약
+│  ├─ domestic/                      # 국내선 API 추출 및 왕복 조합 페어링
+│  ├─ international/                 # 국제선 API 추출 및 정규화
+│  └─ search_flow/                   # API-First 흐름 제어, 재시도, 수동 모드 전환
+│
+├─ storage/                          # 데이터 영속성 (SQLite)
+│  ├─ schema.py                      # 테이블 스키마 및 마이그레이션
+│  └─ flight_database.py             # 즐겨찾기, 가격 히스토리, 검색 로그, 텔레메트리
+│
+├─ ui/                               # PyQt6 UI 컴포넌트
+│  ├─ components_search_panel.py     # 검색 입력 패널
+│  ├─ components_filter_panel.py     # 다차원 필터링 패널
+│  ├─ components_result_table.py     # 12열 결과 테이블 및 하이라이트
+│  ├─ dialogs_calendar.py            # 최저가 캘린더 뷰 다이얼로그
+│  ├─ dialogs_search_multi.py        # 다중 목적지 검색 다이얼로그
+│  ├─ dialogs_search_date_range.py   # 날짜 범위 검색 다이얼로그
+│  ├─ dialogs_tools_price_alert.py   # 가격 알림 관리 다이얼로그
+│  ├─ dialogs_tools_settings.py      # 환경설정 다이얼로그
+│  ├─ styles_dark.py / styles_light.py # 테마 스타일시트
+│  └─ workers_*.py                   # QThread 백그라운드 비동기 워커
+│
+├─ tests/                            # 단위 및 통합 회귀 테스트 모음
+└─ scripts/                          # 라이브 스모크 및 성능 벤치마크 유틸리티
 ```
 
-신규 파일을 추가한 뒤에는 스테이징 후 `check_tracked_text.py --check-lf`를 다시 실행하면 신규 tracked text 파일까지 포함해 점검됩니다.
+---
 
-## Troubleshooting
+## ❓ 문제 해결 및 FAQ (Troubleshooting)
 
-| 증상 | 확인 |
-| --- | --- |
-| Playwright 브라우저 실행 실패 | `playwright install chromium` 재실행 |
-| PyInstaller 실행 파일에서 import 실패 | spec hiddenimports가 현재 패키지 구조와 맞는지 확인 |
-| 검색 결과 0건 또는 수동 모드 진입 | telemetry의 `manual_reason`, `api_total_count`, `fetched_pages`, `api_pages_truncated` 확인 |
-| 설정 복원 오류 | `user_preferences.json`의 `schema_version`, 공항 코드, `is_domestic` 확인 |
-| DB 마이그레이션/복구 오류 | `storage/schema.py`와 `storage/flight_database.py` 회귀 테스트 및 `.bak` 격리 파일 확인 |
+### Q1. "Playwright Executable Doesn't Exist" 또는 브라우저 실행 오류가 발생합니다.
+> **해결책**: Playwright의 Chromium 브라우저 바이너리가 설치되지 않았을 때 발생합니다. 터미널에서 아래 명령을 실행하세요:
+> ```powershell
+> playwright install chromium
+> ```
 
-## Changelog
+### Q2. 검색 결과가 0건으로 나오거나 "수동 모드"로 자동 전환됩니다.
+> **원인**: 인터파크 측에서 일시적인 트래픽 차단(Bot Detection)을 적용했거나, 요청한 날짜/노선에 실제 잔여 좌석이 없을 때 발생합니다.
+> **해결책**:
+> 1. 자동으로 열려있는 브라우저 창에서 캡차 또는 날짜를 직접 확인합니다.
+> 2. 브라우저에서 결과가 확인되면 UI 하단의 **`데이터 추출하기`** 버튼을 누릅니다.
+> 3. 잠시 후 재시도하거나 다른 날짜로 검색해 보세요.
 
-### 2026-06-11
+### Q3. SQLite 데이터베이스 손상 오류가 발생합니다.
+> **해결책**: 앱 내부의 복구 메커니즘이 손상된 DB 파일을 `FlightBot_recovered_*.bak`로 자동 격리 백업한 뒤 새로운 DB를 재생성합니다. 기존 데이터를 복구하려면 `storage/flight_database.py`의 복구 가이드를 참조하세요.
 
-- 국내선/국제선 API pagination에 page cap과 truncation telemetry를 추가했습니다.
-- 검색 성공 후 DB 저장/검색 로그/last-result/알림 점검 실패가 결과 렌더링을 막지 않도록 분리했습니다.
-- 손상된 SQLite DB 파일은 timestamp backup으로 격리한 뒤 재생성을 시도합니다.
-- preferences/session JSON 저장을 atomic write로 변경했습니다.
-- 검색 worker 시작 전 취소, 자동 가격 알림 DB 조회 실패, CSV/XLSX formula-like 셀 중립화를 보강했습니다.
-- live smoke에 page cap, stale manual reason, browser cleanup 검사를 추가했습니다.
-- PyInstaller spec 3종에 `core.file_io` hidden import를 추가했습니다.
+### Q4. 엑셀(XLSX) 내보내기/가져오기가 작동하지 않습니다.
+> **해결책**: `openpyxl` 라이브러리가 설치되어 있는지 확인하세요:
+> ```powershell
+> pip install openpyxl
+> ```
+> (참고: CSV 내보내기는 별도 외부 라이브러리 없이 기본 지원됩니다.)
 
-### 2026-06-10
+---
 
-- `config.py`, `scraper_config.py`, `scraper_v2.py`, `scraping/playwright_*.py`를 호환 facade로 유지하면서 실제 구현을 책임별 패키지로 분리했습니다.
-- `core/*`, `scraping/interpark/*`, `scraping/domestic/*`, `scraping/international/*`, `scraping/search_flow/*`를 추가했습니다.
-- MainWindow/SearchPanel mixin의 star import 의존을 명시 import로 정리했습니다.
-- 세 PyInstaller spec의 hiddenimports를 새 패키지 구조와 동기화했습니다.
-- README, Claude/Gemini 개발 가이드, scraping audit 문서를 현재 코드베이스 우선으로 간략화했습니다.
-- `.codegraph/`를 로컬 코드 인덱스 산출물로 ignore 처리했습니다.
+## 📄 라이선스 (License)
+
+본 프로젝트는 개인 학습 및 항공권 가격 분석 연구 목적으로 개발되었습니다. 수집된 모든 데이터의 저작권 및 권리는 인터파크(Interpark) 및 해당 항공사에 있습니다.
