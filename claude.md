@@ -45,7 +45,7 @@ config.py
    ├─ airports.py
    ├─ file_io.py
    ├─ search_params.py
-   └─ preferences.py
+   └─ preferences/  (defaults/normalize/store + presets/history/profiles/settings mixins + manager)
 
 database.py
 └─ storage/*
@@ -58,16 +58,22 @@ database.py
 | `core.airports` | 공항/도시/항공사 상수, 공항 코드 검증, 항공사 분류 |
 | `core.file_io` | preferences/session JSON atomic write |
 | `core.search_params` | 검색 파라미터 스키마, 날짜 정규화, 국내선 추론 |
-| `core.preferences` | `PreferenceManager`, 설정 import/export, 히스토리/프로필 |
+| `core.preferences` | `PreferenceManager`, 설정 import/export, 히스토리/프로필 (mixin 패키지, facade 유지) |
 | `scraping.interpark.runtime` | timeout, retry, cache, scroll 튜닝 상수 |
 | `scraping.interpark.urls` | Interpark URL/date/location builder |
 | `scraping.interpark.selectors` | wait selector와 regex pattern |
 | `scraping.interpark.scripts` | 기존 `ScraperScripts` static method 호환 class |
-| `scraping.domestic` | 국내선 API-first 추출, DOM fallback, 왕복 조합 |
+| `scraping.playwright_api` | fetch/meta/cache/keys/resources 패키지 (lazy facade, import 경로 유지) |
+| `scraping.domestic` | 국내선 API-first 추출, DOM fallback, 왕복 조합 (`domestic.api` 하위 패키지) |
 | `scraping.international` | 국제선 API-first 추출, DOM fallback, fare/benefit 정규화 |
-| `scraping.search_flow` | 수동 모드, API-first 시도, 재시도 orchestration |
+| `scraping.search_flow` | 수동 모드, API-first 시도, 재시도 orchestration (`orchestration` 하위 패키지) |
 | `app.mainwindow.*` | MainWindow 기능별 mixin |
 | `ui.search_panel_*` | SearchPanel build/action/state 분리 |
+| `ui.components_result_table` | table/formatting/context_menu/export_view 패키지 (facade 유지) |
+| `ui.components_filter_panel` | panel/state 패키지 (facade 유지) |
+| `ui.dialogs_tools_settings` | dialog/탭 3종/status_texts 패키지 (facade 유지) |
+| `ui.workers_parallel` | base/multi/dates 패키지 (facade 유지) |
+| `ui.styles_dark` / `ui.styles_light` | QSS 섹션별 모듈 패키지 (합성값 byte-identical) |
 | `storage.*` | SQLite schema, migration, persistence |
 
 ## Compatibility Contracts
@@ -124,13 +130,14 @@ database.py
 
 필수 범위:
 
-- `core.airports`, `core.file_io`, `core.search_params`, `core.preferences`
+- `core.airports`, `core.file_io`, `core.search_params`, `core.preferences` (+ `preferences.*` 하위 모듈)
 - `scraping.interpark.*` (`contract`, `adapter`, `urls`, `selectors`, `scripts`, `network_listener`)
-- `scraping.domestic.*`
+- `scraping.domestic.*` (+ `domestic.api.*` 하위 모듈)
 - `scraping.international.*`
-- `scraping.search_flow.*`
-- 기존 `scraping.playwright_*`, `scraping.playwright_api`, `scraping.search_sources`, `scraping.manual_reasons`
+- `scraping.search_flow.*` (+ `search_flow.orchestration.*` 하위 모듈)
+- 기존 `scraping.playwright_*`, `scraping.playwright_api` (+ `playwright_api.*` 하위 모듈), `scraping.search_sources`, `scraping.manual_reasons`
 - `ui.search_panel_params`, `ui.airport_options`, `ui.export_helpers`
+- `ui.components_result_table.*`, `ui.components_filter_panel.*`, `ui.dialogs_tools_settings.*`, `ui.workers_parallel.*`, `ui.styles_dark.*`, `ui.styles_light.*`
 - `storage.schema`, `storage.flight_database`, `storage.db_favorites`
 
 ## Editing Checklist

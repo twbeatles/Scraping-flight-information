@@ -49,7 +49,7 @@ core/
 ├─ airports.py
 ├─ file_io.py
 ├─ search_params.py
-└─ preferences.py
+└─ preferences/  (defaults/normalize/store + presets/history/profiles/settings + manager)
 
 scraping/interpark/
 ├─ adapter.py
@@ -63,7 +63,7 @@ scraping/interpark/
 └─ scripts/
 
 scraping/domestic/
-├─ api.py
+├─ api/  (client/key_refresh/normalize/failures/service)
 ├─ dom.py
 ├─ helpers.py
 └─ results.py
@@ -80,7 +80,16 @@ scraping/search_flow/
 ├─ api_first.py
 ├─ domestic_flow.py
 ├─ manual_mode.py
-└─ orchestration.py
+└─ orchestration/  (context/browser/extraction/failures/telemetry)
+
+scraping/playwright_api/  (fetch/meta/cache/keys/resources, lazy facade)
+
+ui/
+├─ components_result_table/  (table/formatting/context_menu/export_view)
+├─ components_filter_panel/  (panel/state)
+├─ dialogs_tools_settings/  (dialog/탭 3종/status_texts)
+├─ workers_parallel/  (base/multi/dates)
+└─ styles_dark|styles_light/  (QSS 섹션별 모듈)
 
 docs/
 └─ interpark_site_contract.md

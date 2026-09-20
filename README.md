@@ -92,16 +92,24 @@ Scraping-flight-information/
 │  ├─ airports.py               # airport/city/airline constants and validation
 │  ├─ file_io.py                # atomic text writes
 │  ├─ search_params.py          # search parameter schema and normalization
-│  └─ preferences.py            # PreferenceManager and user settings
+│  └─ preferences/              # PreferenceManager (defaults/normalize/history/profiles/presets/settings)
 ├─ scraping/
 │  ├─ playwright_*.py           # compatibility wrappers
+│  ├─ playwright_api/           # fetch/meta/cache/keys/resources (facade keeps import path)
 │  ├─ interpark/                # URL, selectors, runtime constants, JS builders
 │  ├─ search_flow/              # retry, API-first, manual mode orchestration
+│  │  └─ orchestration/         # context/browser/extraction/failures/telemetry
 │  ├─ domestic/                 # domestic API/DOM extraction and round-trip pairing
+│  │  └─ api/                   # client/key_refresh/normalize/failures/service
 │  └─ international/            # international API/DOM extraction and normalization
 ├─ storage/                     # SQLite schema, models, persistence
 ├─ ui/                          # PyQt panels, dialogs, workers, export helpers
-├─ tests/                       # regression tests
+│  ├─ components_result_table/  # table/formatting/context_menu/export_view
+│  ├─ components_filter_panel/  # panel/state
+│  ├─ dialogs_tools_settings/   # dialog/general_tab/presets_tab/data_tab/status_texts
+│  ├─ workers_parallel/         # base/multi/dates
+│  └─ styles_dark|styles_light/ # one QSS section module each (byte-identical compose)
+├─ tests/                       # regression tests (workers/api/searcher/urls/gui-*.py + support_gui)
 └─ scripts/                     # text checks and live smoke utilities
 ```
 

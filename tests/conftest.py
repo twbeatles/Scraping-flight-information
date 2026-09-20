@@ -13,8 +13,15 @@ if str(PROJECT_ROOT) not in sys.path:
 _PYQT_TEST_FILES = {
     "test_dialog_validations.py",
     "test_facade_imports.py",
-    "test_gui_behaviors.py",
-    "test_workers_and_scraper.py",
+    "test_gui_guards.py",
+    "test_gui_search_panel.py",
+    "test_gui_results.py",
+    "test_gui_alerts_export.py",
+    "test_parallel_workers.py",
+    "test_domestic_api.py",
+    "test_international_api.py",
+    "test_searcher_core.py",
+    "test_search_urls.py",
 }
 
 try:
