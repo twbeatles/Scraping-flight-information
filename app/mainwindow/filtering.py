@@ -7,10 +7,89 @@ from app.mainwindow.shared import (
     scraper_config,
     time,
 )
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from scraping.models import effective_flight_price
+from ui.components_filter_panel.state import UNLIMITED_STOPS, describe_stops_filter
+from ui.components_result_table.table_config import FILTERED_EMPTY_TEXT
 
 if TYPE_CHECKING:
     from app.main_window import MainWindow
+
+
+AIRLINE_CATEGORY_LABELS = {"ALL": "전체", "LCC": "LCC", "FSC": "FSC"}
+CABIN_LABELS = {"ECONOMY": "이코노미", "BUSINESS": "비즈니스", "FIRST": "일등석"}
+
+
+def _format_short_date(value: Any) -> str:
+    text = str(value or "")
+    if len(text) == 8 and text.isdigit():
+        return f"{int(text[4:6])}/{int(text[6:8])}"
+    return text
+
+
+def lowest_effective_price(flights: List[Any]) -> int:
+    """가격이 확인된 항공편 중 최저 비교가. 없으면 0."""
+
+    prices = [p for p in (effective_flight_price(f) for f in flights) if p > 0]
+    return min(prices) if prices else 0
+
+
+def build_result_summary(
+    params: Optional[Dict[str, Any]],
+    shown: List[Any],
+    total: int,
+    *,
+    truncated: bool = False,
+) -> str:
+    """결과 표 위 요약 문구: 조회 조건 · 표시/전체 건수 · 최저가 · 누락 경고."""
+
+    params = params or {}
+    parts: List[str] = []
+
+    origin = str(params.get("origin") or "")
+    dest = str(params.get("dest") or "")
+    if origin and dest:
+        parts.append(f"{origin} → {dest}")
+
+    dep = _format_short_date(params.get("dep"))
+    ret = _format_short_date(params.get("ret"))
+    if dep:
+        parts.append(f"{dep} ~ {ret} 왕복" if ret else f"{dep} 편도")
+
+    try:
+        adults = int(params.get("adults") or 0)
+        child = int(params.get("child") or 0)
+        infant = int(params.get("infant") or 0)
+    except (TypeError, ValueError):
+        adults = child = infant = 0
+    if adults:
+        pax = f"성인 {adults}"
+        if child:
+            pax += f" · 소아 {child}"
+        if infant:
+            pax += f" · 유아 {infant}"
+        parts.append(pax)
+
+    cabin = CABIN_LABELS.get(str(params.get("cabin_class") or "").upper())
+    if cabin and parts:
+        parts.append(cabin)
+
+    if total <= 0:
+        parts.append("결과 없음")
+    elif len(shown) == total:
+        parts.append(f"{total}건")
+    else:
+        parts.append(f"{len(shown)}건 표시 / 전체 {total}건")
+
+    best = lowest_effective_price(shown)
+    if best > 0:
+        parts.append(f"최저 {best:,}원 (혜택 반영)")
+
+    text = "  |  ".join(parts)
+    if truncated:
+        text += "  |  ⚠️ 조회 상한에 도달해 일부 결과가 빠졌을 수 있습니다"
+    return text
 
 
 class FilteringMixin:
@@ -32,6 +111,19 @@ class FilteringMixin:
         self._last_filter_log_msg = message
         self._last_filter_log_ts = now
         self.log_viewer.append_log(message)
+    def _update_result_summary(self: Any, shown: List[Any]):
+        label = getattr(self, "result_summary_label", None)
+        if label is None:
+            return
+        label.setText(
+            build_result_summary(
+                getattr(self, "current_search_params", None),
+                shown,
+                len(getattr(self, "all_results", None) or []),
+                truncated=bool(getattr(self, "_last_search_truncated", False)),
+            )
+        )
+
     def _apply_filter(self: Any, filters=None):
         if filters is None:
             filters = self.filter_panel.get_current_filters()
@@ -42,7 +134,7 @@ class FilteringMixin:
         direct_only = filters.get("direct_only", False)
         include_layover = filters.get("include_layover", True)
         airline_category = filters.get("airline_category", "ALL")
-        max_stops = filters.get("max_stops", 3)
+        max_stops = filters.get("max_stops", UNLIMITED_STOPS)
         
         # Outbound Time Filter
         start_h = filters.get("start_time", 0)
@@ -94,18 +186,27 @@ class FilteringMixin:
                 except Exception as e:
                     logger.debug(f"Return time filter parsing error: {e}")
             
-            # 5. Price Range Filter (Advanced)
+            # 5. Price Range Filter - 표의 가격 칸·최저가 강조와 같은 비교가(혜택 반영) 기준
+            compare_price = effective_flight_price(f)
             min_price = filters.get("min_price", 0)
             max_price = filters.get("max_price", MAX_PRICE_FILTER)
-            if f.price < min_price:
+            if compare_price < min_price:
                 continue
             if max_price < MAX_PRICE_FILTER:
-                if f.price > max_price:
+                if compare_price > max_price:
                     continue
                 
             filtered.append(f)
             
+        # 가격 미확인(0)은 뒤로, 나머지는 비교가 오름차순
+        filtered.sort(key=lambda item: effective_flight_price(item) or float("inf"))
+
+        if hasattr(self.table, "set_empty_message"):
+            self.table.set_empty_message(
+                None if filtered else FILTERED_EMPTY_TEXT.format(total=len(self.all_results))
+            )
         self.table.update_data(filtered)
+        self._update_result_summary(filtered)
         
         # 상태 메시지에 가격 범위 표시
         price_msg = ""
@@ -114,7 +215,13 @@ class FilteringMixin:
         if min_p > 0 or max_p < MAX_PRICE_FILTER:
             price_msg = f" | 가격: {min_p//10000}~{max_p//10000}만원"
         
-        msg = f"필터링: {len(filtered)}/{len(self.all_results)} | 시간: {start_h}~{end_h}시 | 항공사: {airline_category}{price_msg}"
+        airline_label = AIRLINE_CATEGORY_LABELS.get(airline_category, airline_category)
+        stops_label = describe_stops_filter(direct_only, include_layover, max_stops)
+        msg = (
+            f"표시 {len(filtered)}건 / 전체 {len(self.all_results)}건"
+            f" | 경유: {stops_label} | 가는편 출발: {start_h}~{end_h}시"
+            f" | 항공사: {airline_label}{price_msg}"
+        )
         status_bar = self.statusBar()
         if status_bar is not None:
             status_bar.showMessage(msg)

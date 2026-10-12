@@ -5,11 +5,17 @@ State defaults/snapshots and time-range validation live in `state.py`.
 
 import logging
 from PyQt6.QtWidgets import (
-    QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
+    QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
 )
 from PyQt6.QtCore import pyqtSignal
 
-from ui.components_filter_panel.state import adjust_time_range, build_filter_dict
+from ui.components_filter_panel.state import (
+    STOPS_OPTIONS,
+    UNLIMITED_STOPS,
+    adjust_time_range,
+    build_filter_dict,
+    stops_limit_to_flags,
+)
 from ui.components_primitives import NoWheelSpinBox, NoWheelComboBox
 
 
@@ -34,45 +40,27 @@ class FilterPanel(QFrame):
 
         # Filter label with icon
         filter_label = QLabel("🎯 필터")
-        filter_label.setStyleSheet("font-weight: 700; color: #f1f5f9; font-size: 15px;")
+        filter_label.setStyleSheet("font-weight: 700; font-size: 15px;")
         row1.addWidget(filter_label)
 
-        # 체크박스 공통 스타일 (크게)
-        checkbox_style = """
-            QCheckBox {
-                font-size: 14px;
-                font-weight: 600;
-                color: #e2e8f0;
-                spacing: 8px;
-                padding: 4px 8px;
-            }
-            QCheckBox::indicator {
-                width: 20px;
-                height: 20px;
-                border-radius: 4px;
-            }
-        """
-
-        # Direct flights only
-        self.chk_direct = QCheckBox("직항만")
-        self.chk_direct.setToolTip("경유 없이 직항 노선만 표시합니다")
-        self.chk_direct.setStyleSheet(checkbox_style)
-        self.chk_direct.stateChanged.connect(self._emit_filter)
-        row1.addWidget(self.chk_direct)
-
-        # Include layovers
-        self.chk_layover = QCheckBox("경유 포함")
-        self.chk_layover.setToolTip("경유 노선도 함께 표시합니다")
-        self.chk_layover.setChecked(True)
-        self.chk_layover.setStyleSheet(checkbox_style)
-        self.chk_layover.stateChanged.connect(self._emit_filter)
-        row1.addWidget(self.chk_layover)
+        # Stops filter - 직항/경유 한도를 하나의 선택으로 정한다
+        stops_label = QLabel("경유:")
+        stops_label.setStyleSheet("font-weight: 600; font-size: 14px;")
+        row1.addWidget(stops_label)
+        self.cb_stops = NoWheelComboBox()
+        self.cb_stops.setToolTip("허용할 최대 경유 횟수 (가는편·오는편 각각 적용)")
+        for label, limit in STOPS_OPTIONS:
+            self.cb_stops.addItem(label, limit)
+        self.cb_stops.setMinimumWidth(120)
+        self.cb_stops.setStyleSheet("font-size: 13px; padding: 4px;")
+        self.cb_stops.currentIndexChanged.connect(self._emit_filter)
+        row1.addWidget(self.cb_stops)
 
         row1.addWidget(self._create_separator())
 
         # Airline Category Filter
         airline_label = QLabel("항공사:")
-        airline_label.setStyleSheet("font-weight: 600; color: #e2e8f0; font-size: 14px;")
+        airline_label.setStyleSheet("font-weight: 600; font-size: 14px;")
         row1.addWidget(airline_label)
         self.cb_airline_category = NoWheelComboBox()
         self.cb_airline_category.setToolTip("LCC: 저비용항공사 (제주항공, 진에어 등)\nFSC: 일반항공사 (대한항공, 아시아나)")
@@ -101,7 +89,6 @@ class FilterPanel(QFrame):
         row2.setSpacing(12)
 
         # 공통 스타일
-        label_style = "font-weight: 600; color: #e2e8f0; font-size: 13px;"
         spin_style = """
             QSpinBox {
                 min-width: 70px;
@@ -165,21 +152,6 @@ class FilterPanel(QFrame):
 
         row2.addWidget(self._create_separator())
 
-        # Max Stops Filter
-        lbl_stops = QLabel("최대경유:")
-        lbl_stops.setStyleSheet(label_style)
-        row2.addWidget(lbl_stops)
-        self.spin_max_stops = NoWheelSpinBox()
-        self.spin_max_stops.setRange(0, 5)
-        self.spin_max_stops.setValue(3)
-        self.spin_max_stops.setSuffix("회")
-        self.spin_max_stops.setStyleSheet(spin_style)
-        self.spin_max_stops.setToolTip("허용할 최대 경유 횟수")
-        self.spin_max_stops.valueChanged.connect(self._emit_filter)
-        row2.addWidget(self.spin_max_stops)
-
-        row2.addWidget(self._create_separator())
-
         # Price Range Filter with icon
         lbl_price = QLabel("💰 가격:")
         lbl_price.setStyleSheet("font-weight: 700; color: #4ade80; font-size: 13px;")
@@ -189,7 +161,7 @@ class FilterPanel(QFrame):
         self.spin_min_price.setValue(0)
         self.spin_min_price.setSuffix("만")
         self.spin_min_price.setStyleSheet(spin_style)
-        self.spin_min_price.setToolTip("최소 가격 (만원 단위)")
+        self.spin_min_price.setToolTip("최소 가격 (만원 단위, 혜택 반영 비교가 기준)")
         self.spin_min_price.valueChanged.connect(self._emit_filter)
         row2.addWidget(self.spin_min_price)
 
@@ -202,7 +174,7 @@ class FilterPanel(QFrame):
         self.spin_max_price.setValue(9999)
         self.spin_max_price.setSuffix("만")
         self.spin_max_price.setStyleSheet(spin_style)
-        self.spin_max_price.setToolTip("최대 가격 (만원 단위, 9999=무제한)")
+        self.spin_max_price.setToolTip("최대 가격 (만원 단위, 혜택 반영 비교가 기준, 9999=무제한)")
         self.spin_max_price.valueChanged.connect(self._emit_filter)
         row2.addWidget(self.spin_max_price)
 
@@ -259,18 +231,16 @@ class FilterPanel(QFrame):
         """필터 초기화 - 시그널 차단으로 다중 emit 방지"""
         # 모든 필터 위젯의 시그널 차단
         widgets = [
-            self.chk_direct, self.chk_layover, self.cb_airline_category,
-            self.spin_max_stops, self.spin_start_time, self.spin_end_time,
+            self.cb_stops, self.cb_airline_category,
+            self.spin_start_time, self.spin_end_time,
             self.spin_ret_start, self.spin_ret_end, self.spin_min_price, self.spin_max_price
         ]
         for w in widgets:
             w.blockSignals(True)
 
         # 값 초기화
-        self.chk_direct.setChecked(False)
-        self.chk_layover.setChecked(True)
+        self.cb_stops.setCurrentIndex(0)  # 전체
         self.cb_airline_category.setCurrentIndex(0)  # ALL
-        self.spin_max_stops.setValue(3)
         self.spin_start_time.setValue(0)
         self.spin_end_time.setValue(24)
         self.spin_ret_start.setValue(0)
@@ -285,12 +255,24 @@ class FilterPanel(QFrame):
         # 마지막에 한 번만 emit
         self._emit_filter()
 
+    def set_departure_time_range(self, start: int, end: int) -> None:
+        """가는편 출발 시간대를 시그널 없이 설정한다 (설정의 선호 시간 초기화용)."""
+        start = max(0, min(int(start), 23))
+        end = max(start + 1, min(int(end), 24))
+        for spin, value in ((self.spin_start_time, start), (self.spin_end_time, end)):
+            spin.blockSignals(True)
+            spin.setValue(value)
+            spin.blockSignals(False)
+
     def get_current_filters(self):
+        stops_data = self.cb_stops.currentData()
+        max_stops = UNLIMITED_STOPS if stops_data is None else int(stops_data)
+        direct_only, include_layover = stops_limit_to_flags(max_stops)
         return build_filter_dict(
-            direct_only=self.chk_direct.isChecked(),
-            include_layover=self.chk_layover.isChecked(),
+            direct_only=direct_only,
+            include_layover=include_layover,
             airline_category=self.cb_airline_category.currentData(),
-            max_stops=self.spin_max_stops.value(),
+            max_stops=max_stops,
             start_time=self.spin_start_time.value(),
             end_time=self.spin_end_time.value(),
             ret_start_time=self.spin_ret_start.value(),

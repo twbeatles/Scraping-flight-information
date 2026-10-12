@@ -6,11 +6,23 @@ validation logic in `state.py`.
 """
 
 from ui.components_filter_panel.panel import FilterPanel
-from ui.components_filter_panel.state import DEFAULT_FILTERS, adjust_time_range, build_filter_dict
+from ui.components_filter_panel.state import (
+    DEFAULT_FILTERS,
+    STOPS_OPTIONS,
+    UNLIMITED_STOPS,
+    adjust_time_range,
+    build_filter_dict,
+    describe_stops_filter,
+    stops_limit_to_flags,
+)
 
 __all__ = [
     "FilterPanel",
     "DEFAULT_FILTERS",
+    "STOPS_OPTIONS",
+    "UNLIMITED_STOPS",
     "adjust_time_range",
     "build_filter_dict",
+    "describe_stops_filter",
+    "stops_limit_to_flags",
 ]

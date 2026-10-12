@@ -20,6 +20,17 @@ def _combo_airport_code(combo: Any) -> str:
     return str(combo.currentText() or combo.currentData() or "").strip()
 
 
+def set_combo_airport_code(combo: Any, code: str) -> None:
+    """목록에 있으면 선택하고, 없으면(직접 입력 코드) 편집 텍스트로 넣는다."""
+    if not code:
+        return
+    idx = combo.findData(code)
+    if idx >= 0:
+        combo.setCurrentIndex(idx)
+    elif combo.isEditable():
+        combo.setEditText(code)
+
+
 def get_panel_search_params(
     panel: Any,
     *,
@@ -53,21 +64,8 @@ def apply_search_params_to_panel(panel: Any, params: dict[str, Any] | None) -> d
         if hasattr(panel, "_on_flight_type_changed"):
             panel._on_flight_type_changed()
 
-    origin = normalized.get("origin")
-    if origin:
-        idx = panel.cb_origin.findData(origin)
-        if idx >= 0:
-            panel.cb_origin.setCurrentIndex(idx)
-        elif panel.cb_origin.isEditable():
-            panel.cb_origin.setEditText(origin)
-
-    dest = normalized.get("dest")
-    if dest:
-        idx = panel.cb_dest.findData(dest)
-        if idx >= 0:
-            panel.cb_dest.setCurrentIndex(idx)
-        elif panel.cb_dest.isEditable():
-            panel.cb_dest.setEditText(dest)
+    set_combo_airport_code(panel.cb_origin, normalized.get("origin") or "")
+    set_combo_airport_code(panel.cb_dest, normalized.get("dest") or "")
 
     dep = normalized.get("dep")
     if dep:

@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.components_primitives import NoWheelComboBox, NoWheelDateEdit, NoWheelSpinBox
-from ui.search_panel_shared import SearchPanelMixinBase
+from ui.search_panel_shared import SEARCH_BUTTON_TEXT, SearchPanelMixinBase
 from ui.airport_options import populate_airport_combo
 
 
@@ -106,11 +106,13 @@ class SearchPanelBuildMixin(SearchPanelMixinBase):
         
         layout.addWidget(self._labeled_widget("출발지 (Origin)", origin_container), 1, 0)
         
-        # Arrow
-        arrow_lbl = QLabel("✈️")
-        arrow_lbl.setStyleSheet("font-size: 18px; color: #4cc9f0;")
-        arrow_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(arrow_lbl, 1, 1)
+        # Swap origin/destination
+        self.btn_swap = QPushButton("⇄")
+        self.btn_swap.setObjectName("tool_btn")
+        self.btn_swap.setToolTip("출발지와 도착지 바꾸기")
+        self.btn_swap.setFixedWidth(44)
+        self.btn_swap.clicked.connect(self._swap_airports)
+        layout.addWidget(self.btn_swap, 1, 1, Qt.AlignmentFlag.AlignBottom)
         
         # Destination
         self.cb_dest = self._create_airport_combo("NRT", include_presets=True)
@@ -134,14 +136,18 @@ class SearchPanelBuildMixin(SearchPanelMixinBase):
         self.date_dep = NoWheelDateEdit()
         self.date_dep.setCalendarPopup(True)
         self.date_dep.setDisplayFormat("yyyy-MM-dd")
+        self.date_dep.setMinimumDate(QDate.currentDate())
         self.date_dep.setDate(QDate.currentDate().addDays(7))
         layout.addWidget(self._labeled_widget("가는 날 (Departure)", self.date_dep), 2, 0)
-        
+
         self.date_ret = NoWheelDateEdit()
         self.date_ret.setCalendarPopup(True)
         self.date_ret.setDisplayFormat("yyyy-MM-dd")
+        self.date_ret.setMinimumDate(QDate.currentDate())
         self.date_ret.setDate(QDate.currentDate().addDays(10))
         layout.addWidget(self._labeled_widget("오는 날 (Return)", self.date_ret), 2, 2)
+        # 가는 날이 오는 날을 넘어가면 오는 날을 같이 밀어준다
+        self.date_dep.dateChanged.connect(self._on_dep_date_changed)
 
         # --- Row 3: Passengers, Cabin Class & Time ---
         # Passengers
@@ -171,30 +177,12 @@ class SearchPanelBuildMixin(SearchPanelMixinBase):
         self.cb_cabin_class.addItem("💼 비즈니스", "BUSINESS")
         self.cb_cabin_class.addItem("👑 일등석", "FIRST")
         self.cb_cabin_class.setToolTip("좌석 등급을 선택하세요 (가격이 다릅니다)")
-        
-        # Time Range
-        time_layout = QHBoxLayout()
-        self.spin_time_start = NoWheelSpinBox()
-        self.spin_time_start.setRange(0, 23)
-        self.spin_time_start.setSuffix("시")
-        
-        self.spin_time_end = NoWheelSpinBox()
-        self.spin_time_end.setRange(1, 24)
-        self.spin_time_end.setValue(24)
-        self.spin_time_end.setSuffix("시")
-        
-        time_layout.addWidget(self.cb_cabin_class)
-        time_layout.addWidget(QLabel("|"))
-        time_layout.addWidget(self.spin_time_start)
-        time_layout.addWidget(QLabel("~"))
-        time_layout.addWidget(self.spin_time_end)
-        time_container = QWidget()
-        time_container.setLayout(time_layout)
-        
-        layout.addWidget(self._labeled_widget("좌석등급 / 선호시간", time_container), 3, 2)
+
+        # 출발 시간대는 결과의 필터 패널에서 고른다 (기본값: 설정의 선호 시간)
+        layout.addWidget(self._labeled_widget("좌석등급", self.cb_cabin_class), 3, 2)
 
         # --- Row 4: Search Button ---
-        self.btn_search = QPushButton("🔍 최저가 항공권 검색하기")
+        self.btn_search = QPushButton(SEARCH_BUTTON_TEXT)
         self.btn_search.setFixedHeight(54)
         self.btn_search.setToolTip("Ctrl+Enter로도 검색할 수 있습니다")
         self.btn_search.setStyleSheet("""
@@ -219,10 +207,13 @@ class SearchPanelBuildMixin(SearchPanelMixinBase):
         """)
         self.btn_search.clicked.connect(self._on_search)
 
-        self.btn_force_refresh = QPushButton("강제 재조회")
+        self.btn_force_refresh = QPushButton("🔄 캐시 무시 새로 조회")
         self.btn_force_refresh.setObjectName("tool_btn")
         self.btn_force_refresh.setFixedHeight(54)
-        self.btn_force_refresh.setToolTip("캐시를 무시하고 다시 조회합니다 (Ctrl+Shift+Enter)")
+        self.btn_force_refresh.setToolTip(
+            "같은 조건을 방금 검색했다면 저장된 결과가 다시 표시됩니다.\n"
+            "이 버튼은 저장된 결과를 쓰지 않고 새로 조회합니다 (Ctrl+Shift+Enter)"
+        )
         self.btn_force_refresh.clicked.connect(self._on_force_refresh_search)
 
         action_row = QWidget()
@@ -232,11 +223,6 @@ class SearchPanelBuildMixin(SearchPanelMixinBase):
         action_layout.addWidget(self.btn_search, 3)
         action_layout.addWidget(self.btn_force_refresh, 1)
         layout.addWidget(action_row, 4, 0, 1, 3)
-        
-        # Load previous preferred time if any
-        pt = self.prefs.get_preferred_time()
-        self.spin_time_start.setValue(pt.get("departure_start", 0))
-        self.spin_time_end.setValue(pt.get("departure_end", 24))
 
         # Column stretch
         layout.setColumnStretch(0, 10)

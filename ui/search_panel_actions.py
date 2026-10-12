@@ -2,10 +2,25 @@
 
 import config
 from PyQt6.QtCore import QDate
-from PyQt6.QtWidgets import QComboBox, QInputDialog, QMenu, QMessageBox
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QGraphicsOpacityEffect,
+    QInputDialog,
+    QMenu,
+    QMessageBox,
+)
 
-from ui.search_panel_shared import SearchPanelMixinBase
-from ui.search_panel_params import get_panel_search_params
+from ui.search_panel_shared import (
+    MAX_TOTAL_PASSENGERS,
+    SEARCH_BUTTON_TEXT,
+    SEARCHING_BUTTON_TEXT,
+    SearchPanelMixinBase,
+)
+from ui.search_panel_params import (
+    _combo_airport_code,
+    get_panel_search_params,
+    set_combo_airport_code,
+)
 from ui.airport_options import populate_airport_combo
 
 
@@ -47,7 +62,7 @@ class SearchPanelActionsMixin(SearchPanelMixinBase):
                  return
 
             if code in config.AIRPORTS:
-                QMessageBox.warning(self, "삭제 불가", "기본 제공 공항은 삭제할 수 없습니다.\\n사용자가 추가한 공항만 삭제 가능합니다.")
+                QMessageBox.warning(self, "삭제 불가", "기본 제공 공항은 삭제할 수 없습니다.\n사용자가 추가한 공항만 삭제 가능합니다.")
             else:
                 ret = QMessageBox.question(self, "삭제 확인", f"정말 {code} 공항을 목록에서 삭제하시겠습니까?", 
                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -78,15 +93,27 @@ class SearchPanelActionsMixin(SearchPanelMixinBase):
     def _toggle_return_date(self) -> None:
         is_round = self.rb_round.isChecked()
         self.date_ret.setEnabled(is_round)
-        if not is_round:
-            self.date_ret.setStyleSheet("color: #555; background-color: #222;")
+        # 색을 직접 지정하면 라이트 테마에서 깨지므로 투명도로만 비활성을 표현한다
+        if is_round:
+            self.date_ret.setGraphicsEffect(None)
+            self.date_ret.setToolTip("")
         else:
-            self.date_ret.setStyleSheet("")
+            effect = QGraphicsOpacityEffect(self.date_ret)
+            effect.setOpacity(0.4)
+            self.date_ret.setGraphicsEffect(effect)
+            self.date_ret.setToolTip("편도 검색에서는 오는 날을 사용하지 않습니다")
+
+    def _on_dep_date_changed(self, date: QDate) -> None:
+        if self.date_ret.date() < date:
+            self.date_ret.setDate(date)
+
+    def _swap_airports(self) -> None:
+        origin_code = _combo_airport_code(self.cb_origin)
+        dest_code = _combo_airport_code(self.cb_dest)
+        set_combo_airport_code(self.cb_origin, dest_code)
+        set_combo_airport_code(self.cb_dest, origin_code)
 
     def _on_search(self) -> None:
-        # Save time preference
-        self.prefs.set_preferred_time(self.spin_time_start.value(), self.spin_time_end.value())
-
         params = get_panel_search_params(self)
         origin_code = params["origin"]
         dest_code = params["dest"]
@@ -134,7 +161,26 @@ class SearchPanelActionsMixin(SearchPanelMixinBase):
             return
         
         if ret_date is not None and ret_date < dep_date:
-            QMessageBox.warning(self, "날짜 오류", "귀국일이 출발일보다 이전입니다.")
+            QMessageBox.warning(self, "날짜 오류", "오는 날이 가는 날보다 이전입니다.")
+            return
+
+        # 승객 수 유효성 검사
+        child = int(params.get("child", 0) or 0)
+        infant = int(params.get("infant", 0) or 0)
+        if infant > adults:
+            QMessageBox.warning(
+                self,
+                "승객 오류",
+                f"유아는 성인 1명당 1명까지 동반할 수 있습니다.\n(성인 {adults}명, 유아 {infant}명)",
+            )
+            return
+        if adults + child + infant > MAX_TOTAL_PASSENGERS:
+            QMessageBox.warning(
+                self,
+                "승객 오류",
+                f"한 번에 검색할 수 있는 인원은 최대 {MAX_TOTAL_PASSENGERS}명입니다.\n"
+                f"(현재 {adults + child + infant}명)",
+            )
             return
 
         self.search_requested.emit(origin_code, dest_code, dep, ret, adults, cabin_class)
@@ -152,12 +198,14 @@ class SearchPanelActionsMixin(SearchPanelMixinBase):
 
 
     def set_searching(self, searching: bool) -> None:
-        self.btn_search.setText("⏳ 검색 중..." if searching else "🔍 최저가 검색 시작")
+        self.btn_search.setText(SEARCHING_BUTTON_TEXT if searching else SEARCH_BUTTON_TEXT)
         self.btn_search.setEnabled(not searching)
         if hasattr(self, "btn_force_refresh"):
             self.btn_force_refresh.setEnabled(not searching)
         self.cb_origin.setEnabled(not searching)
         self.cb_dest.setEnabled(not searching)
+        if hasattr(self, "btn_swap"):
+            self.btn_swap.setEnabled(not searching)
     
     def _on_flight_type_changed(self) -> None:
         """국내선/국제선 전환시 공항 목록 업데이트"""

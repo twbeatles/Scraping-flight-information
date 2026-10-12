@@ -331,19 +331,24 @@ def test_result_table_shows_extended_fields_and_effective_price_badge(qapp):
     )
     table.update_data([expensive, cheap_benefit])
 
-    assert table.columnCount() == 12
+    from ui.components_result_table.table_config import COL_AIRPORT, COL_BAGGAGE, COLUMN_LABELS
+
+    assert table.columnCount() == len(COLUMN_LABELS) == 13
 
     def _cell(row: int, col: int) -> str:
         item = table.item(row, col)
         return item.text() if item is not None else ""
 
-    # effective price ranks cheap_benefit (100k) as best even if base price is higher
-    assert "🏆" in _cell(0, 1) or "🏆" in _cell(1, 1)
-    airport_cells = [_cell(r, 8) for r in range(2)]
+    # effective price ranks cheap_benefit (100k) as best even if base price is higher,
+    # and the default sort puts it on the first row
+    assert _cell(0, 0) == "A"
+    assert "🏆" in _cell(0, 1)
+    assert "🏆" not in _cell(1, 1)
+    airport_cells = [_cell(r, COL_AIRPORT) for r in range(2)]
     assert any("ICN" in cell and "NRT" in cell for cell in airport_cells)
-    bag_cells = [_cell(r, 9) for r in range(2)]
+    bag_cells = [_cell(r, COL_BAGGAGE) for r in range(2)]
     assert "15kg" in bag_cells
-    seat_cells = [_cell(r, 10) for r in range(2)]
+    seat_cells = [_cell(r, 11) for r in range(2)]
     assert "3" in seat_cells
 
 

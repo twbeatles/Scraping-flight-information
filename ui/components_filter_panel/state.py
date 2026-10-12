@@ -2,11 +2,22 @@
 
 from typing import Any, Dict, Tuple
 
+# "전체" 선택 시 max_stops 값. 경유 횟수로 걸러내지 않는다는 뜻이다.
+UNLIMITED_STOPS = 99
+
+# 경유 콤보 선택지: (표시 문구, 허용 최대 경유 횟수)
+STOPS_OPTIONS: Tuple[Tuple[str, int], ...] = (
+    ("전체", UNLIMITED_STOPS),
+    ("✈️ 직항만", 0),
+    ("1회 이하", 1),
+    ("2회 이하", 2),
+)
+
 DEFAULT_FILTERS: Dict[str, Any] = {
     "direct_only": False,
     "include_layover": True,
     "airline_category": "ALL",
-    "max_stops": 3,
+    "max_stops": UNLIMITED_STOPS,
     "start_time": 0,
     "end_time": 24,
     "ret_start_time": 0,
@@ -14,6 +25,21 @@ DEFAULT_FILTERS: Dict[str, Any] = {
     "min_price": 0,
     "max_price": 9999 * 10000,
 }
+
+
+def stops_limit_to_flags(max_stops: int) -> Tuple[bool, bool]:
+    """경유 한도 하나에서 기존 필터 키 (direct_only, include_layover)를 파생한다."""
+
+    direct_only = max_stops <= 0
+    return direct_only, not direct_only
+
+
+def describe_stops_filter(direct_only: bool, include_layover: bool, max_stops: int) -> str:
+    if direct_only or not include_layover or max_stops <= 0:
+        return "직항만"
+    if max_stops >= UNLIMITED_STOPS:
+        return "전체"
+    return f"{max_stops}회 이하"
 
 
 def build_filter_dict(

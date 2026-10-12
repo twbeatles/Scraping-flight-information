@@ -14,6 +14,8 @@ from ui.components_result_table.formatting import (
     build_airline_item,
     build_airport_item,
     build_baggage_item,
+    build_duration_item,
+    build_empty_item,
     build_price_item,
     build_seats_item,
     build_stops_item,
@@ -22,6 +24,19 @@ from ui.components_result_table.formatting import (
     format_arrival_text,
 )
 from ui.components_result_table.table_config import (
+    COL_AIRLINE,
+    COL_AIRPORT,
+    COL_ARR,
+    COL_BAGGAGE,
+    COL_DEP,
+    COL_DURATION,
+    COL_PRICE,
+    COL_RET_ARR,
+    COL_RET_DEP,
+    COL_RET_STOPS,
+    COL_SEATS,
+    COL_SOURCE,
+    COL_STOPS,
     COLUMN_LABELS,
     DEFAULT_ROW_HEIGHT,
     INITIAL_WIDTHS,
@@ -42,6 +57,7 @@ class ResultTable(QTableWidget):
     def __init__(self):
         super().__init__()
         self.results_data = []  # Store flight results for access
+        self._empty_message = PLACEHOLDER_TEXT
         self._palette = create_palette()
 
         self.setColumnCount(len(COLUMN_LABELS))
@@ -61,6 +77,8 @@ class ResultTable(QTableWidget):
         # 최소 너비 설정 (HiDPI 대응)
         if header is not None:
             header.setMinimumSectionSize(MIN_SECTION_SIZE)
+            # 기본 정렬은 비교가 오름차순. 지정하지 않으면 Qt가 0번 열 기준으로 정렬한다.
+            header.setSortIndicator(COL_PRICE, Qt.SortOrder.AscendingOrder)
 
         v_header = self.verticalHeader()
         if v_header is not None:
@@ -91,6 +109,10 @@ class ResultTable(QTableWidget):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
+    def set_empty_message(self, message=None):
+        """다음 빈 결과 렌더링에 쓸 안내 문구. None이면 기본 문구로 되돌린다."""
+        self._empty_message = message or PLACEHOLDER_TEXT
+
     def update_data(self, results):
         # 대량 업데이트 최적화
         self.setUpdatesEnabled(False)
@@ -100,7 +122,7 @@ class ResultTable(QTableWidget):
         # Handle empty results - show placeholder
         if not results:
             self.setRowCount(1)
-            placeholder_item = QTableWidgetItem(PLACEHOLDER_TEXT)
+            placeholder_item = QTableWidgetItem(self._empty_message)
             placeholder_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             placeholder_item.setForeground(self._color_placeholder)
             placeholder_item.setFont(self._font_placeholder)
@@ -120,40 +142,45 @@ class ResultTable(QTableWidget):
 
         for i, flight in enumerate(results):
             eff_price = effective_prices[i]
-            self.setItem(i, 0, build_airline_item(flight, i))
+            self.setItem(i, COL_AIRLINE, build_airline_item(flight, i))
             self.setItem(
-                i, 1, build_price_item(flight, eff_price, min_price, price_range, self._palette)
+                i,
+                COL_PRICE,
+                build_price_item(flight, eff_price, min_price, price_range, self._palette),
             )
 
             # Outbound
-            self._set_time_item(i, 2, flight.departure_time)
+            self._set_time_item(i, COL_DEP, flight.departure_time)
             arr_text = format_arrival_text(
                 flight.arrival_time, getattr(flight, "arrival_day_offset", 0)
             )
-            self._set_time_item(i, 3, arr_text)
+            self._set_time_item(i, COL_ARR, arr_text)
 
             # Stops - highlight direct flights
-            self.setItem(i, 4, build_stops_item(flight.stops, self._palette))
+            self.setItem(i, COL_STOPS, build_stops_item(flight.stops, self._palette))
 
             # Inbound
             if hasattr(flight, 'is_round_trip') and flight.is_round_trip:
-                self._set_time_item(i, 5, flight.return_departure_time)
+                self._set_time_item(i, COL_RET_DEP, flight.return_departure_time)
                 ret_arr = format_arrival_text(
                     flight.return_arrival_time,
                     getattr(flight, "return_arrival_day_offset", 0),
                 )
-                self._set_time_item(i, 6, ret_arr)
-                self.setItem(i, 7, build_stops_item(flight.return_stops, self._palette))
+                self._set_time_item(i, COL_RET_ARR, ret_arr)
+                self.setItem(
+                    i, COL_RET_STOPS, build_stops_item(flight.return_stops, self._palette)
+                )
             else:
-                self.setItem(i, 5, QTableWidgetItem("-"))
-                self.setItem(i, 6, QTableWidgetItem("-"))
-                self.setItem(i, 7, QTableWidgetItem("-"))
+                self.setItem(i, COL_RET_DEP, build_empty_item())
+                self.setItem(i, COL_RET_ARR, build_empty_item())
+                self.setItem(i, COL_RET_STOPS, build_empty_item())
 
-            # Airports / baggage / seats / source
-            self.setItem(i, 8, build_airport_item(flight))
-            self.setItem(i, 9, build_baggage_item(flight))
-            self.setItem(i, 10, build_seats_item(flight))
-            self.setItem(i, 11, QTableWidgetItem(flight.source))
+            # Duration / airports / baggage / seats / source
+            self.setItem(i, COL_DURATION, build_duration_item(flight))
+            self.setItem(i, COL_AIRPORT, build_airport_item(flight))
+            self.setItem(i, COL_BAGGAGE, build_baggage_item(flight))
+            self.setItem(i, COL_SEATS, build_seats_item(flight))
+            self.setItem(i, COL_SOURCE, QTableWidgetItem(flight.source))
 
             # 최저가 행 배경색 강조 (혜택 반영 비교가 기준)
             if eff_price == min_price:

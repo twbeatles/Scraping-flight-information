@@ -17,6 +17,7 @@ _PYQT_TEST_FILES = {
     "test_gui_search_panel.py",
     "test_gui_results.py",
     "test_gui_alerts_export.py",
+    "test_result_ux.py",
     "test_parallel_workers.py",
     "test_domestic_api.py",
     "test_international_api.py",

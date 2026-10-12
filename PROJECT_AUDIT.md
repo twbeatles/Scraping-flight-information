@@ -5,7 +5,7 @@
 분석 방법: `README.md`, `claude.md` 선독 → CodeGraph MCP(`codegraph_explore`) 호출 관계·영향 범위 → 보조 grep/파일 열람 → `python -m pytest -q`
 
 > 후속 구현 (2026-08-12): 본 문서 High-Risk / Fix Plan / Test Recommendations를 코드에 반영.  
-> 검증: `pytest` **153 passed**, `pyright` 0 errors, LF check OK.  
+> 검증: `pytest` **186 passed, 2 skipped**, `pyright` 0 errors, LF check는 `.specify/` manifest CRLF 경고 외 이상 없음. 신규 기준: `specs/001-search-result-ux`.  
 > 문서/스펙/gitignore 정합성 동기화 후 본 기준선을 운영 기준으로 사용한다.  
 > 추정 사항은 **(추정)** 으로 명시한다.
 

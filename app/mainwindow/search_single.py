@@ -11,6 +11,8 @@ from app.mainwindow.shared import (
 )
 from typing import TYPE_CHECKING, Any
 
+from app.mainwindow.filtering import lowest_effective_price
+
 if TYPE_CHECKING:
     from app.main_window import MainWindow
 
@@ -61,6 +63,13 @@ class SearchSingleMixin:
         cabin_label = {"ECONOMY": "이코노미", "BUSINESS": "비즈니스", "FIRST": "일등석"}.get(cabin_class, "이코노미")
         self.progress_bar.setFormat(f"항공권 검색 중... ({cabin_label})")
         self.table.setRowCount(0)
+        # 표를 비웠으니 이전 결과도 비운다. 남겨두면 검색 중 필터 조작 시
+        # 새 조건의 요약 아래에 이전 검색 결과가 다시 나타난다.
+        self.all_results = []
+        self._last_search_truncated = False
+        summary_label = getattr(self, "result_summary_label", None)
+        if summary_label is not None:
+            summary_label.setText(f"{origin} → {dest} 검색 중...")
         manual_browser_open = self.active_searcher is not None
         if manual_browser_open and hasattr(self, "manual_status_label"):
             self.manual_status_label.setText("🖐️ <b>수동 모드 유지 중</b> - 브라우저 닫기 가능")
@@ -131,14 +140,16 @@ class SearchSingleMixin:
             if self.current_search_params:
                 self._persist_successful_search(results)
             
-            from scraping.models import effective_flight_price
-
-            best_price = effective_flight_price(results[0])
+            # 결과는 기본가 순이므로 첫 항목이 아니라 비교가(혜택 반영) 최솟값을 쓴다
+            best_price = lowest_effective_price(results)
             self.progress_bar.setFormat(f"✨ 검색 완료! 최저가: {best_price:,}원 🏆")
             self.log_viewer.append_log(f"✅ 검색 완료. {len(results)}건 발견, 최저가: {best_price:,}원")
+            self._last_search_truncated = False
             if hasattr(self, "worker") and self.worker and hasattr(self.worker, "searcher"):
                 metrics = self.worker.searcher.get_search_metrics()
                 if metrics.get("api_pages_truncated"):
+                    # 요약 바에도 경고를 띄운다 (로그 탭은 결과 탭 전환 후 보이지 않는다)
+                    self._last_search_truncated = True
                     self.log_viewer.append_log(
                         "⚠️ Interpark API 페이지 상한에 도달해 일부 결과가 누락됐을 수 있습니다."
                     )
@@ -163,9 +174,21 @@ class SearchSingleMixin:
                         "error_code": "NO_RESULT",
                     }
                 )
+            # 이전 검색 결과를 비워 필터 조작으로 되살아나지 않게 한다
+            self.all_results = []
+            self.results = []
+            self._last_search_truncated = False
+            if hasattr(self.table, "set_empty_message"):
+                self.table.set_empty_message(None)
             self.table.update_data([])
+            if hasattr(self, "_update_result_summary"):
+                self._update_result_summary([])
             self.tabs.setCurrentIndex(0)
-            QMessageBox.information(self, "결과 없음", "항공권을 찾을 수 없습니다.")
+            QMessageBox.information(
+                self,
+                "결과 없음",
+                "이 조건으로 조회된 항공권이 없습니다.\n날짜나 공항을 바꿔 다시 검색해 보세요.",
+            )
     def _record_persistence_warning(self: Any, action_name: str, error: Exception):
         logger.warning("%s failed after successful search: %s", action_name, error)
         try:

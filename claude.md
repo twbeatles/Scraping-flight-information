@@ -22,7 +22,7 @@ python -m PyInstaller --clean --noconfirm FlightBot_v2.5.spec
 
 최근 확인 결과:
 
-- `python -m pytest -q` -> `153 passed`
+- `python -m pytest -q` -> `186 passed, 2 skipped`
 - `pyright --warnings` -> `0 errors, 0 warnings`
 - live smoke / selector probe -> 릴리스 전 권장
 
@@ -102,7 +102,7 @@ database.py
 - API pagination은 domestic/international page cap을 넘기지 않고, cap으로 잘린 경우 `api_pages_truncated`, `api_page_cap`, `api_total_pages_estimated`를 telemetry에 남긴다.
 - API 성공 이후 남아 있는 pre-wait 실패 사유는 최종 `api_failure_reason`으로 유지하지 않는다.
 - 국내선 canonical `price`는 기본가이고, 혜택가는 `benefit_price`/`benefit_label`에 보존한다.
-- 비교·알림·테이블 최저가 하이라이트는 `effective_flight_price`를 우선한다.
+- 비교·알림·테이블 정렬·가격 필터·최저가 하이라이트·결과 요약은 `effective_flight_price`를 우선한다.
 - 국내선 왕복 dedup key는 시간, 편명, API key, 혜택가/혜택 라벨을 포함해야 한다.
 - 공항/수하물/잔여석 등 확장 필드는 정규화·조합·export·결과 테이블에 일관 전파한다.
 
@@ -113,6 +113,11 @@ database.py
 - `user_preferences.json`과 세션 JSON root는 `schema_version = 2`를 유지한다.
 - `user_preferences.json`과 세션 JSON 저장은 `core.file_io.write_text_atomic()`을 사용한다.
 - 검색 패널 복원은 국내선/국제선 모드를 먼저 맞춘 뒤 공항 코드를 적용한다.
+- 검색 패널 날짜는 오늘 이전을 허용하지 않고, 승객은 유아 ≤ 성인·합계 ≤ 9를 검색 전에 검증한다.
+- 결과 테이블의 숫자 컬럼(가격/경유/잔여석/소요시간)은 `formatting.SortableItem`의 `SORT_ROLE` 키로 정렬한다. 컬럼 위치는 `table_config.COL_*` 상수를 쓴다.
+- 경유 필터는 `FilterPanel.cb_stops` 하나이며 필터 dict 키(`direct_only`, `include_layover`, `max_stops`)는 유지한다. 전체는 `UNLIMITED_STOPS`.
+- 결과 표 위 요약(`result_summary_label`)은 `app.mainwindow.filtering.build_result_summary()`가 만들고, 빈 표 문구는 `ResultTable.set_empty_message()`로 검색 0건과 필터 0건을 구분한다.
+- 검색 시작과 검색 0건 시 `all_results`를 비운다 (이전 검색 결과가 새 조건 아래 다시 표시되지 않게).
 - 자동 가격 알림 실패는 모달 대신 `last_error`, 로그, 목록 상태로 노출한다.
 - 자동 가격 알림 발동 모달은 `alert_hit_modal_enabled` 설정으로 on/off 한다 (기본 on).
 - 자동 가격 알림 DB 조회 실패는 worker 실행으로 이어지지 않게 중단하고 telemetry/log에 남긴다.
@@ -160,7 +165,7 @@ database.py
 - **프로젝트**: `Scraping-flight-information`
 - **Spec Kit 초기화**: `.specify/ 있음`
 - **에이전트 스킬**: Grok=True, Claude=True, Codex/Agy(.agents)=True
-- **활성 기능**: 아직 `specs/` 기능 명세 없음 — `.specify/` 만 준비된 상태
+- **활성 기능**: `specs/001-search-result-ux` (검색 입력·가격 결과 조회 UX 정리, tasks 전부 완료)
 
 ### 에이전트가 먼저 읽을 파일
 

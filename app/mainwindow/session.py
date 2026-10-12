@@ -8,6 +8,7 @@ from app.mainwindow.shared import (
     logger,
 )
 from typing import TYPE_CHECKING, Any
+from app.mainwindow.filtering import lowest_effective_price
 from app.session_manager import SessionManager
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ class SessionMixin:
         # 결과 표시
         self.all_results = results
         self.current_search_params = config.normalize_search_params(params)
+        self._last_search_truncated = False
         self._apply_filter()
         
         # 검색 조건 복원
@@ -85,7 +87,8 @@ class SessionMixin:
             self.current_search_params = config.normalize_search_params(search_params)
             self.all_results = results
             self.results = results
-            
+            self._last_search_truncated = False
+
             # 검색 패널에 조건 복원
             try:
                 self._restore_search_panel_from_params(search_params)
@@ -93,7 +96,7 @@ class SessionMixin:
                 logger.debug(f"검색 조건 복원 실패: {e}")
             
             # 로그 및 상태 표시
-            min_price = results[0].price if results else 0
+            min_price = lowest_effective_price(results)
             origin = self.current_search_params.get('origin', '?')
             dest = self.current_search_params.get('dest', '?')
             

@@ -4,6 +4,8 @@ from typing import Any
 
 from PyQt6.QtWidgets import QApplication, QMenu
 
+from scraping.models import effective_flight_price
+
 
 def show_context_menu(table: Any, pos) -> None:
     row = table.rowAt(pos.y())
@@ -38,11 +40,29 @@ def show_context_menu(table: Any, pos) -> None:
     menu.exec(table.mapToGlobal(pos))
 
 
+def format_row_info(flight: Any) -> str:
+    """행 복사용 한 줄 요약. 비교가를 먼저 쓰고 기본가가 다르면 함께 적는다."""
+
+    eff_price = effective_flight_price(flight)
+    price_text = f"{eff_price:,}원"
+    if eff_price != flight.price and flight.price > 0:
+        price_text = f"{price_text} (기본 {flight.price:,}원)"
+
+    airline = flight.airline
+    return_airline = getattr(flight, "return_airline", "") or ""
+    if return_airline and return_airline != airline:
+        airline = f"{airline} + {return_airline}"
+
+    parts = [airline, price_text, f"가는편 {flight.departure_time}→{flight.arrival_time}"]
+    if getattr(flight, "is_round_trip", False):
+        parts.append(f"오는편 {flight.return_departure_time}→{flight.return_arrival_time}")
+    return " | ".join(parts)
+
+
 def copy_row_info(table: Any, row: int) -> None:
     flight = table.get_flight_at_row(row)
     if not flight:
         return
-    info = f"{flight.airline} | {flight.price:,}원 | {flight.departure_time}→{flight.arrival_time}"
     clipboard = QApplication.clipboard()
     if clipboard is not None:
-        clipboard.setText(info)
+        clipboard.setText(format_row_info(flight))

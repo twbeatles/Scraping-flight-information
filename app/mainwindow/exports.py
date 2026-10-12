@@ -7,6 +7,7 @@ from app.mainwindow.shared import (
     datetime,
 )
 from typing import TYPE_CHECKING, Any
+from scraping.models import effective_flight_price
 from ui.export_helpers import export_flights_to_csv
 
 if TYPE_CHECKING:
@@ -43,9 +44,22 @@ class ExportsMixin:
         
         from PyQt6.QtWidgets import QApplication
         
-        lines = ["항공사\t가격\t출발\t도착\t경유"]
+        lines = ["항공사\t비교가(혜택 반영)\t기본가\t가는편 출발\t가는편 도착\t가는편 경유\t오는편 출발\t오는편 도착"]
         for flight in self.all_results[:50]:  # 최대 50개
-            lines.append(f"{flight.airline}\t{flight.price:,}원\t{flight.departure_time}\t{flight.arrival_time}\t{flight.stops}회")
+            lines.append(
+                "\t".join(
+                    [
+                        flight.airline,
+                        f"{effective_flight_price(flight):,}원",
+                        f"{flight.price:,}원",
+                        flight.departure_time,
+                        flight.arrival_time,
+                        f"{flight.stops}회",
+                        getattr(flight, "return_departure_time", "") or "-",
+                        getattr(flight, "return_arrival_time", "") or "-",
+                    ]
+                )
+            )
         
         text = "\n".join(lines)
         clipboard = QApplication.clipboard()

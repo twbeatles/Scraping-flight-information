@@ -84,7 +84,7 @@ def add_header_section(window: Any, main_layout: QVBoxLayout) -> None:
     sep1.setFixedHeight(30)
     h_layout.addWidget(sep1)
 
-    btn_calendar = QPushButton("📠 캘린더뷰")
+    btn_calendar = QPushButton("🗓️ 캘린더뷰")
     btn_calendar.setObjectName("secondary_btn")
     btn_calendar.setToolTip("날짜별 가격을 캘린더 형태로 보기 (날짜범위 검색 후 사용)")
     btn_calendar.clicked.connect(window._show_calendar_view)
@@ -103,13 +103,13 @@ def add_header_section(window: Any, main_layout: QVBoxLayout) -> None:
     sep2.setFixedHeight(30)
     h_layout.addWidget(sep2)
 
-    btn_save_session = QPushButton("💶")
+    btn_save_session = QPushButton("💾")
     btn_save_session.setObjectName("icon_btn")
     btn_save_session.setToolTip("현재 검색 결과를 파일로 저장")
     btn_save_session.clicked.connect(window._save_session)
     h_layout.addWidget(btn_save_session)
 
-    btn_load_session = QPushButton("💛")
+    btn_load_session = QPushButton("📂")
     btn_load_session.setObjectName("icon_btn")
     btn_load_session.setToolTip("저장한 검색 결과 불러오기")
     btn_load_session.clicked.connect(window._load_session)
@@ -177,6 +177,14 @@ def add_filter_progress_section(window: Any, main_layout: QVBoxLayout) -> None:
     main_layout.addWidget(filter_label)
 
     window.filter_panel = FilterPanel()
+    # 가는편 출발 시간대의 기본값은 설정의 선호 시간이다 (시그널 연결 전에 채운다)
+    try:
+        preferred = window.prefs.get_preferred_time()
+        window.filter_panel.set_departure_time_range(
+            preferred.get("departure_start", 0), preferred.get("departure_end", 24)
+        )
+    except Exception:
+        pass
     window.filter_panel.filter_changed.connect(window._schedule_filter_apply)
     main_layout.addWidget(window.filter_panel)
 
@@ -232,6 +240,15 @@ def add_results_section(window: Any, main_layout: QVBoxLayout) -> None:
     rh_layout.addWidget(btn_copy)
 
     main_layout.addWidget(result_header)
+
+    # 조회 조건 · 표시/전체 건수 · 최저가 · 누락 경고를 표 바로 위에 보여준다
+    window.result_summary_label = QLabel("검색을 실행하면 결과 요약이 여기에 표시됩니다.")
+    window.result_summary_label.setObjectName("subtitle")
+    window.result_summary_label.setWordWrap(True)
+    window.result_summary_label.setToolTip(
+        "가격은 혜택가가 있으면 기본가와 혜택가 중 낮은 값(비교가)을 기준으로 합니다."
+    )
+    main_layout.addWidget(window.result_summary_label)
 
     window.tabs = NoWheelTabWidget()
     window.tabs.setMinimumHeight(400)

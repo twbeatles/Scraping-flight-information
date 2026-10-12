@@ -1,5 +1,6 @@
 """Result table cell formatting (SRP: item text/color/tooltip building only)."""
 
+import re
 from typing import Any, Dict, List, Tuple
 
 from PyQt6.QtCore import Qt
@@ -25,10 +26,49 @@ def create_palette() -> Dict[str, Any]:
     }
 
 
+# 정렬 전용 숫자 키. 표시 문자열(🏆, 쉼표, "원")과 무관하게 숫자 크기로 정렬한다.
+SORT_ROLE = Qt.ItemDataRole.UserRole + 2
+SORT_LAST = float("inf")
+
+
+class SortableItem(QTableWidgetItem):
+    """SORT_ROLE 숫자 키로 비교하는 셀. 키가 없으면 문자열 비교로 내려간다."""
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:
+        left = self.data(SORT_ROLE)
+        right = other.data(SORT_ROLE)
+        if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+            return left < right
+        return super().__lt__(other)
+
+
+def price_sort_key(price: int) -> float:
+    """가격 미확인(0 이하)은 오름차순에서 맨 뒤로 보낸다."""
+
+    return float(price) if price > 0 else SORT_LAST
+
+
+def duration_to_minutes(text: str) -> int:
+    """'02시간 30분', '2h 30m', '02:30', '150' 형태를 분으로 변환. 해석 불가면 0."""
+
+    raw = str(text or "").strip()
+    if not raw:
+        return 0
+    if raw.isdigit():
+        return int(raw)
+    clock = re.fullmatch(r"(\d{1,2}):(\d{2})", raw)
+    if clock:
+        return int(clock.group(1)) * 60 + int(clock.group(2))
+    hours = re.search(r"(\d+)\s*(?:시간|h)", raw, re.IGNORECASE)
+    minutes = re.search(r"(\d+)\s*(?:분|m)", raw, re.IGNORECASE)
+    return (int(hours.group(1)) * 60 if hours else 0) + (int(minutes.group(1)) if minutes else 0)
+
+
 def compute_effective_prices(results: List[Any]) -> Tuple[List[int], int, int]:
     effective_prices = [effective_flight_price(r) for r in results]
-    min_price = min(effective_prices)
-    max_price = max(effective_prices)
+    known_prices = [p for p in effective_prices if p > 0] or effective_prices
+    min_price = min(known_prices)
+    max_price = max(known_prices)
     price_range = max_price - min_price if max_price > min_price else 1
     return effective_prices, min_price, price_range
 
@@ -67,19 +107,23 @@ def build_price_item(
     flight: Any, eff_price: int, min_price: int, price_range: int, palette: Dict[str, Any]
 ) -> QTableWidgetItem:
     badge = "🏆 " if eff_price == min_price else ""
-    if hasattr(flight, 'outbound_price') and flight.outbound_price > 0:
-        price_text = f"{badge}{flight.price:,}원 ({flight.outbound_price:,}+{flight.return_price:,})"
-    else:
-        price_text = f"{badge}{flight.price:,}원"
-    if getattr(flight, "benefit_price", 0) > 0 and flight.benefit_price != flight.price:
-        price_text = f"{price_text} / 혜택 {flight.benefit_price:,}"
+    base_price = int(getattr(flight, "price", 0) or 0)
+    outbound_price = int(getattr(flight, "outbound_price", 0) or 0)
+    return_price = int(getattr(flight, "return_price", 0) or 0)
+    # 비교가(혜택 반영)를 주 표시로 하고, 기본가·구간가는 보조로 붙인다.
+    price_text = f"{badge}{eff_price:,}원"
+    if eff_price != base_price and base_price > 0:
+        price_text = f"{price_text} (기본 {base_price:,})"
+    if outbound_price > 0:
+        price_text = f"{price_text} · {outbound_price:,}+{return_price:,}"
 
-    price_item = QTableWidgetItem(price_text)
+    price_item = SortableItem(price_text)
     price_item.setData(Qt.ItemDataRole.UserRole, eff_price)
+    price_item.setData(SORT_ROLE, price_sort_key(eff_price))
     price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     tooltip_lines = [
+        f"비교가(혜택 반영, 정렬·필터 기준): {eff_price:,}원",
         f"기본가: {flight.price:,}원",
-        f"비교가(혜택 반영): {eff_price:,}원",
     ]
     if hasattr(flight, 'outbound_price') and flight.outbound_price > 0:
         tooltip_lines.append(
@@ -89,8 +133,6 @@ def build_price_item(
         tooltip_lines.append(f"혜택가: {flight.benefit_price:,}원")
     if getattr(flight, 'benefit_label', ''):
         tooltip_lines.append(f"혜택 정보: {flight.benefit_label}")
-    if getattr(flight, "duration", ""):
-        tooltip_lines.append(f"소요시간: {flight.duration}")
     if getattr(flight, "arrival_day_offset", 0):
         tooltip_lines.append(f"도착일 +{flight.arrival_day_offset}")
     price_item.setToolTip("\n".join(tooltip_lines))
@@ -102,12 +144,40 @@ def build_price_item(
 
 
 def build_stops_item(stops: int, palette: Dict[str, Any]) -> QTableWidgetItem:
-    stops_item = QTableWidgetItem("✈️ 직항" if not stops else f"{stops}회 경유")
+    stops_item = SortableItem("✈️ 직항" if not stops else f"{stops}회 경유")
+    stops_item.setData(SORT_ROLE, int(stops or 0))
     if not stops:
         stops_item.setForeground(palette["color_stops_direct"])
     else:
         stops_item.setForeground(palette["color_stops_layover"])
     return stops_item
+
+
+def build_empty_item() -> QTableWidgetItem:
+    """편도 결과의 오는편 칸. 정렬 시 항상 뒤로 간다."""
+
+    item = SortableItem("-")
+    item.setData(SORT_ROLE, SORT_LAST)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    return item
+
+
+def build_duration_item(flight: Any) -> QTableWidgetItem:
+    outbound = str(getattr(flight, "duration", "") or "")
+    returning = ""
+    if getattr(flight, "is_round_trip", False):
+        returning = str(getattr(flight, "return_duration", "") or "")
+    if outbound and returning:
+        text = f"{outbound} / {returning}"
+    else:
+        text = outbound or returning or "-"
+    item = SortableItem(text)
+    minutes = duration_to_minutes(outbound) + duration_to_minutes(returning)
+    item.setData(SORT_ROLE, minutes if minutes > 0 else SORT_LAST)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    if outbound and returning:
+        item.setToolTip(f"가는편: {outbound}\n오는편: {returning}")
+    return item
 
 
 def format_arrival_text(base: str, day_offset: int) -> str:
@@ -147,7 +217,8 @@ def build_baggage_item(flight: Any) -> QTableWidgetItem:
 def build_seats_item(flight: Any) -> QTableWidgetItem:
     seats = int(getattr(flight, "seat_availability", 0) or 0)
     seats_text = str(seats) if seats > 0 else "-"
-    seats_item = QTableWidgetItem(seats_text)
+    seats_item = SortableItem(seats_text)
     seats_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
     seats_item.setData(Qt.ItemDataRole.UserRole, seats)
+    seats_item.setData(SORT_ROLE, seats if seats > 0 else SORT_LAST)
     return seats_item
