@@ -1,10 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-import os
-import sys
 Flight Bot v2.5 - PyInstaller Build Spec (Optimized for Lightweight Build)
 빌드: pyinstaller --clean flight_bot.spec
 """
+
+import os
+import sys
 
 block_cipher = None
 

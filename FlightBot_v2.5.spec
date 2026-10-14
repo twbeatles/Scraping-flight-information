@@ -1,10 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-import os
-import sys
 Flight Bot v2.5 - PyInstaller Build Spec (Standard GUI Profile)
 빌드: pyinstaller --clean FlightBot_v2.5.spec
 """
+
+import os
+import sys
 
 block_cipher = None
 
