@@ -1,5 +1,7 @@
 """Search panel action/validation mixin."""
 
+from typing import Any, cast
+
 import config
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
@@ -95,7 +97,9 @@ class SearchPanelActionsMixin(SearchPanelMixinBase):
         self.date_ret.setEnabled(is_round)
         # 색을 직접 지정하면 라이트 테마에서 깨지므로 투명도로만 비활성을 표현한다
         if is_round:
-            self.date_ret.setGraphicsEffect(None)
+            # None clears the effect at runtime; cast keeps the
+            # PySide6 non-optional stub (QGraphicsEffect) satisfied.
+            self.date_ret.setGraphicsEffect(cast(Any, None))
             self.date_ret.setToolTip("")
         else:
             effect = QGraphicsOpacityEffect(self.date_ret)

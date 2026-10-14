@@ -11,6 +11,8 @@ from app.mainwindow.shared import (
 )
 from typing import TYPE_CHECKING, Any
 
+from PySide6.QtGui import QCloseEvent
+
 if TYPE_CHECKING:
     from app.main_window import MainWindow
 
@@ -44,9 +46,8 @@ class AppLifecycleMixin:
             self.btn_theme.setText("🌙")
             self.is_dark_theme = True
             self.prefs.set_theme("dark")
-    def closeEvent(self: Any, a0):
+    def closeEvent(self: Any, event: QCloseEvent, /) -> None:
         """창 닫기 시 워커 스레드 및 리소스 정리"""
-        event = a0
         self._alert_auto_timer.stop()
         # Worker threads 정리 (안전한 종료 패턴)
         workers = [self.worker, self.multi_worker, self.date_worker, self.alert_worker]
