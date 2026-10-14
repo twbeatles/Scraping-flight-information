@@ -6,7 +6,7 @@ import traceback
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 from scraper_v2 import BrowserInitError, FlightSearcher, ManualModeActivationError, NetworkError
 from ui.workers_search import SearchWorker
@@ -30,7 +30,7 @@ __all__ = [
     "datetime",
     "timedelta",
     "QThread",
-    "pyqtSignal",
+    "Signal",
     "FlightSearcher",
     "BrowserInitError",
     "ManualModeActivationError",

@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
@@ -46,8 +46,8 @@ from PyQt6.QtWidgets import (
     QToolButton,
     QInputDialog,
 )
-from PyQt6.QtCore import QDate, Qt, QThread, pyqtSignal, QSize, pyqtSlot, QTimer, QSettings
-from PyQt6.QtGui import QFont, QColor, QIcon, QPalette, QShortcut, QKeySequence, QAction, QTextCharFormat
+from PySide6.QtCore import QDate, Qt, QThread, Signal, QSize, Slot, QTimer, QSettings
+from PySide6.QtGui import QFont, QColor, QIcon, QPalette, QShortcut, QKeySequence, QAction, QTextCharFormat
 
 os.environ["QT_LOGGING_RULES"] = "qt.qpa.css.warning=false"
 

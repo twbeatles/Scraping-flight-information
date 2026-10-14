@@ -3,15 +3,15 @@ import sys
 import logging
 from datetime import datetime, timedelta
 from typing import Any, cast
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QCalendarWidget, QGroupBox, QListWidget, QListWidgetItem, QFrame,
     QMessageBox, QDateEdit, QSpinBox, QCheckBox, QScrollArea, QGridLayout,
     QWidget, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QTabWidget, QFileDialog, QInputDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QDate, QSettings
-from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QAction
+from PySide6.QtCore import Qt, Signal, QDate, QSettings
+from PySide6.QtGui import QColor, QFont, QTextCharFormat, QAction
 
 try:
     import openpyxl

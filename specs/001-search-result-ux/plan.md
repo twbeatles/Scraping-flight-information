@@ -9,7 +9,7 @@
 ## Technical Context
 
 - **Language/Version**: Python 3.10+
-- **Primary Dependencies**: PyQt6
+- **Primary Dependencies**: PySide6
 - **Testing**: pytest (`tests/test_gui_*.py`, `tests/test_audit_improvements.py`), pyright
 - **Constraints**: facade import 경로와 CLAUDE.md의 Compatibility Contracts 유지. 테스트가 `MainWindow` 메서드를 더미 컨텍스트로 호출하므로 새 위젯 접근은 `hasattr` 가드로 감싼다.
 

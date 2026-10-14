@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
-from PyQt6.QtCore import QDate
-from PyQt6.QtWidgets import QMessageBox
+from PySide6.QtCore import QDate
+from PySide6.QtWidgets import QMessageBox
 
 from database import PriceAlert
 from ui.dialogs import MultiDestDialog, DateRangeDialog, PriceAlertDialog

@@ -1,8 +1,8 @@
 """Search panel action/validation mixin."""
 
 import config
-from PyQt6.QtCore import QDate
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QDate
+from PySide6.QtWidgets import (
     QComboBox,
     QGraphicsOpacityEffect,
     QInputDialog,

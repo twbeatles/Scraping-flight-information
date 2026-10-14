@@ -2,15 +2,15 @@
 import sys
 import logging
 from datetime import datetime, timedelta
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QCalendarWidget, QGroupBox, QListWidget, QListWidgetItem, QFrame,
     QMessageBox, QDateEdit, QSpinBox, QCheckBox, QScrollArea, QGridLayout,
     QWidget, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QTabWidget, QFileDialog, QInputDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QDate, QSettings
-from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QAction
+from PySide6.QtCore import Qt, Signal, QDate, QSettings
+from PySide6.QtGui import QColor, QFont, QTextCharFormat, QAction
 
 try:
     import openpyxl
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class CalendarViewDialog(QDialog):
     """월별 최저가 캘린더 뷰"""
-    date_selected = pyqtSignal(str)  # 선택된 날짜 (yyyyMMdd)
+    date_selected = Signal(str)  # 선택된 날짜 (yyyyMMdd)
     
     def __init__(self, price_data: dict, parent=None):
         """

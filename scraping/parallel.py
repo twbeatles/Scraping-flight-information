@@ -23,7 +23,8 @@ class ParallelSearcher:
                                      progress_callback: Optional[Callable[[str], None]] = None) -> Dict[str, List[FlightResult]]:
         """여러 목적지를 병렬로 검색"""
         import threading
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import as_completed
+        from concurrent.futures.thread import ThreadPoolExecutor
 
         self._lock = threading.Lock()
         self.results = {}
@@ -102,7 +103,8 @@ class ParallelSearcher:
                           progress_callback: Optional[Callable[[str], None]] = None) -> Dict[str, tuple]:
         """여러 날짜를 병렬로 검색"""
         import threading
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import as_completed
+        from concurrent.futures.thread import ThreadPoolExecutor
         from datetime import datetime, timedelta
 
         self._lock = threading.Lock()

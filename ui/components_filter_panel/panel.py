@@ -4,10 +4,10 @@ State defaults/snapshots and time-range validation live in `state.py`.
 """
 
 import logging
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
 )
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 
 from ui.components_filter_panel.state import (
     STOPS_OPTIONS,
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class FilterPanel(QFrame):
-    filter_changed = pyqtSignal(dict)  # {direct_only, include_layover, airline_category, max_stops}
+    filter_changed = Signal(dict)  # {direct_only, include_layover, airline_category, max_stops}
 
     def __init__(self):
         super().__init__()

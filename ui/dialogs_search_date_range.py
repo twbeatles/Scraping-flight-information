@@ -2,15 +2,15 @@
 import sys
 import logging
 from datetime import datetime, timedelta
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QCalendarWidget, QGroupBox, QListWidget, QListWidgetItem, QFrame,
     QMessageBox, QDateEdit, QSpinBox, QCheckBox, QScrollArea, QGridLayout,
     QWidget, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QTabWidget, QFileDialog, QInputDialog, QRadioButton, QButtonGroup
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QDate, QSettings
-from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QAction
+from PySide6.QtCore import Qt, Signal, QDate, QSettings
+from PySide6.QtGui import QColor, QFont, QTextCharFormat, QAction
 
 try:
     import openpyxl
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 from ui.dialogs_base import _validate_route_and_dates, MAX_MULTI_DESTINATIONS, MAX_DATE_RANGE_DAYS
 class DateRangeDialog(QDialog):
     """날짜 범위 검색 다이얼로그"""
-    search_requested = pyqtSignal(str, str, list, int, int, str)  # origin, dest, dates, return_offset, adults, cabin_class
+    search_requested = Signal(str, str, list, int, int, str)  # origin, dest, dates, return_offset, adults, cabin_class
     
     def __init__(self, parent=None, prefs=None):
         super().__init__(parent)

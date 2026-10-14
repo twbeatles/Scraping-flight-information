@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from PyQt6.QtCore import QSignalBlocker
-from PyQt6.QtWidgets import QComboBox
+from PySide6.QtCore import QSignalBlocker
+from PySide6.QtWidgets import QComboBox
 
 import config
 

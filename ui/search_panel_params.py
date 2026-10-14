@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import QDate
+from PySide6.QtCore import QDate
 
 import config
 

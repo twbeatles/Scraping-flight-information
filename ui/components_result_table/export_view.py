@@ -7,7 +7,7 @@ the file-dialog and message-box interaction.
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from ui.export_helpers import export_flights_to_csv, export_flights_to_excel
 

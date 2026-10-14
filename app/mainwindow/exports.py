@@ -42,7 +42,7 @@ class ExportsMixin:
             QMessageBox.warning(self, "복사 오류", "복사할 검색 결과가 없습니다.")
             return
         
-        from PyQt6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
         
         lines = ["항공사\t비교가(혜택 반영)\t기본가\t가는편 출발\t가는편 도착\t가는편 경유\t오는편 출발\t오는편 도착"]
         for flight in self.all_results[:50]:  # 최대 50개

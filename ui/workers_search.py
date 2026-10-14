@@ -4,7 +4,7 @@ import threading
 import traceback
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
-from PyQt6.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 from scraper_v2 import FlightSearcher, BrowserInitError, ManualModeActivationError, NetworkError
 
@@ -23,10 +23,10 @@ def _searcher_cls():
         return FlightSearcher
 
 class SearchWorker(QThread):
-    progress = pyqtSignal(str)
-    finished = pyqtSignal(list)
-    error = pyqtSignal(str)
-    manual_mode_signal = pyqtSignal(object)  # active_searcher
+    progress = Signal(str)
+    finished = Signal(list)
+    error = Signal(str)
+    manual_mode_signal = Signal(object)  # active_searcher
 
     def __init__(
         self,

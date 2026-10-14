@@ -6,7 +6,7 @@
 
 - 기준일: 2026-08-12
 - 실행: `python gui_v2.py`
-- GUI: PyQt6
+- GUI: PySide6
 - Scraper: Playwright
 - DB: SQLite
 - Packaging: PyInstaller

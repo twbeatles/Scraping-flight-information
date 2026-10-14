@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from ui.search_panel_shared import QFrame, SearchPanelPrefs, pyqtSignal
+from ui.search_panel_shared import QFrame, SearchPanelPrefs, Signal
 from ui.search_panel_actions import SearchPanelActionsMixin
 from ui.search_panel_build import SearchPanelBuildMixin
 from ui.search_panel_state import SearchPanelStateMixin
 
 
 class SearchPanel(SearchPanelStateMixin, SearchPanelActionsMixin, SearchPanelBuildMixin, QFrame):
-    search_requested = pyqtSignal(str, str, str, str, int, str)
+    search_requested = Signal(str, str, str, str, int, str)
 
     def __init__(self, prefs: SearchPanelPrefs) -> None:
         super().__init__()

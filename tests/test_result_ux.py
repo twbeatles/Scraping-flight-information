@@ -2,8 +2,8 @@
 
 from typing import Any
 
-from PyQt6.QtCore import QDate, Qt
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import QDate, Qt
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.mainwindow.filtering import build_result_summary, lowest_effective_price
 from gui_v2 import MainWindow

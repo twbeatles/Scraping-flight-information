@@ -3,7 +3,7 @@
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
-from PyQt6.QtCore import QThread
+from PySide6.QtCore import QThread
 
 from scraper_v2 import FlightSearcher
 

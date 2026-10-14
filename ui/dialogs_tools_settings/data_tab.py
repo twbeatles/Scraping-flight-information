@@ -2,7 +2,7 @@
 
 from typing import Any, cast
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QFileDialog, QGroupBox, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 

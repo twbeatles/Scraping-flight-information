@@ -2,7 +2,7 @@
 
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 
 import scraper_config
 from ui.workers_parallel.base import (
@@ -18,10 +18,10 @@ class MultiSearchWorker(CancellableWorker):
 
     _cancel_log_prefix = "다중 검색"
 
-    progress = pyqtSignal(str)
-    single_finished = pyqtSignal(str, list)  # dest, results
-    all_finished = pyqtSignal(dict)  # {dest: [results]}
-    error = pyqtSignal(str)
+    progress = Signal(str)
+    single_finished = Signal(str, list)  # dest, results
+    all_finished = Signal(dict)  # {dest: [results]}
+    error = Signal(str)
 
     def __init__(
         self,

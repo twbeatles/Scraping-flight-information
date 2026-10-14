@@ -4,7 +4,7 @@ import threading
 import traceback
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
-from PyQt6.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 from scraper_v2 import FlightSearcher, BrowserInitError, NetworkError
 from scraping.models import effective_flight_price
@@ -25,12 +25,12 @@ def _searcher_cls():
 
 class AlertAutoCheckWorker(QThread):
     """가격 알림 자동 점검 워커"""
-    progress = pyqtSignal(str)
-    alert_checked = pyqtSignal(int, int)  # alert_id, current_price
-    alert_check_failed = pyqtSignal(int, str, str, str)  # alert_id, origin, dest, error
-    alert_no_result = pyqtSignal(int, str, str)  # alert_id, origin, dest
-    alert_hit = pyqtSignal(int, int, int, str, str, str)  # alert_id, price, target, origin, dest, cabin
-    done = pyqtSignal(int, int)  # checked_count, hit_count
+    progress = Signal(str)
+    alert_checked = Signal(int, int)  # alert_id, current_price
+    alert_check_failed = Signal(int, str, str, str)  # alert_id, origin, dest, error
+    alert_no_result = Signal(int, str, str)  # alert_id, origin, dest
+    alert_hit = Signal(int, int, int, str, str, str)  # alert_id, price, target, origin, dest, cabin
+    done = Signal(int, int)  # checked_count, hit_count
 
     def __init__(self, alerts, max_results=50, telemetry_callback=None):
         super().__init__()

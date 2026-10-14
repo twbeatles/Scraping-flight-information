@@ -6,7 +6,7 @@
 
 - 기준일: 2026-08-12
 - 실행 진입점: `python gui_v2.py`
-- 주요 기술: Python 3.10+, PyQt6, Playwright, SQLite, PyInstaller
+- 주요 기술: Python 3.10+, PySide6, Playwright, SQLite, PyInstaller
 - 공개 facade 유지: `config.py`, `scraper_config.py`, `scraper_v2.py`, `database.py`, `gui_v2.py`, `ui.components`, `ui.dialogs`, `ui.styles`, `ui.workers`, `scraping.playwright_*`
 - 실제 구현 위치: `core/*`, `scraping/interpark/*`, `scraping/domestic/*`, `scraping/international/*`, `scraping/search_flow/*`
 

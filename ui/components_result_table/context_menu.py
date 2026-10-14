@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from PyQt6.QtWidgets import QApplication, QMenu
+from PySide6.QtWidgets import QApplication, QMenu
 
 from scraping.models import effective_flight_price
 

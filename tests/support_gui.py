@@ -1,6 +1,6 @@
 """Shared GUI test doubles (extracted from test_gui_behaviors.py)."""
 
-from PyQt6.QtWidgets import QButtonGroup, QComboBox, QDateEdit, QRadioButton, QSpinBox
+from PySide6.QtWidgets import QButtonGroup, QComboBox, QDateEdit, QRadioButton, QSpinBox
 
 
 class _DummyLogViewer:

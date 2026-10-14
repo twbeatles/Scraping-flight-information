@@ -1,7 +1,7 @@
 """Search panel UI construction mixin."""
 
-from PyQt6.QtCore import QDate, Qt
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QDate, Qt
+from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
     QFrame,

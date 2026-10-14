@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QCheckBox, QGroupBox, QHBoxLayout, QLabel, QPushButton, QSpinBox,
     QVBoxLayout, QWidget,
 )

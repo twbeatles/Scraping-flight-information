@@ -26,7 +26,7 @@ _PYQT_TEST_FILES = {
 }
 
 try:
-    from PyQt6.QtWidgets import QApplication as _QApplication
+    from PySide6.QtWidgets import QApplication as _QApplication
 except ImportError as exc:
     _QApplication = None
     _PYQT_IMPORT_ERROR = exc
@@ -45,13 +45,13 @@ def pytest_report_header(config):
     del config
     if _PYQT_IMPORT_ERROR is None:
         return None
-    return f"PyQt unavailable, skipping GUI-dependent tests: {_PYQT_IMPORT_ERROR}"
+    return f"PySide unavailable, skipping GUI-dependent tests: {_PYQT_IMPORT_ERROR}"
 
 
 @pytest.fixture(scope="session")
 def qapp():
     if _PYQT_IMPORT_ERROR is not None or _QApplication is None:
-        pytest.skip(f"PyQt unavailable: {_PYQT_IMPORT_ERROR}")
+        pytest.skip(f"PySide unavailable: {_PYQT_IMPORT_ERROR}")
     app = _QApplication.instance()
     if app is None:
         app = _QApplication([])

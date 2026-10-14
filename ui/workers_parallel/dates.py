@@ -3,7 +3,7 @@
 import logging
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 
 from ui.workers_parallel.base import (
     MAX_PARALLEL_WORKERS,
@@ -23,9 +23,9 @@ class DateRangeWorker(CancellableWorker):
 
     _cancel_log_prefix = "날짜 검색"
 
-    progress = pyqtSignal(str)
-    date_result = pyqtSignal(str, int, str)  # date, min_price, airline
-    all_finished = pyqtSignal(dict)  # {date: (price, airline)}
+    progress = Signal(str)
+    date_result = Signal(str, int, str)  # date, min_price, airline
+    all_finished = Signal(dict)  # {date: (price, airline)}
 
     def __init__(
         self,

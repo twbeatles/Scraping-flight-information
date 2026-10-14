@@ -21,9 +21,9 @@ excludes = [
 ]
 
 hiddenimports = [
-    "PyQt6.QtCore",
-    "PyQt6.QtGui",
-    "PyQt6.QtWidgets",
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtWidgets",
     "playwright.sync_api",
     "playwright._impl._api_structures",
     "asyncio",

@@ -7,7 +7,7 @@ status text computation lives in `status_texts.py`.
 import logging
 from typing import Any, cast
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QCheckBox, QDialog, QLabel, QListWidget, QMessageBox, QPushButton,
     QSpinBox, QTabWidget, QVBoxLayout,
 )

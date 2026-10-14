@@ -1,5 +1,5 @@
-from PyQt6.QtCore import QDate, QSettings, QTimer, Qt
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QDate, QSettings, QTimer, Qt
+from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QComboBox,

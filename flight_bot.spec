@@ -32,10 +32,10 @@ excludes = [
 
 # ===== Hidden Imports =====
 hiddenimports = [
-    # PyQt6 필수 모듈
-    'PyQt6.QtCore',
-    'PyQt6.QtGui', 
-    'PyQt6.QtWidgets',
+    # PySide6 필수 모듈
+    'PySide6.QtCore',
+    'PySide6.QtGui', 
+    'PySide6.QtWidgets',
     
     # Playwright
     'playwright.sync_api',

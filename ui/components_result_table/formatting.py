@@ -3,9 +3,9 @@
 import re
 from typing import Any, Dict, List, Tuple
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont
-from PyQt6.QtWidgets import QTableWidgetItem
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont
+from PySide6.QtWidgets import QTableWidgetItem
 
 from scraping.models import effective_flight_price
 

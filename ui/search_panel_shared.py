@@ -7,15 +7,15 @@ import csv
 import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGridLayout, QLabel, QPushButton, QCheckBox,
     QSpinBox, QComboBox, QDateEdit, QTabWidget, QFrame,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QMenu, QMessageBox, QFileDialog, QApplication, QTextEdit,
     QRadioButton, QButtonGroup, QInputDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QDate, QSettings
-from PyQt6.QtGui import QColor, QFont, QTextCharFormat
+from PySide6.QtCore import Qt, Signal, Slot, QDate, QSettings
+from PySide6.QtGui import QColor, QFont, QTextCharFormat
 
 # Try importing openpyxl
 try:

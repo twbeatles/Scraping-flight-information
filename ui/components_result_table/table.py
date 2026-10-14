@@ -4,10 +4,10 @@ Cell content, context menu, and export dialogs live in sibling modules.
 """
 
 import logging
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PySide6.QtCore import Qt, Signal
 
 from ui.components_result_table import context_menu, export_view
 from ui.components_result_table.formatting import (
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 
 class ResultTable(QTableWidget):
-    favorite_requested = pyqtSignal(int)  # row index
+    favorite_requested = Signal(int)  # row index
 
     def __init__(self):
         super().__init__()
